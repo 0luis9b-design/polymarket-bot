@@ -57,7 +57,7 @@ def fetch_polymarket_events():
     url = "https://gamma-api.polymarket.com/events?active=true&limit=10"
     try:
         response = requests.get(url)
-        if response.status_with == 200:
+        if response.status_code == 200:
             return response.json()
     except Exception as e:
         print(f"Fehler beim Abrufen der Polymarket-Daten: {e}")
