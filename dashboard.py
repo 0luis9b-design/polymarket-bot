@@ -1,9 +1,17 @@
+import streamlit as pd
 import streamlit as st
 import os
-from sqlalchemy import create_engine, Column, Integer, String, Float
-from sqlalchemy.orm import declarative_base, sessionmaker
+import time
+import threading
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+# Wir importieren die Tabellen-Struktur und die Scan-Funktion aus der main.py
+from main import Base, SimulatedTrade, fetch_and_process_markets
 
-# 1. DATENBANK-VERBINDUNG (Gleiche Logik wie in der main.py)
+# 1. ERWEITERTES DASHBOARD-STYLING
+st.set_page_config(page_title="Polymarket Quant Bot", page_icon="🤖", layout="wide")
+
+# 2. DATENBANK-VERBINDUNG
 DATABASE_URL = os.getenv("DATABASE_URL")
 if DATABASE_URL and DATABASE_URL.startswith("postgres://"):
     DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
@@ -12,68 +20,69 @@ else:
 
 engine = create_engine(DATABASE_URL)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-Base = declarative_base()
 
-# Definition der Tabelle, um darauf zuzugreifen
-class SimulatedTrade(Base):
-    __tablename__ = "simulated_trades"
-    id = Column(Integer, primary_key=True, index=True)
-    market_title = Column(String, nullable=False)
-    category = Column(String, default="Uncategorized")
-    prediction_selection = Column(String, nullable=False)
-    confidence_calculated = Column(Float, nullable=False)
-    stake_euro = Column(Float, default=10.0)
-    entry_price = Column(Float, nullable=False)
-    status = Column(String, default="OPEN")
+# 3. DER BULLETPROOF HINTERGRUND-WORKER (Der Bot im Dashboard)
+@st.cache_resource
+def start_bot_background_worker():
+    def bot_loop():
+        print("🤖 [Hintergrund-Bot] Engine erfolgreich im Dashboard-Thread gestartet!")
+        while True:
+            try:
+                fetch_and_process_markets()
+            except Exception as e:
+                print(f"❌ [Hintergrund-Bot] Fehler im Scan-Durchlauf: {e}")
+            # Alle 5 Minuten (300 Sekunden) neu scannen
+            time.sleep(300)
 
-# 2. DASHBOARD OBERFLÄCHE
-st.set_page_config(page_title="Polymarket AI Bot", layout="wide")
+    # Starte den Bot als Daemon-Thread (stirbt automatisch, wenn das Dashboard stoppt)
+    bot_thread = threading.Thread(target=bot_loop, daemon=True)
+    bot_thread.start()
+    return True
 
-st.title("🤖 Polymarket AI Paper-Trading Bot")
-st.subheader("Übersicht deiner automatisierten, imaginären Wetten")
+# Aktiviert den Bot-Worker genau EINMAL beim Laden des Dashboards
+start_bot_background_worker()
 
-# Verbindung zur Datenbank herstellen und Daten abrufen
+# 4. DASHBOARD OBERFLÄCHE (UI)
+st.title("🤖 Polymarket AI Quantitative Paper-Trading Dashboard")
+st.subheader("Live-Analyse & Mathematische Risiko-Engine")
+
+# Daten aus der Postgres-Datenbank laden
 db = SessionLocal()
-trades = db.query(SimulatedTrade).all()
-db.close()
+try:
+    trades = db.query(SimulatedTrade).order_counts = db.query(SimulatedTrade).count()
+    all_trades = db.query(SimulatedTrade).all()
+finally:
+    db.close()
 
-# Statistiken berechnen
-total_bets = len(trades)
-open_bets = len([t for t in trades if t.status == "OPEN"])
-won_bets = len([t for t in trades if t.status == "WON"])
-lost_bets = len([t for t in trades if t.status == "LOST"])
+# METRIKEN BERECHNEN
+total_trades = len(all_trades)
+simulated_balance = 1000.0 - (total_trades * 10.0) # Startkapital 1000€ minus Einsätze
 
-# Spalten für die KPI-Karten
-col1, col2, col3, col4 = st.columns(4)
+# UI Layout in Spalten
+col1, col2, col3 = st.columns(3)
 with col1:
-    st.metric(label="Startguthaben (Imaginär)", value="100.00 €")
+    st.metric(label="Virtuelles Restkapital", value=f"{simulated_balance:.2f} €")
 with col2:
-    st.metric(label="Aktive Wetten", value=open_bets)
+    st.metric(label="Platzierte Wetten (Gesamt)", value=str(total_trades))
 with col3:
-    st.metric(label="Gewonnene Wetten", value=won_bets)
-with col4:
-    st.metric(label="Verlorene Wetten", value=lost_bets)
+    st.metric(label="Bot-Status", value="AKTIV (Scannt alle 5 Min)", delta="Online")
 
 st.markdown("---")
+st.write("### 📊 Aktuelle Positionen & Platzierte KI-Wetten")
 
-# Tabelle mit den Wetten anzeigen
-st.write("### 📊 Aktuelle Wett-Historie")
-if total_bets == 0:
-    st.info("Noch keine Wetten abgeschlossen. Der Bot analysiert gerade im Hintergrund...")
-else:
-    # Daten für die Anzeige aufbereiten
-    table_data = []
-    for t in trades:
-        table_data.append({
+if total_trades > 0:
+    # Tabelle hübsch aufbereiten
+    trade_list = []
+    for t in all_trades:
+        trade_list.append({
             "ID": t.id,
-            "Markt-Thema": t.market_title,
+            "Markt / Event": t.market_title,
             "Kategorie": t.category,
-            "Tipp": t.prediction_selection,
+            "KI-Tipp": t.prediction_selection,
             "KI-Sicherheit": f"{t.confidence_calculated:.1f}%",
-            "Einsatz": f"{t.stake_euro:.2f} €",
+            "Einsatz": f"{t.stake_euro} €",
             "Status": t.status
         })
-    st.table(table_data)
-
-st.markdown("---")
-st.write("💡 *Hinweis: Dieser Bot nutzt die Formel $P = \\frac{1.2}{n}$ zur Risikobewertung und lernt kontinuierlich aus Fehlern.*")
+    st.dataframe(trade_list, use_container_width=True)
+else:
+    st.info("Der Bot arbeitet im Hintergrund. Sobald ein Markt die mathematische Hürde (1.2 / n) überspringt, taucht die Wette hier live auf! Aktualisiere die Seite in ein paar Minuten.")
