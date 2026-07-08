@@ -1,4 +1,4 @@
 requests==2.32.3
-sqlalchemy==2.0.30
-psycopg2-binary==2.9.9
-streamlit==1.35.0
+sqlalchemy>=2.0.35
+psycopg2-binary==2.9.10
+streamlit==1.38.0
