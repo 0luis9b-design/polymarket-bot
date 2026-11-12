@@ -110,6 +110,7 @@ class Engine:
         self.odds = odds_client or sports_model.OddsClient(store)
         self.lock = threading.Lock()
         self._books = {}
+        self._err_runs = 0
         self.state = {"last_scan": None, "last_error": None, "running": False, "scans": 0,
                       "opportunities": [], "skips": {}, "markets_seen": {}, "duration": None, "arbs": [],
                       "weights": {}, "paused": {}}
@@ -175,11 +176,17 @@ class Engine:
             self.daily_summary(now)
             self.weekly_report(now)
             self._log_summary(results)
+            if self._err_runs >= config.ERROR_ALERT_RUNS:
+                notify.send("✅ <b>Polymarket-Bot</b>: Lauf klappt wieder ohne Fehler")
+            self._err_runs = 0
             self.state["last_error"] = None
         except Exception as e:  # noqa: BLE001
             self.state["last_error"] = f"{type(e).__name__}: {e}"
             self.store.log(f"Fehler im Lauf: {e}", "error")
             log.error(traceback.format_exc())
+            self._err_runs += 1
+            if self._err_runs == config.ERROR_ALERT_RUNS:
+                notify.send(f"⚠️ <b>Polymarket-Bot</b>: {self._err_runs} Läufe hintereinander mit Fehler\n{self.state['last_error'][:300]}")
         finally:
             self.state["last_scan"] = datetime.now(timezone.utc).isoformat(timespec="seconds")
             self.state["duration"] = round(time.time() - t0, 1)

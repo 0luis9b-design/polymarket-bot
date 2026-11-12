@@ -136,3 +136,20 @@ def test_resume_endpoint(tmp_path, monkeypatch):
     c = app_module.app.test_client()
     assert c.post("/api/account/haupt/resume").status_code == 200
     assert c.post("/api/account/gibtsnicht/resume").status_code == 404
+
+
+def test_error_alert_after_three_failed_runs(tmp_path, monkeypatch):
+    from polybot import notify
+    sent = []
+    monkeypatch.setattr(notify, "send", lambda text, account=None: sent.append(text))
+    store, eng = _eng(tmp_path, {})
+
+    def boom():
+        raise RuntimeError("Datenquelle hängt")
+    monkeypatch.setattr(eng, "settle", boom)
+    for _ in range(3):
+        eng.run_cycle()
+    assert len([t for t in sent if "Läufe hintereinander" in t]) == 1
+    monkeypatch.setattr(eng, "settle", lambda: None)
+    eng.run_cycle()
+    assert any("klappt wieder" in t for t in sent)

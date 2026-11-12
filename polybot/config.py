@@ -128,4 +128,6 @@ WEEKLY_REPORT_HOUR = _i("WEEKLY_REPORT_HOUR", 18)   # Wochenbericht sonntags um 
 # --- Ablauf ---
 SCAN_INTERVAL_MIN = _f("SCAN_INTERVAL_MIN", 10)
 AUTOSTART = os.environ.get("AUTOSTART", "1") == "1"
+WATCHDOG_MIN = _f("WATCHDOG_MIN", 30)          # Telegram-Warnung, wenn so lange kein Lauf fertig wurde
+ERROR_ALERT_RUNS = _i("ERROR_ALERT_RUNS", 3)    # Telegram-Warnung nach so vielen Fehl-Läufen hintereinander
 HTTP_TIMEOUT = _f("HTTP_TIMEOUT", 15)

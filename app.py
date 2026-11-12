@@ -93,6 +93,37 @@ def _loop():
         time.sleep(config.SCAN_INTERVAL_MIN * 60)
 
 
+def _watchdog():
+    """Meldet per Telegram, wenn 30 min lang kein Lauf fertig wurde – und wenn es wieder läuft."""
+    from polybot import notify
+    from polybot.polymarket import parse_dt
+    limit = config.WATCHDOG_MIN * 60
+    alerted = False
+    # War der Bot vor dem Start lange aus (Absturz statt normalem Deploy)?
+    prev = parse_dt(engine.state.get("last_scan"))
+    down_before = prev and (datetime.now(timezone.utc) - prev).total_seconds() > limit
+    started = time.time()
+    while True:
+        time.sleep(60)
+        last = parse_dt(engine.state.get("last_scan"))
+        now = datetime.now(timezone.utc)
+        age = (now - last).total_seconds() if last else time.time() - started
+        if down_before and last and last > prev:
+            notify.send(f"✅ <b>Polymarket-Bot läuft wieder</b>\nEr war etwa {(last - prev).total_seconds() / 60:.0f} min aus (Neustart).")
+            store.log(f"Wachhund: Bot war {(last - prev).total_seconds() / 60:.0f} min aus und läuft wieder")
+            down_before = False
+        if age > limit and not alerted and time.time() - started > limit:
+            alerted = True
+            msg = f"Seit {age / 60:.0f} min kein fertiger Lauf" + (f" · letzter Fehler: {engine.state['last_error']}"
+                                                                     if engine.state.get("last_error") else "")
+            store.log(f"Wachhund: {msg}", "error")
+            notify.send(f"⚠️ <b>Polymarket-Bot hängt</b>\n{msg}")
+        elif alerted and age < limit:
+            alerted = False
+            store.log("Wachhund: läuft wieder")
+            notify.send("✅ <b>Polymarket-Bot läuft wieder</b>")
+
+
 def _auto_start():
     global _started
     with _start_lock:
@@ -100,6 +131,7 @@ def _auto_start():
             return
         _started = True
         threading.Thread(target=_loop, name="polybot-loop", daemon=True).start()
+        threading.Thread(target=_watchdog, name="polybot-watchdog", daemon=True).start()
 
 
 _auto_start()  # muss beim Import laufen, damit es auch unter Gunicorn startet
