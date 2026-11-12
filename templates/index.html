@@ -1,0 +1,187 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Polymarket-Bot (Spielgeld)</title>
+<style>
+  :root { --bg:#0f1115; --card:#181b22; --line:#262a33; --txt:#e6e8ec; --dim:#8b93a1; --pos:#3fb47e; --neg:#e5605a; --acc:#6aa3ff; }
+  * { box-sizing: border-box; }
+  body { margin:0; font:14px/1.45 system-ui,-apple-system,Segoe UI,Roboto,sans-serif; background:var(--bg); color:var(--txt); }
+  header { padding:14px 16px 6px; }
+  h1 { font-size:17px; margin:0; }
+  .sub { color:var(--dim); font-size:12px; }
+  .kpis { display:grid; grid-template-columns:repeat(auto-fit,minmax(140px,1fr)); gap:8px; padding:8px 16px; }
+  .kpi { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:10px 12px; }
+  .kpi .l { color:var(--dim); font-size:12px; }
+  .kpi .v { font-size:19px; font-weight:600; margin-top:2px; font-variant-numeric:tabular-nums; }
+  .pos { color:var(--pos); } .neg { color:var(--neg); }
+  nav { display:flex; gap:4px; overflow-x:auto; padding:8px 16px; position:sticky; top:0; background:var(--bg); border-bottom:1px solid var(--line); z-index:2; }
+  nav button { background:none; border:1px solid var(--line); color:var(--dim); padding:6px 12px; border-radius:999px; white-space:nowrap; font:inherit; cursor:pointer; }
+  nav button.on { color:var(--txt); border-color:var(--acc); background:#1d2633; }
+  section { display:none; padding:12px 16px 40px; } section.on { display:block; }
+  table { width:100%; border-collapse:collapse; font-size:13px; }
+  th, td { text-align:left; padding:7px 6px; border-bottom:1px solid var(--line); vertical-align:top; }
+  th { color:var(--dim); font-weight:500; font-size:12px; }
+  td.n { text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap; }
+  .q { max-width:420px; }
+  .info { color:var(--dim); font-size:12px; }
+  .wrap { overflow-x:auto; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:12px; margin-bottom:12px; }
+  .chart { width:100%; height:140px; } .chart .line { fill:none; stroke:var(--acc); stroke-width:2; vector-effect:non-scaling-stroke; }
+  .chart .base { stroke:var(--line); stroke-dasharray:4 4; vector-effect:non-scaling-stroke; }
+  .tag { display:inline-block; font-size:11px; padding:1px 7px; border-radius:999px; border:1px solid var(--line); color:var(--dim); }
+  .err { color:var(--neg); }
+  p.note { color:var(--dim); font-size:12.5px; }
+  a { color:var(--acc); text-decoration:none; }
+  .item { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:10px 12px; margin-bottom:8px; }
+  .item .t { font-weight:500; }
+  .row { display:flex; flex-wrap:wrap; gap:4px 14px; margin-top:6px; font-size:12.5px; font-variant-numeric:tabular-nums; }
+  .row span b { color:var(--dim); font-weight:400; margin-right:4px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Polymarket-Bot · Spielgeld</h1>
+  <div class="sub">
+    Letzter Lauf: {{ st.last_scan|dt }}{% if st.duration %} ({{ st.duration }} s){% endif %} ·
+    alle {{ cfg.SCAN_INTERVAL_MIN|int }} min · Start {{ s.started_at|dt }}
+    {% if st.running %} · <b>läuft gerade…</b>{% endif %}
+    {% if st.last_error %}<div class="err">Fehler: {{ st.last_error }}</div>{% endif %}
+  </div>
+</header>
+
+<div class="kpis">
+  <div class="kpi"><div class="l">Kontowert</div><div class="v">{{ s.equity|usd }}</div></div>
+  <div class="kpi"><div class="l">Gewinn/Verlust</div><div class="v {{ 'pos' if s.pnl_total >= 0 else 'neg' }}">{{ s.pnl_total|susd }}</div></div>
+  <div class="kpi"><div class="l">Bargeld / im Markt</div><div class="v">{{ s.cash|usd }}</div><div class="info">{{ s.exposure|usd }} investiert</div></div>
+  <div class="kpi"><div class="l">Trefferquote</div><div class="v">{{ s.winrate|pct(0) }}</div><div class="info">erwartet {{ s.expected_winrate|pct(0) }} · {{ s.closed_count }} abgeschl.</div></div>
+  <div class="kpi"><div class="l">Rendite auf Einsatz</div><div class="v">{{ s.roi|pct }}</div></div>
+  <div class="kpi"><div class="l">Offene Wetten</div><div class="v">{{ s.open_count }}</div></div>
+</div>
+
+<nav>
+  <button data-t="overview">Übersicht</button>
+  <button data-t="open">Offen ({{ open_pos|length }})</button>
+  <button data-t="closed">Abgeschlossen</button>
+  <button data-t="opps">Analyse</button>
+  <button data-t="calib">Treffsicherheit</button>
+  <button data-t="status">Status &amp; Protokoll</button>
+</nav>
+
+<section id="overview">
+  <div class="card">
+    <div class="info">Kontowert über die Zeit (gestrichelt = Startkapital {{ s.start|usd }})</div>
+    {{ chart|safe if chart else '<p class="note">Noch zu wenig Verlauf.</p>'|safe }}
+  </div>
+  <div class="card">
+    <table>
+      <tr><th>Bereich</th><th class="n">Offen</th><th class="n">Abgeschl.</th><th class="n">Treffer</th><th class="n">G/V</th></tr>
+      {% for cat, name in [('crypto','Krypto'),('sports','Sport')] %}{% set b = s.by_cat[cat] %}
+      <tr><td>{{ name }}</td><td class="n">{{ b.open }}</td><td class="n">{{ b.count }}</td><td class="n">{{ b.winrate|pct(0) }}</td>
+        <td class="n {{ 'pos' if b.pnl >= 0 else 'neg' }}">{{ b.pnl|susd }}</td></tr>
+      {% endfor %}
+    </table>
+  </div>
+  <p class="note">Der Bot wettet nur, wenn seine <b>eigene</b> Wahrscheinlichkeit nach Gebühren deutlich vom Polymarket-Kurs abweicht
+    (Krypto ≥ {{ (cfg.MIN_EDGE_CRYPTO*100)|round(0)|int }} Pkt, Sport ≥ {{ (cfg.MIN_EDGE_SPORTS*100)|round(0)|int }} Pkt).
+    Einsatz: {{ (cfg.KELLY_FRACTION*100)|int }} % Kelly, max. {{ (cfg.MAX_STAKE_PCT*100)|round(0)|int }} % pro Wette.
+    Ob der Bot wirklich besser ist als der Markt, zeigt der Reiter „Treffsicherheit“ – und das braucht einige hundert abgerechnete Märkte.</p>
+</section>
+
+<section id="open">
+  {% for p in open_pos %}{% set val = p.shares * (p.mark or p.price) %}
+  <div class="item">
+    <div class="t"><span class="tag">{{ 'Krypto' if p.category=='crypto' else 'Sport' }}</span> <b>{{ p.side_name }}</b> · {{ p.question }}</div>
+    <div class="row">
+      <span><b>Kauf</b>{{ p.price|cent }}</span><span><b>Jetzt</b>{{ (p.mark or p.price)|cent }}</span>
+      <span><b>Bot</b>{{ p.own_p|pct(0) }}</span><span><b>Einsatz</b>{{ p.cost|usd }}</span>
+      <span class="{{ 'pos' if val >= p.cost else 'neg' }}"><b>Wert</b>{{ val|usd }}</span><span><b>Ende</b>{{ p.end_date|dt }}</span>
+    </div>
+    <div class="info">{{ p.info }}</div>
+  </div>
+  {% else %}<p class="note">Keine offenen Wetten.</p>{% endfor %}
+</section>
+
+<section id="closed">
+  {% for p in closed %}
+  <div class="item">
+    <div class="t"><span class="tag">{{ 'Krypto' if p.category=='crypto' else 'Sport' }}</span> <b>{{ p.side_name }}</b> · {{ p.question }}</div>
+    <div class="row">
+      <span><b>Kauf</b>{{ p.price|cent }}</span><span><b>Bot</b>{{ p.own_p|pct(0) }}</span><span><b>Einsatz</b>{{ p.cost|usd }}</span>
+      <span class="{{ 'pos' if (p.pnl or 0) >= 0 else 'neg' }}"><b>Ergebnis</b>{{ (p.pnl or 0)|susd }}</span><span><b>Datum</b>{{ p.closed_at|dt }}</span>
+    </div>
+  </div>
+  {% else %}<p class="note">Noch nichts abgerechnet.</p>{% endfor %}
+</section>
+
+<section id="opps">
+  <p class="note">Alle Märkte, die der Bot im letzten Lauf selbst berechnen konnte – sortiert nach Vorsprung (eigene Wahrscheinlichkeit minus Kaufkurs inkl. Gebühr).
+    Gesehen: {% for k, v in st.markets_seen.items() %}{{ v }} {{ 'Krypto' if k=='crypto' else 'Sport' }}{{ ', ' if not loop.last }}{% else %}–{% endfor %}.</p>
+  {% for o in st.opportunities %}
+  <div class="item">
+    <div class="t">{{ o.question }}</div>
+    <div class="row">
+      <span><b>Seite</b>{{ o.side_name }}</span><span><b>Bot (Ja)</b>{{ o.own_p|pct }}</span><span><b>Markt (Ja)</b>{{ o.market_p|pct }}</span>
+      <span class="{{ 'pos' if o.edge > 0 else 'neg' }}"><b>Vorsprung</b>{{ ('%+.1f'|format(o.edge*100)).replace('.', ',') }} Pkt</span>
+      <span><b>Status</b>{{ o.status }}</span>
+    </div>
+    <div class="info">{{ o.info }}</div>
+  </div>
+  {% else %}<p class="note">Noch kein Lauf mit berechenbaren Märkten.</p>{% endfor %}
+  {% if st.skips %}
+  <div class="card" style="margin-top:12px"><div class="info">Übersprungen im letzten Lauf:</div>
+    {% for k, v in st.skips.items() %}<div>{{ v }} × {{ k }}</div>{% endfor %}</div>
+  {% endif %}
+</section>
+
+<section id="calib">
+  <p class="note">Der wichtigste Test: Sind die Wahrscheinlichkeiten des Bots genauer als die von Polymarket?
+    Gemessen über <b>alle</b> berechneten Märkte (nicht nur die gehandelten), sobald sie entschieden sind.
+    Brier-Wert: kleiner = besser. Nur Märkte, bei denen der Kurs beim ersten Blick zwischen 5 % und 95 % lag.</p>
+  <div class="wrap"><table>
+    <tr><th>Bereich</th><th class="n">Märkte</th><th class="n">Brier Bot</th><th class="n">Brier Markt</th><th class="n">LogLoss Bot</th><th class="n">LogLoss Markt</th></tr>
+    {% for cat, name in [('all','Alle'),('crypto','Krypto'),('sports','Sport')] %}{% set c = s.calibration[cat] %}
+    <tr><td>{{ name }}</td><td class="n">{{ c.n }} <span class="info">/ {{ c.n_all }}</span></td>
+      {% for key in ['brier_bot','brier_market','logloss_bot','logloss_market'] %}
+      <td class="n">{{ '%.4f'|format(c[key]) if c[key] is not none else '–' }}</td>{% endfor %}</tr>
+    {% endfor %}
+  </table></div>
+  <div class="card" style="margin-top:12px">
+    <div class="info">Kalibrierung: Sagt der Bot z. B. 30 %, sollte es in etwa 30 % der Fälle eintreten.</div>
+    <table>
+      <tr><th>Bot sagt</th><th class="n">Märkte</th><th class="n">Ø Bot</th><th class="n">Ø Markt</th><th class="n">Eingetreten</th></tr>
+      {% for b in s.calibration_buckets %}
+      <tr><td>{{ b.range }}</td><td class="n">{{ b.n }}</td><td class="n">{{ b.bot|pct(0) }}</td><td class="n">{{ b.market|pct(0) }}</td><td class="n">{{ b.actual|pct(0) }}</td></tr>
+      {% else %}<tr><td colspan="5" class="info">Noch keine entschiedenen Märkte.</td></tr>{% endfor %}
+    </table>
+  </div>
+</section>
+
+<section id="status">
+  <div class="card">
+    <div><b>Kursquellen Krypto:</b></div>
+    {% for k, v in src.prices.items() %}<div>{{ k }}: <span class="{{ 'err' if v.startswith('FEHLER') else '' }}">{{ v }}</span></div>{% else %}<div class="info">noch nicht abgefragt</div>{% endfor %}
+    <div style="margin-top:8px"><b>Buchmacher-Quoten (The Odds API):</b> {{ src.odds }}</div>
+  </div>
+  <div class="wrap"><table>
+    <tr><th>Zeit</th><th>Meldung</th></tr>
+    {% for l in logs %}<tr><td class="n">{{ l.ts|dt }}</td><td class="{{ 'err' if l.level=='error' else '' }}">{{ l.msg }}</td></tr>{% endfor %}
+  </table></div>
+</section>
+
+<script>
+  (function () {
+    var buttons = document.querySelectorAll('nav button');
+    function show(t) {
+      buttons.forEach(function (b) { b.classList.toggle('on', b.dataset.t === t); });
+      document.querySelectorAll('section').forEach(function (s) { s.classList.toggle('on', s.id === t); });
+    }
+    buttons.forEach(function (b) { b.addEventListener('click', function () { history.replaceState(null, '', '#' + b.dataset.t); show(b.dataset.t); }); });
+    show((location.hash || '#overview').slice(1));
+    window.scrollTo(0, 0);
+    setTimeout(function () { location.reload(); }, 120000);
+  })();
+</script>
+</body>
+</html>
