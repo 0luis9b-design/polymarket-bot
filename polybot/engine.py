@@ -141,6 +141,7 @@ class Engine:
                 self.store.add_equity(round(self.equity(a["id"], pos), 2), round(self.cash(a["id"]), 2), a["id"])
             self.state["opportunities"] = [self._opp_view(o) for o in self._shown(results)]
             self.daily_summary(now)
+            self._log_summary(results)
             self.state["last_error"] = None
         except Exception as e:  # noqa: BLE001
             self.state["last_error"] = f"{type(e).__name__}: {e}"
@@ -577,6 +578,16 @@ class Engine:
             res = polymarket.resolution(raws.get(r["market_id"]))
             if res in (0, 1):
                 self.store.resolve_prediction(r["market_id"], 1.0 if res == 0 else 0.0)
+
+    def _log_summary(self, results):
+        """Kurze Zusammenfassung ins Railway-Log (ohne Anmeldung prüfbar)."""
+        from . import options
+        models = Counter(o["analysis"].get("model", o["market"]["category"]) for o in results)
+        bought = Counter(k for o in results for k, v in o["status"].items() if v == "eröffnet")
+        arbs = [(a["type"], a["profit"], a["status"]) for a in self.state.get("arbs", [])]
+        log.info("Lauf: Märkte %s · berechnet %d %s · neue Wetten %s · Arbitrage %s · Optionen %s · Quoten: %s",
+                 self.state["markets_seen"], len(results), dict(models), dict(bought) or "keine", arbs or "keine",
+                 dict(options.status), self.odds.status)
 
     def daily_summary(self, now):
         if not notify.enabled():
