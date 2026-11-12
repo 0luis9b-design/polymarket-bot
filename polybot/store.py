@@ -202,6 +202,8 @@ class Store:
 
     # --- Protokoll & Verlauf ---
     def log(self, msg, level="info"):
+        import logging
+        logging.getLogger("polybot.protokoll").log(logging.ERROR if level == "error" else logging.INFO, msg)
         with self.lock:
             self.db.execute("INSERT INTO log(ts,level,msg) VALUES(?,?,?)", (now_iso(), level, msg))
             self.db.execute("DELETE FROM log WHERE id < (SELECT MAX(id) - 3000 FROM log)")

@@ -67,8 +67,9 @@ FEE_RATE_WEATHER = _f("FEE_RATE_WEATHER", 0.05)
 
 # --- Wetter ---
 WEATHER_ENABLED = os.environ.get("WEATHER_ENABLED", "1") == "1"
-MIN_EDGE_WEATHER = _f("MIN_EDGE_WEATHER", 0.08)
+MIN_EDGE_WEATHER = _f("MIN_EDGE_WEATHER", 0.10)  # Wetter-Modell ist neu -> vorsichtigere Schwelle
 WEATHER_MAX_DAYS = _f("WEATHER_MAX_DAYS", 4)
+WEATHER_SPREAD_C = _f("WEATHER_SPREAD_C", 0.6)  # Grund-Unschärfe je Szenario in °C (°F: × 1,8)
 
 # --- Risikobremse (pro Konto) ---
 RISK_DAY_LOSS_PCT = _f("RISK_DAY_LOSS_PCT", 0.08)     # −8 % an einem Tag -> Pause bis morgen
@@ -97,12 +98,12 @@ ARB_MAX_PCT = _f("ARB_MAX_PCT", 0.10)        # max. 10 % des Kontos pro Arbitrag
 
 # --- Testkonten: alle sehen dieselben Märkte, entscheiden aber mit eigenen Regeln ---
 ACCOUNTS = [
-    {"id": "haupt", "name": "Hauptkonto", "desc": "Schwelle 6/3/8 Pkt (Krypto/Sport/Wetter) · Einsatz 2–6 % nach Sicherheit · früher Ausstieg · Arbitrage",
+    {"id": "haupt", "name": "Hauptkonto", "desc": "Schwelle 6/3/10 Pkt (Krypto/Sport/Wetter) · Einsatz 2–6 % nach Sicherheit · früher Ausstieg · Arbitrage",
      "edge_c": MIN_EDGE_CRYPTO, "edge_s": MIN_EDGE_SPORTS, "edge_w": MIN_EDGE_WEATHER, "stake": "sicherheit", "exit": True, "arb": True, "model": True},
-    {"id": "schwelle4", "name": "Schwelle 4/2/6", "desc": "wie Hauptkonto, aber schon ab 4 Pkt (Krypto) / 2 Pkt (Sport) / 6 Pkt (Wetter)",
-     "edge_c": 0.04, "edge_s": 0.02, "edge_w": 0.06, "stake": "sicherheit", "exit": True, "arb": False, "model": True},
-    {"id": "schwelle8", "name": "Schwelle 8/4/12", "desc": "wie Hauptkonto, aber erst ab 8 Pkt (Krypto) / 4 Pkt (Sport) / 12 Pkt (Wetter)",
-     "edge_c": 0.08, "edge_s": 0.04, "edge_w": 0.12, "stake": "sicherheit", "exit": True, "arb": False, "model": True},
+    {"id": "schwelle4", "name": "Schwelle 4/2/7", "desc": "wie Hauptkonto, aber schon ab 4 Pkt (Krypto) / 2 Pkt (Sport) / 7 Pkt (Wetter)",
+     "edge_c": 0.04, "edge_s": 0.02, "edge_w": 0.07, "stake": "sicherheit", "exit": True, "arb": False, "model": True},
+    {"id": "schwelle8", "name": "Schwelle 8/4/14", "desc": "wie Hauptkonto, aber erst ab 8 Pkt (Krypto) / 4 Pkt (Sport) / 14 Pkt (Wetter)",
+     "edge_c": 0.08, "edge_s": 0.04, "edge_w": 0.14, "stake": "sicherheit", "exit": True, "arb": False, "model": True},
     {"id": "fest10", "name": "Fest 10 $", "desc": "wie Hauptkonto, aber immer 10 $ Einsatz",
      "edge_c": MIN_EDGE_CRYPTO, "edge_s": MIN_EDGE_SPORTS, "edge_w": MIN_EDGE_WEATHER, "stake": "fest", "fixed": 10.0, "exit": True, "arb": False, "model": True},
     {"id": "halten", "name": "Ohne Ausstieg", "desc": "wie Hauptkonto, hält aber jede Wette bis zur Entscheidung",

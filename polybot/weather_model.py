@@ -191,12 +191,12 @@ def analyze(market, now=None, fetch=get_json):
     vals = (highs if p["kind"] == "high" else lows).get(day.strftime("%Y-%m-%d"))
     if not vals or len(vals) < 20:
         return {"skip": "keine Vorhersage für den Tag"}
-    # Stundenwerte verpassen die echte Spitze leicht -> kleine Korrektur
-    adj = (0.3 if p["unit"] == "C" else 0.5) * (1 if p["kind"] == "high" else -1)
-    vals = [v + adj for v in vals]
+    # Polymarket wertet die stündlichen METAR-Meldungen aus – das passt zu Stundenwerten, keine Korrektur nötig.
+    # Verschmierung bewusst schmal: Ein Live-Vergleich (NYC, 12.11.) zeigte, dass der Markt deutlich schärfer liegt
+    # als eine breite Verteilung – eine zu breite Kurve erzeugt falsche "Vorsprünge" bei den Rand-Bereichen.
     lead_days = max(0.0, hours_to_start / 24 + 0.5)
-    base = 1.0 if p["unit"] == "C" else 1.8
-    spread = base * (1 + 0.25 * lead_days)
+    base = config.WEATHER_SPREAD_C if p["unit"] == "C" else config.WEATHER_SPREAD_C * 1.8
+    spread = base * (1 + 0.15 * lead_days)
     prob = bucket_prob(vals, p["lo"], p["hi"], spread)
     mean = sum(vals) / len(vals)
     u = "°" + p["unit"]
