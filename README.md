@@ -36,6 +36,8 @@ Nach der Entscheidung wird verglichen (Brier-Wert, kleiner = besser). Erst nach 
 3. Für Sport: kostenlosen Schlüssel auf https://the-odds-api.com holen und als `ODDS_API_KEY` eintragen
    (500 Abrufe/Monat gratis; der Bot verteilt das Restguthaben automatisch auf die Tage bis Monatsende, ~15 pro Tag, und holt bald beginnende Spiele zuerst). Ohne Schlüssel läuft nur Krypto.
 4. Domain erzeugen → Dashboard.
+5. **Anmeldung** (wie beim XAUUSD-Bot): `DASHBOARD_USER` und `DASHBOARD_PASSWORD` setzen. Dann fragt der Browser
+   nach Benutzername und Passwort. Fehlt eine der beiden, ist das Dashboard offen (Warnung im Log). `/health` bleibt frei.
 
 Alle Zahlen (Mindest-Vorsprung, Kelly-Anteil, Intervall …) lassen sich per Variable ändern, siehe `polybot/config.py`.
 

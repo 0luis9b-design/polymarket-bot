@@ -9,7 +9,12 @@ import threading
 import time
 from datetime import datetime, timezone
 
-from flask import Flask, jsonify, render_template, request
+import base64
+import binascii
+import hashlib
+import secrets
+
+from flask import Flask, Response, jsonify, render_template, request
 
 from polybot import config
 from polybot.engine import Engine
@@ -19,6 +24,61 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name
 log = logging.getLogger("polybot")
 
 app = Flask(__name__)
+
+# ---------------------------------------------------------------- Zugangsschutz
+# Wie beim XAUUSD-Bot: HTTP-Basic-Auth über DASHBOARD_USER und DASHBOARD_PASSWORD.
+# Sind beide nicht gesetzt, bleibt der Schutz aus (sonst sperrt man sich nach einem Deploy
+# ohne Variablen selbst aus) – das wird aber laut ins Log geschrieben.
+# /health bleibt immer frei, weil Railway darüber prüft, ob der Dienst lebt.
+FREIE_PFADE = {"/health"}
+
+
+def _abdruck(wert):
+    return hashlib.sha256(wert.encode("utf-8")).digest()
+
+
+_USER = os.environ.get("DASHBOARD_USER", "")
+_PASS = os.environ.get("DASHBOARD_PASSWORD", "")
+AUTH_AKTIV = bool(_USER and _PASS)
+_USER_H, _PASS_H = _abdruck(_USER), _abdruck(_PASS)
+if AUTH_AKTIV:
+    log.info("Zugangsschutz aktiv (HTTP Basic Auth, Benutzer %r)", _USER)
+elif _USER or _PASS:
+    log.warning("UNGESCHUETZT: Es ist nur %s gesetzt – Basic Auth braucht DASHBOARD_USER und DASHBOARD_PASSWORD.",
+                "DASHBOARD_USER" if _USER else "DASHBOARD_PASSWORD")
+else:
+    log.warning("UNGESCHUETZT: DASHBOARD_USER und DASHBOARD_PASSWORD sind nicht gesetzt.")
+
+
+def _berechtigt(header):
+    if not header:
+        return False
+    art, _, wert = header.partition(" ")
+    if art.lower() != "basic" or not wert:
+        return False
+    try:
+        klar = base64.b64decode(wert, validate=True).decode("utf-8")
+    except (binascii.Error, UnicodeDecodeError):
+        return False
+    benutzer, trenner, passwort = klar.partition(":")
+    if not trenner:
+        return False
+    # beide Vergleiche laufen immer, damit die Antwortzeit nichts verrät
+    ok_u = secrets.compare_digest(_abdruck(benutzer), _USER_H)
+    ok_p = secrets.compare_digest(_abdruck(passwort), _PASS_H)
+    return ok_u & ok_p
+
+
+@app.before_request
+def _zugangsschutz():
+    if not AUTH_AKTIV or request.path in FREIE_PFADE:
+        return None
+    if _berechtigt(request.headers.get("Authorization", "")):
+        return None
+    return Response("Zugang nur mit Anmeldung.", 401,
+                    {"WWW-Authenticate": 'Basic realm="Polymarket-Bot", charset="UTF-8"'},
+                    mimetype="text/plain")
+
 store = Store(os.path.join(config.DATA_DIR, "polybot.sqlite"))
 engine = Engine(store)
 _started = False
