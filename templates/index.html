@@ -151,6 +151,21 @@
   .mini button { border:1px solid var(--line); background:var(--card); border-radius:999px; padding:5px 12px; color:var(--dim); cursor:pointer; font-size:12.5px; }
   .mini button.on { color:var(--txt); border-color:var(--acc); background:var(--accbg); }
 
+  .accsel { display:flex; gap:8px; align-items:center; margin-top:8px; }
+  .accsel select { flex:1; background:var(--card); color:var(--txt); border:1px solid var(--line); border-radius:10px;
+                   padding:7px 10px; font:inherit; appearance:none; -webkit-appearance:none;
+                   background-image:linear-gradient(45deg,transparent 50%,var(--dim) 50%),linear-gradient(135deg,var(--dim) 50%,transparent 50%);
+                   background-position:calc(100% - 16px) 50%, calc(100% - 11px) 50%; background-size:5px 5px; background-repeat:no-repeat; }
+  .accsel .lbl { color:var(--dim); font-size:12px; white-space:nowrap; }
+  .acc { background:var(--card); border:1px solid var(--line); border-radius:var(--r); padding:12px 13px; margin-bottom:8px; cursor:pointer; }
+  .acc.cur { box-shadow:inset 0 0 0 1px var(--acc); }
+  .acc .nm { font-weight:600; } .acc .ds { color:var(--dim); font-size:12px; margin:2px 0 8px; }
+  .acc .meta { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:8px 10px; }
+  @media (min-width:720px) { .acc .meta { grid-template-columns:repeat(6,minmax(0,1fr)); } }
+  .acc .meta div b { display:block; color:var(--dim); font-weight:400; font-size:11px; }
+  .rank { font-size:11px; padding:2px 8px; border-radius:999px; background:var(--accbg); color:#9db8ff; margin-left:6px; }
+  .tag.arb { color:#c4a5ff; border-color:rgba(167,139,250,.4); }
+  .clv { font-size:12px; margin-top:6px; }
   .log { font-size:12.5px; }
   .log div { padding:7px 12px; border-bottom:1px solid var(--line); display:flex; gap:10px; }
   .log div:last-child { border-bottom:0; }
@@ -179,11 +194,13 @@
       <button data-f="crypto"><span class="c" style="background:var(--crypto)"></span>Krypto</button>
       <button data-f="sports"><span class="c" style="background:var(--sport)"></span>Sport</button>
     </div>
+    <div class="accsel"><span class="lbl">Konto</span><select id="accsel"></select></div>
     <div class="tabs" id="tabs">
       <button data-t="overview">Übersicht</button>
       <button data-t="open">Offen<span class="n" id="n-open">0</span></button>
       <button data-t="calendar">Kalender</button>
       <button data-t="history">Verlauf<span class="n" id="n-hist">0</span></button>
+      <button data-t="accounts">Testkonten</button>
       <button data-t="analysis">Analyse</button>
       <button data-t="calib">Treffsicherheit</button>
       <button data-t="status">Status</button>
@@ -222,12 +239,20 @@
     <div id="hist-list"></div>
   </section>
 
+  <section id="accounts">
+    <p class="note">Alle Konten sehen dieselben Märkte und starten mit demselben Spielgeld – sie unterscheiden sich nur in den Regeln. Nach ein paar Wochen zeigt sich, welche Einstellung am besten funktioniert. Tippe auf ein Konto, um es oben auszuwählen.</p>
+    <div class="card"><div id="acc-chart"></div><div class="legend" id="acc-legend" style="flex-wrap:wrap"></div></div>
+    <div id="acc-list"></div>
+  </section>
+
   <section id="analysis">
     <div class="mini" id="ana-filter">
       <button data-a="all" class="on">Alle berechneten</button><button data-a="plus">Nur mit Vorsprung</button><button data-a="traded">Gekauft</button>
     </div>
     <p class="note" id="ana-note"></p>
     <div id="ana-list"></div>
+    <h2>Widersprüche (Arbitrage) im letzten Lauf</h2>
+    <div id="arbs"></div>
     <h2>Übersprungen im letzten Lauf</h2>
     <div class="card bars" id="skips"></div>
   </section>
@@ -254,8 +279,10 @@
   "use strict";
   var D = JSON.parse(document.getElementById("data").textContent);
   var TZ = "Europe/Berlin";
-  var state = { filter: "all", tab: "overview", hist: "all", ana: "all", calMonth: null, calDay: null };
-  try { state.filter = localStorage.getItem("pb_filter") || "all"; } catch (e) {}
+  var state = { filter: "all", account: "haupt", tab: "overview", hist: "all", ana: "all", calMonth: null, calDay: null };
+  try { state.filter = localStorage.getItem("pb_filter") || "all"; state.account = localStorage.getItem("pb_acc") || "haupt"; } catch (e) {}
+  function accObj(id) { return (D.accounts || []).filter(function (a) { return a.id === (id || state.account); })[0] || (D.accounts || [])[0] || {}; }
+  function inA(p) { return (p.account || "haupt") === state.account; }
 
   // ---------- Helfer ----------
   function esc(s) { return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) { return {"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c]; }); }
@@ -269,6 +296,7 @@
   function dt(iso) { if (!iso) return "–"; var d = new Date(iso); return d.toLocaleString("de-DE", { timeZone: TZ, day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }); }
   function dayKey(iso) { return new Intl.DateTimeFormat("en-CA", { timeZone: TZ, year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date(iso)); }
   function inF(cat) { return state.filter === "all" || state.filter === cat; }
+  function mine(p) { return inA(p) && inF(p.category); }
   function untilText(iso) {
     if (!iso) return "";
     var h = (new Date(iso) - new Date()) / 36e5;
@@ -286,18 +314,18 @@
   function catTag(c) { return '<span class="tag ' + c + '">' + (c === "crypto" ? "Krypto" : "Sport") + "</span>"; }
   function resChip(s) {
     return { won: '<span class="chip win">Gewonnen</span>', lost: '<span class="chip lose">Verloren</span>',
-             void: '<span class="chip void">Storniert</span>' }[s] || '<span class="chip go">Offen</span>';
+             void: '<span class="chip void">Storniert</span>', sold: '<span class="chip go">Verkauft</span>' }[s] || '<span class="chip go">Offen</span>';
   }
-  function betClass(s) { return { won: "win", lost: "lose", void: "void" }[s] || ""; }
+  function betClass(p) { if (p.status === "sold") return (p.pnl || 0) >= 0 ? "win" : "lose"; return { won: "win", lost: "lose", void: "void" }[p.status] || ""; }
   function openVal(p) { return p.shares * (p.mark != null ? p.mark : p.price); }
 
   var OPEN = D.open || [], CLOSED = D.closed || [];
 
   // ---------- Kennzahlen ----------
   function figures() {
-    var op = OPEN.filter(function (p) { return inF(p.category); });
-    var cl = CLOSED.filter(function (p) { return inF(p.category); });
-    var settled = cl.filter(function (p) { return p.status === "won" || p.status === "lost"; });
+    var op = OPEN.filter(mine);
+    var cl = CLOSED.filter(mine);
+    var settled = cl.filter(function (p) { return (p.status === "won" || p.status === "lost") && p.kind !== "arb"; });
     var wins = settled.filter(function (p) { return p.status === "won"; });
     var realized = cl.reduce(function (a, p) { return a + (p.pnl || 0); }, 0);
     var unreal = op.reduce(function (a, p) { return a + openVal(p) - p.cost; }, 0);
@@ -313,10 +341,10 @@
   }
 
   function renderKpis() {
-    var f = figures(), s = D.stats;
+    var f = figures(), s = accObj();
     var total = state.filter === "all" ? s.equity - s.start : f.realized + f.unreal;
     var k = [];
-    k.push('<div class="kpi big"><div class="l">Kontowert (gesamt)</div><div class="v">' + usd(s.equity) +
+    k.push('<div class="kpi big"><div class="l">Kontowert · ' + esc(s.name) + '</div><div class="v">' + usd(s.equity) +
            '</div><div class="s">Start ' + usd(s.start) + ' · Bargeld ' + usd(s.cash) + "</div></div>");
     k.push('<div class="kpi"><div class="l">Gewinn/Verlust' + (state.filter === "all" ? "" : " · " + (state.filter === "crypto" ? "Krypto" : "Sport")) +
            '</div><div class="v ' + cls(total) + '">' + susd(total) + '</div><div class="s">' +
@@ -328,6 +356,17 @@
            pct(f.expected, 0) + " · " + f.wins.length + "/" + f.settled.length + "</div></div>");
     k.push('<div class="kpi"><div class="l">Rendite auf Einsatz</div><div class="v ' + cls(f.realized) + '">' +
            (f.staked ? pct(f.realized / f.staked) : "–") + '</div><div class="s">' + usd(f.staked) + " eingesetzt</div></div>");
+    var clvRows = OPEN.concat(CLOSED).filter(function (p) { return mine(p) && p.category === "sports" && p.close_p != null && p.kind !== "arb"; });
+    if (state.filter !== "crypto") {
+      var clv = clvRows.length ? clvRows.reduce(function (a, p) { return a + p.close_p - p.price; }, 0) / clvRows.length : null;
+      k.push('<div class="kpi"><div class="l">Schlusskurs-Vorteil Sport</div><div class="v ' + (clv == null ? "" : cls(clv)) + '">' +
+             (clv == null ? "–" : (clv >= 0 ? "+" : "−") + num(Math.abs(clv) * 100, 1) + " Pkt") + '</div><div class="s">' + clvRows.length + " Wetten · positiv = besser als der Markt kurz vor Anpfiff</div></div>");
+    }
+    var sold = f.cl.filter(function (p) { return p.status === "sold"; });
+    if (sold.length) {
+      var sp = sold.reduce(function (a, p) { return a + (p.pnl || 0); }, 0);
+      k.push('<div class="kpi"><div class="l">Früh verkauft</div><div class="v ' + cls(sp) + '">' + susd(sp) + '</div><div class="s">' + sold.length + " Wetten vor der Entscheidung verkauft</div></div>");
+    }
     document.getElementById("kpis").innerHTML = k.join("");
   }
 
@@ -335,12 +374,12 @@
   function renderChart() {
     var pts, label, base;
     if (state.filter === "all") {
-      pts = (D.equity || []).map(function (r) { return { t: r.ts, v: r.equity }; });
-      label = "Kontowert"; base = D.stats.start;
+      pts = ((D.equity || {})[state.account] || []).map(function (r) { return { t: r.ts, v: r.equity }; });
+      label = "Kontowert · " + accObj().name; base = D.cfg.start;
     } else {
-      var cl = CLOSED.filter(function (p) { return p.category === state.filter && p.closed_at; })
+      var cl = CLOSED.filter(function (p) { return inA(p) && p.category === state.filter && p.closed_at; })
                      .sort(function (a, b) { return a.closed_at < b.closed_at ? -1 : 1; });
-      var acc = 0; pts = [{ t: D.stats.started_at, v: 0 }];
+      var acc = 0; pts = [{ t: accObj().started_at, v: 0 }];
       cl.forEach(function (p) { acc += p.pnl || 0; pts.push({ t: p.closed_at, v: acc }); });
       label = "Gewinn/Verlust " + (state.filter === "crypto" ? "Krypto" : "Sport") + " (abgerechnet)"; base = 0;
     }
@@ -367,23 +406,23 @@
   function renderOverview() {
     var rows = ['<tr><th>Bereich</th><th class="n">Offen</th><th class="n">Abgerechn.</th><th class="n">Treffer</th><th class="n">G/V</th></tr>'];
     [["crypto", "Krypto"], ["sports", "Sport"]].forEach(function (c) {
-      var op = OPEN.filter(function (p) { return p.category === c[0]; });
-      var cl = CLOSED.filter(function (p) { return p.category === c[0]; });
-      var st = cl.filter(function (p) { return p.status === "won" || p.status === "lost"; });
+      var op = OPEN.filter(function (p) { return inA(p) && p.category === c[0]; });
+      var cl = CLOSED.filter(function (p) { return inA(p) && p.category === c[0]; });
+      var st = cl.filter(function (p) { return (p.status === "won" || p.status === "lost") && p.kind !== "arb"; });
       var w = st.filter(function (p) { return p.status === "won"; }).length;
       var pnl = cl.reduce(function (a, p) { return a + (p.pnl || 0); }, 0);
       rows.push("<tr><td>" + catTag(c[0]) + '</td><td class="n">' + op.length + '</td><td class="n">' + cl.length +
                 '</td><td class="n">' + (st.length ? pct(w / st.length, 0) : "–") + '</td><td class="n ' + cls(pnl) + '">' + susd(pnl) + "</td></tr>");
     });
     document.getElementById("cats").innerHTML = rows.join("");
-    var soon = OPEN.filter(function (p) { return inF(p.category); })
+    var soon = OPEN.filter(mine)
                    .sort(function (a, b) { return (a.end_date || "") < (b.end_date || "") ? -1 : 1; }).slice(0, 3);
     document.getElementById("soon").innerHTML = soon.length ? soon.map(betCard).join("") : '<div class="empty">Keine offenen Wetten.</div>';
     var c = D.cfg;
-    document.getElementById("rules").innerHTML = "Der Bot wettet nur, wenn seine <b>eigene</b> Wahrscheinlichkeit nach Gebühren deutlich vom Polymarket-Kurs abweicht (Krypto ≥ " +
+    document.getElementById("rules").innerHTML = "<b>" + esc(accObj().name) + ":</b> " + esc(accObj().desc || "") + ". Der Bot wettet nur, wenn seine <b>eigene</b> Wahrscheinlichkeit nach Gebühren deutlich vom Polymarket-Kurs abweicht (Krypto ≥ " +
       num(c.min_edge_crypto * 100, 0) + " Pkt, Sport ≥ " + num(c.min_edge_sports * 100, 0) + " Pkt). Einsatz " +
       (c.stake_mode === "kelly" ? "nach Kelly" : num(c.stake_min * 100, 0) + "–" + num(c.stake_max * 100, 0) + " % des Kontos je nach Sicherheit") +
-      ", max. " + num(c.max_event * 100, 0) + " % pro Ereignis und " + num(c.max_exposure * 100, 0) + " % insgesamt.";
+      ", max. " + num(c.max_group * 100, 0) + " % für alles am selben Coin+Stichtag bzw. Spiel und " + num(c.max_exposure * 100, 0) + " % insgesamt.";
   }
 
   // ---------- Wetten-Karte ----------
@@ -394,27 +433,35 @@
                        : '<span class="res ' + cls(p.pnl) + '">' + susd(p.pnl) + "</span>";
     var meta = [
       ["Kauf", cent(p.price)],
-      [isOpen ? "Jetzt" : "Ergebnis", isOpen ? cent(p.mark != null ? p.mark : p.price) : resChip(p.status)],
+      [isOpen ? "Jetzt" : (p.status === "sold" ? "Verkauft zu" : "Ergebnis"), isOpen ? cent(p.mark != null ? p.mark : p.price) : (p.status === "sold" ? cent(p.exit_price) : resChip(p.status))],
       ["Bot sagt", pct(p.own_p, 0)],
       ["Einsatz", usd(p.cost)],
-      [isOpen ? "Wert jetzt" : "Auszahlung", usd(isOpen ? val : p.payout)],
+      [isOpen ? "Wert jetzt" : (p.status === "sold" ? "Erlös" : "Auszahlung"), usd(isOpen ? val : p.payout)],
       [isOpen ? "Ende" : "Abgerechnet", isOpen ? dt(p.end_date) : dt(p.closed_at)]
     ].map(function (m) { return "<div><b>" + m[0] + "</b>" + m[1] + "</div>"; }).join("");
-    return '<div class="bet ' + betClass(p.status) + '"><div class="top">' + catTag(p.category) + sideBadge(p.side_name) +
+    var clv = "";
+    if (p.category === "sports" && p.close_p != null && p.kind !== "arb") {
+      var d = p.close_p - p.price;
+      clv = '<div class="clv">Schlusskurs (Buchmacher kurz vor Anpfiff): ' + pct(p.close_p) + ' · <span class="' + cls(d) + '">' +
+            (d >= 0 ? "+" : "−") + num(Math.abs(d) * 100, 1) + " Pkt besser als Kaufkurs</span></div>";
+    }
+    return '<div class="bet ' + betClass(p) + '"><div class="top">' + catTag(p.category) + (p.kind === "arb" ? '<span class="tag arb">Arbitrage</span>' : "") +
+      sideBadge(p.side_name) + (p.status === "sold" ? resChip("sold") : "") +
       (isOpen ? '<span class="chip">' + untilText(p.end_date) + "</span>" : "") + right + '</div><div class="q">' + esc(p.question) +
-      '</div><div class="meta">' + meta + '</div><div class="info">' + esc(p.info || "") + "</div></div>";
+      '</div><div class="meta">' + meta + "</div>" + clv + '<div class="info">' + esc(p.info || "") +
+      (p.fill_note ? " · " + esc(p.fill_note) : "") + "</div></div>";
   }
 
   function renderOpen() {
-    var op = OPEN.filter(function (p) { return inF(p.category); })
+    var op = OPEN.filter(mine)
                  .sort(function (a, b) { return (a.end_date || "") < (b.end_date || "") ? -1 : 1; });
     document.getElementById("n-open").textContent = op.length;
     document.getElementById("open-list").innerHTML = op.length ? op.map(betCard).join("") : '<div class="empty">Keine offenen Wetten in diesem Bereich.</div>';
   }
 
   function renderHistory() {
-    var cl = CLOSED.filter(function (p) { return inF(p.category) && (state.hist === "all" || p.status === state.hist); });
-    document.getElementById("n-hist").textContent = CLOSED.filter(function (p) { return inF(p.category); }).length;
+    var cl = CLOSED.filter(function (p) { return mine(p) && (state.hist === "all" || p.status === state.hist || (state.hist === "won" && p.status === "sold" && p.pnl >= 0) || (state.hist === "lost" && p.status === "sold" && p.pnl < 0)); });
+    document.getElementById("n-hist").textContent = CLOSED.filter(mine).length;
     document.getElementById("hist-list").innerHTML = cl.length ? cl.slice(0, 300).map(betCard).join("") : '<div class="empty">Noch nichts abgerechnet.</div>';
   }
 
@@ -422,8 +469,8 @@
   var MONTHS = ["Januar","Februar","März","April","Mai","Juni","Juli","August","September","Oktober","November","Dezember"];
   function dayMaps() {
     var closed = {}, opened = {};
-    CLOSED.forEach(function (p) { if (!inF(p.category) || !p.closed_at) return; var k = dayKey(p.closed_at); (closed[k] = closed[k] || []).push(p); });
-    OPEN.concat(CLOSED).forEach(function (p) { if (!inF(p.category) || !p.opened_at) return; var k = dayKey(p.opened_at); (opened[k] = opened[k] || []).push(p); });
+    CLOSED.forEach(function (p) { if (!mine(p) || !p.closed_at) return; var k = dayKey(p.closed_at); (closed[k] = closed[k] || []).push(p); });
+    OPEN.concat(CLOSED).forEach(function (p) { if (!mine(p) || !p.opened_at) return; var k = dayKey(p.opened_at); (opened[k] = opened[k] || []).push(p); });
     return { closed: closed, opened: opened };
   }
   function renderCalendar() {
@@ -440,7 +487,7 @@
       var key = y + "-" + String(m).padStart(2, "0") + "-" + String(d).padStart(2, "0");
       var list = maps.closed[key] || [], op = maps.opened[key] || [];
       var pnl = list.reduce(function (a, p) { return a + (p.pnl || 0); }, 0);
-      mPnl += pnl; mN += list.length; mW += list.filter(function (p) { return p.status === "won"; }).length;
+      mPnl += pnl; mN += list.length; mW += list.filter(function (p) { return p.status === "won" || (p.status === "sold" && p.pnl >= 0); }).length;
       if (list.length) { if (!best || pnl > best.v) best = { d: d, v: pnl }; if (!worst || pnl < worst.v) worst = { d: d, v: pnl }; }
       var c = "day" + (list.length ? (pnl >= 0 ? " up" : " down") : "") + (key === today ? " today" : "") + (key === state.calDay ? " sel" : "");
       var dots = op.length ? '<span class="dots">' + new Array(Math.min(op.length, 3) + 1).join("<i></i>") + "</span>" : "";
@@ -463,7 +510,7 @@
     var list = maps.closed[state.calDay] || [], op = maps.opened[state.calDay] || [];
     var pnl = list.reduce(function (a, p) { return a + (p.pnl || 0); }, 0);
     var stake = list.reduce(function (a, p) { return a + p.cost; }, 0);
-    var w = list.filter(function (p) { return p.status === "won"; }).length;
+    var w = list.filter(function (p) { return p.status === "won" || (p.status === "sold" && p.pnl >= 0); }).length;
     var d = new Date(state.calDay + "T12:00:00Z");
     var title = d.toLocaleDateString("de-DE", { weekday: "long", day: "numeric", month: "long", timeZone: "UTC" });
     inner.innerHTML = '<div class="hd"><span class="t">' + title + '</span><button class="close" id="dp-close">Schließen</button></div>' +
@@ -480,7 +527,7 @@
     var all = (D.state.opportunities || []).filter(function (o) { return inF(o.category); });
     var list = all.filter(function (o) {
       if (state.ana === "plus") return o.edge > 0;
-      if (state.ana === "traded") return /eröffnet|schon gehandelt/.test(o.status);
+      if (state.ana === "traded") return (o.bought || []).length > 0 || /eröffnet|schon gehandelt/.test(o.status);
       return true;
     });
     var seen = D.state.markets_seen || {};
@@ -489,6 +536,7 @@
       " gesehen, " + all.length + " selbst berechnet. <b>Vorsprung</b> = eigene Wahrscheinlichkeit minus Kaufkurs inkl. Gebühr.";
     document.getElementById("ana-list").innerHTML = list.length ? list.slice(0, 150).map(function (o) {
       var traded = /eröffnet/.test(o.status);
+      var by = (o.bought || []).map(function (id) { return accObj(id).name; });
       var lo = Math.min(o.own_p, o.market_p) * 100, hi = Math.max(o.own_p, o.market_p) * 100;
       var col = o.own_p >= o.market_p ? "rgba(47,208,127,.35)" : "rgba(255,93,108,.35)";
       return '<div class="bet' + (traded ? " win" : "") + '"><div class="top">' + catTag(o.category) + sideBadge(o.side_name) +
@@ -499,8 +547,16 @@
         '<span class="mk m" style="left:' + o.market_p * 100 + '%"></span><span class="mk b" style="left:' + o.own_p * 100 + '%"></span></div>' +
         '<div class="legend"><span><i style="background:var(--acc)"></i>Bot ' + pct(o.own_p) + '</span><span><i style="background:#c9d2e3"></i>Markt ' +
         pct(o.market_p) + "</span><span>Kurs " + cent(o.price) + "</span></div>" +
-        '<div class="info">' + esc(o.info || "") + "</div></div>";
+        (by.length ? '<div class="clv">Gekauft von: ' + by.map(esc).join(", ") + "</div>" : "") +
+        '<div class="info">' + (o.model ? "<b>" + esc(o.model) + ":</b> " : "") + esc(o.info || "") + "</div></div>";
     }).join("") : '<div class="empty">Keine passenden Märkte im letzten Lauf.</div>';
+    var arbs = D.state.arbs || [];
+    document.getElementById("arbs").innerHTML = arbs.length ? arbs.map(function (a) {
+      var st = Object.keys(a.status || {}).map(function (k) { return esc(accObj(k).name) + ": " + esc(a.status[k]); }).join(" · ");
+      return '<div class="bet win"><div class="top"><span class="tag arb">' + esc(a.type) + '</span><span class="res pos">+' + num(a.profit * 100, 1) +
+             ' ¢ pro Paket</span></div><div class="q">' + esc(a.title) + '</div><div class="info">' + a.legs + " Teile · Kosten " + cent(a.cost) +
+             " · sichere Auszahlung " + num(a.payout, 0) + " $ · " + st + "</div></div>";
+    }).join("") : '<div class="empty">Keine Widersprüche gefunden – das ist der Normalfall. Polymarket ist meist in sich stimmig; wenn nicht, kauft das Konto „Nur Arbitrage“ (und das Hauptkonto) sofort.</div>';
     var sk = D.state.skips || {}, keys = Object.keys(sk), max = Math.max.apply(null, keys.map(function (k) { return sk[k]; }).concat([1]));
     document.getElementById("skips").innerHTML = keys.length ? keys.map(function (k) {
       return '<div><span class="bl">' + esc(k) + '</span><span class="bt"><i style="width:' + (sk[k] / max * 100) + '%"></i></span><span class="bv">' + sk[k] + "</span></div>";
@@ -526,6 +582,54 @@
       }).join("") : '<tr><td colspan="5" class="dim">Noch keine entschiedenen Märkte.</td></tr>');
   }
 
+  // ---------- Testkonten ----------
+  var COLORS = ["#5b8cff", "#2fd07f", "#f5b84a", "#ff5d6c", "#38bdf8", "#c084fc", "#f472b6"];
+  function renderAccounts() {
+    var accs = D.accounts || [];
+    var sorted = accs.slice().sort(function (a, b) { return b.equity - a.equity; });
+    var series = accs.map(function (a, i) { return { a: a, c: COLORS[i % COLORS.length], pts: ((D.equity || {})[a.id] || []).map(function (r) { return r.equity; }) }; });
+    var all = []; series.forEach(function (s) { all = all.concat(s.pts); });
+    var el = document.getElementById("acc-chart");
+    if (all.length < 4) { el.innerHTML = '<div class="empty">Der Vergleich füllt sich mit den nächsten Stunden.</div>'; }
+    else {
+      var W = 600, H = 170, lo = Math.min.apply(null, all.concat([D.cfg.start])), hi = Math.max.apply(null, all.concat([D.cfg.start]));
+      var pad = (hi - lo) * 0.08 || 1; lo -= pad; hi += pad;
+      var y = function (v) { return H - (v - lo) / (hi - lo) * H; };
+      var n = Math.max.apply(null, series.map(function (s) { return s.pts.length; }));
+      el.innerHTML = '<svg class="chart" viewBox="0 0 ' + W + " " + H + '" preserveAspectRatio="none"><line class="base" x1="0" x2="' + W + '" y1="' + y(D.cfg.start) + '" y2="' + y(D.cfg.start) + '"/>' +
+        series.map(function (s) {
+          if (s.pts.length < 2) return "";
+          var off = n - s.pts.length;
+          return '<polyline class="ln" stroke="' + s.c + '" points="' + s.pts.map(function (v, i) { return ((i + off) * W / (n - 1)).toFixed(1) + "," + y(v).toFixed(1); }).join(" ") + '"/>';
+        }).join("") + "</svg>";
+    }
+    document.getElementById("acc-legend").innerHTML = series.map(function (s) { return '<span><i style="background:' + s.c + '"></i>' + esc(s.a.name) + "</span>"; }).join("");
+    document.getElementById("acc-list").innerHTML = sorted.map(function (a, i) {
+      var meta = [
+        ["Kontowert", usd(a.equity)], ["G/V", '<span class="' + cls(a.pnl_total) + '">' + susd(a.pnl_total) + "</span>"],
+        ["Offen / abgerechnet", a.open_count + " / " + a.closed_count], ["Treffer", pct(a.winrate, 0) + ' <span class="dim">(erw. ' + pct(a.expected_winrate, 0) + ")</span>"],
+        ["Rendite auf Einsatz", pct(a.roi)], [a.id === "arbitrage" ? "Arbitrage-G/V" : "Früh verkauft", a.id === "arbitrage" ? susd(a.arb_pnl) : a.sold + " (" + susd(a.sold_pnl) + ")"]
+      ].map(function (m) { return "<div><b>" + m[0] + "</b>" + m[1] + "</div>"; }).join("");
+      return '<div class="acc' + (a.id === state.account ? " cur" : "") + '" data-acc="' + a.id + '"><div class="row"><span class="nm">' + esc(a.name) +
+             (i === 0 && a.closed_count ? '<span class="rank">vorne</span>' : "") + '</span><span class="' + cls(a.pnl_total) + '">' + pct(a.pnl_total / a.start) + "</span></div>" +
+             '<div class="ds">' + esc(a.desc) + '</div><div class="meta">' + meta + "</div></div>";
+    }).join("");
+    Array.prototype.forEach.call(document.querySelectorAll("#acc-list .acc"), function (el) {
+      el.addEventListener("click", function () { setAccount(el.dataset.acc); showTab("overview"); window.scrollTo(0, 0); });
+    });
+  }
+  function renderAccSel() {
+    var sel = document.getElementById("accsel");
+    sel.innerHTML = (D.accounts || []).map(function (a) {
+      return '<option value="' + a.id + '"' + (a.id === state.account ? " selected" : "") + ">" + esc(a.name) + " · " + usd(a.equity) + "</option>";
+    }).join("");
+  }
+  function setAccount(id) {
+    state.account = id; state.calDay = null;
+    try { localStorage.setItem("pb_acc", id); } catch (e) {}
+    renderAll();
+  }
+
   // ---------- Status ----------
   function renderStatus() {
     var st = D.state, src = D.sources;
@@ -536,7 +640,9 @@
     var pr = src.prices || {};
     document.getElementById("sources").innerHTML =
       Object.keys(pr).map(function (k) { return '<div class="row"><span>' + k + '</span><span class="' + (/^FEHLER/.test(pr[k]) ? "err" : "dim") + '">' + esc(pr[k]) + "</span></div>"; }).join("") +
+      Object.keys(src.options || {}).map(function (k) { return '<div class="row"><span>Optionen ' + k + '</span><span class="dim">' + esc(src.options[k]) + "</span></div>"; }).join("") +
       '<div class="row" style="margin-top:8px"><span>Buchmacher-Quoten</span><span class="dim">' + esc(src.odds) + "</span></div>" +
+      '<div class="row"><span>Telegram</span><span class="dim" style="text-align:right">' + esc(src.telegram || "") + "</span></div>" +
       '<div class="row"><span>Ligen</span><span class="dim" style="text-align:right">' + esc((D.cfg.leagues || []).join(", ")) + "</span></div>" +
       (st.last_error ? '<div class="err" style="margin-top:8px">' + esc(st.last_error) + "</div>" : "");
     document.getElementById("log").innerHTML = (D.logs || []).map(function (l) {
@@ -546,17 +652,21 @@
 
   // ---------- Steuerung ----------
   function renderAll() {
-    renderKpis(); renderChart(); renderOverview(); renderOpen(); renderHistory(); renderCalendar(); renderAnalysis(); renderCalib(); renderStatus();
+    if (!(D.accounts || []).some(function (a) { return a.id === state.account; })) state.account = "haupt";
+    renderAccSel(); renderKpis(); renderChart(); renderOverview(); renderOpen(); renderHistory(); renderCalendar(); renderAccounts(); renderAnalysis(); renderCalib(); renderStatus();
   }
   function setOn(sel, attr, val) { Array.prototype.forEach.call(document.querySelectorAll(sel), function (b) { b.classList.toggle("on", b.dataset[attr] === val); }); }
   function showTab(t) {
     state.tab = t; setOn("#tabs button", "t", t);
+    var tb = document.querySelector('#tabs button[data-t="' + t + '"]');
+    if (tb && tb.scrollIntoView) { try { tb.scrollIntoView({ inline: "center", block: "nearest" }); } catch (e) {} }
     Array.prototype.forEach.call(document.querySelectorAll("section"), function (s) { s.classList.toggle("on", s.id === t); });
     try { history.replaceState(null, "", "#tab-" + t); } catch (e) {}
   }
   function bind(sel, attr, fn) { Array.prototype.forEach.call(document.querySelectorAll(sel), function (b) { b.addEventListener("click", function () { fn(b.dataset[attr]); }); }); }
   bind("#filter button", "f", function (f) { state.filter = f; try { localStorage.setItem("pb_filter", f); } catch (e) {} setOn("#filter button", "f", f); renderAll(); });
   bind("#tabs button", "t", showTab);
+  document.getElementById("accsel").addEventListener("change", function (e) { setAccount(e.target.value); });
   bind("#hist-filter button", "h", function (h) { state.hist = h; setOn("#hist-filter button", "h", h); renderHistory(); });
   bind("#ana-filter button", "a", function (a) { state.ana = a; setOn("#ana-filter button", "a", a); renderAnalysis(); });
   function shiftMonth(n) { var y = +state.calMonth.slice(0, 4), m = +state.calMonth.slice(5, 7) - 1 + n; y += Math.floor(m / 12); m = ((m % 12) + 12) % 12;

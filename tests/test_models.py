@@ -100,7 +100,7 @@ def test_crypto_analyze():
     now = datetime(2026, 11, 13, 17, 0, tzinfo=timezone.utc)
     m = normalize_market(_raw_market(), {"id": "e1"}, "crypto")
     closes = [100000.0 * (1 + 0.004 * ((i % 2) * 2 - 1)) for i in range(720)] + [100000.0]
-    a = cm.analyze(m, now=now, closes_fn=lambda asset: (closes, "Test"))
+    a = cm.analyze(m, now=now, closes_fn=lambda asset: (closes, "Test"), chain_fn=lambda a, n: None)
     assert 0.4 < a["p_yes"] < 0.5
     assert abs(a["hours"] - 24) < 1e-6
 

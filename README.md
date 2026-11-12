@@ -26,6 +26,17 @@ Kein Konto, kein Wallet, kein echtes Geld – er liest nur öffentliche Daten.
 - Kauf zum echten Briefkurs (Ask) inkl. Gebühr – so realistisch wie möglich. Gehalten bis zur Entscheidung.
 - Startkapital: 1.000 $ Spielgeld.
 
+## Neu (12.11.2026)
+- **Krypto mit Optionsdaten:** Für BTC, ETH, SOL und XRP nimmt der Bot die erwartete Schwankung aus dem Deribit-Optionsmarkt
+  (inkl. Smile, also höhere Wahrscheinlichkeit für große Sprünge). DOGE nutzt die Kurshistorie mit Aufschlag.
+- **Arbitrage:** Findet Widersprüche (Summe aller Antworten ≠ 100 %, oder „über 72k“ teurer als „über 70k“) und kauft das Paket.
+- **Orderbuch:** Käufe/Verkäufe laufen über das echte Orderbuch (Durchschnittskurs), zu dünne Bücher werden ausgelassen.
+- **Früher Ausstieg:** Verkauft, sobald der Verkaufserlös die eigene Wahrscheinlichkeit erreicht (frühestens nach 30 min).
+- **Testkonten:** Hauptkonto, Schwelle 4/2, Schwelle 8/4, Fest 10 $, Ohne Ausstieg, Viertel-Kelly, Nur Arbitrage – je 1.000 $.
+- **Schlusskurs-Vergleich (Sport):** Buchmacher-Quote kurz vor Anpfiff vs. Kaufkurs.
+- **Gruppen-Grenze:** max. 10 % für alles am selben Coin+Stichtag bzw. Spiel.
+- **Telegram:** `TELEGRAM_BOT_TOKEN` und `TELEGRAM_CHAT_ID` setzen (Chat-ID zeigt das Dashboard unter Status an).
+
 ## Ist der Bot besser als der Markt?
 Reiter **Treffsicherheit**: Für jeden berechneten Markt wird beim ersten Mal die Bot-Prognose und der Marktkurs gespeichert.
 Nach der Entscheidung wird verglichen (Brier-Wert, kleiner = besser). Erst nach einigen hundert Märkten ist das aussagekräftig.

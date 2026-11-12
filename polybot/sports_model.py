@@ -173,11 +173,13 @@ class OddsClient:
         days = max(1, (nxt - now).days + 1)
         return max(1, (left - config.ODDS_CREDIT_RESERVE) // days)
 
-    def events(self, sport):
+    def events(self, sport, max_age=None):
+        """max_age (Sekunden) überschreibt das normale Intervall – z. B. für Schlusskurse kurz vor Anpfiff."""
         if not self.enabled:
             return []
         hit = self.cache.get(sport)
-        if hit and time.time() - hit[0] < config.ODDS_REFRESH_MIN * 60:
+        limit = max_age if max_age is not None else config.ODDS_REFRESH_MIN * 60
+        if hit and time.time() - hit[0] < limit:
             return hit[1]
         left = self.credits_left()
         if left is not None and left <= config.ODDS_CREDIT_RESERVE:

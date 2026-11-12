@@ -62,6 +62,38 @@ SPORTS_MIN_BOOKS = _i("SPORTS_MIN_BOOKS", 3)
 FEE_RATE_CRYPTO = _f("FEE_RATE_CRYPTO", 0.07)
 FEE_RATE_SPORTS = _f("FEE_RATE_SPORTS", 0.05)
 
+# --- Ausführung, Ausstieg, Arbitrage ---
+USE_ORDERBOOK = os.environ.get("USE_ORDERBOOK", "1") == "1"   # echten Durchschnittskurs aus dem Orderbuch rechnen
+EXIT_BUFFER = _f("EXIT_BUFFER", 0.01)        # verkaufen, sobald Verkaufserlös ≥ eigene W. − 1 Punkt
+MIN_HOLD_MIN = _f("MIN_HOLD_MIN", 30)        # frühestens 30 min nach Kauf verkaufen
+MAX_GROUP_PCT = _f("MAX_GROUP_PCT", 0.10)    # max. 10 % für alles, was am selben Coin+Stichtag bzw. Spiel hängt
+ARB_MIN_PROFIT = _f("ARB_MIN_PROFIT", 0.01)  # Arbitrage erst ab 1 Cent sicherem Gewinn pro Paket
+ARB_MAX_PCT = _f("ARB_MAX_PCT", 0.10)        # max. 10 % des Kontos pro Arbitrage-Paket
+
+# --- Testkonten: alle sehen dieselben Märkte, entscheiden aber mit eigenen Regeln ---
+ACCOUNTS = [
+    {"id": "haupt", "name": "Hauptkonto", "desc": "Schwelle 6/3 Pkt · Einsatz 2–6 % nach Sicherheit · früher Ausstieg · Arbitrage",
+     "edge_c": MIN_EDGE_CRYPTO, "edge_s": MIN_EDGE_SPORTS, "stake": "sicherheit", "exit": True, "arb": True, "model": True},
+    {"id": "schwelle4", "name": "Schwelle 4/2", "desc": "wie Hauptkonto, aber schon ab 4 Pkt (Krypto) / 2 Pkt (Sport)",
+     "edge_c": 0.04, "edge_s": 0.02, "stake": "sicherheit", "exit": True, "arb": False, "model": True},
+    {"id": "schwelle8", "name": "Schwelle 8/4", "desc": "wie Hauptkonto, aber erst ab 8 Pkt (Krypto) / 4 Pkt (Sport)",
+     "edge_c": 0.08, "edge_s": 0.04, "stake": "sicherheit", "exit": True, "arb": False, "model": True},
+    {"id": "fest10", "name": "Fest 10 $", "desc": "wie Hauptkonto, aber immer 10 $ Einsatz",
+     "edge_c": MIN_EDGE_CRYPTO, "edge_s": MIN_EDGE_SPORTS, "stake": "fest", "fixed": 10.0, "exit": True, "arb": False, "model": True},
+    {"id": "halten", "name": "Ohne Ausstieg", "desc": "wie Hauptkonto, hält aber jede Wette bis zur Entscheidung",
+     "edge_c": MIN_EDGE_CRYPTO, "edge_s": MIN_EDGE_SPORTS, "stake": "sicherheit", "exit": False, "arb": False, "model": True},
+    {"id": "kelly", "name": "Viertel-Kelly", "desc": "wie Hauptkonto, Einsatz aber nach Viertel-Kelly (meist 1–3 %)",
+     "edge_c": MIN_EDGE_CRYPTO, "edge_s": MIN_EDGE_SPORTS, "stake": "kelly", "exit": True, "arb": False, "model": True},
+    {"id": "arbitrage", "name": "Nur Arbitrage", "desc": "kauft nur Widersprüche in Polymarket (sicherer Gewinn), kein Modell",
+     "edge_c": 1.0, "edge_s": 1.0, "stake": "sicherheit", "exit": False, "arb": True, "model": False},
+]
+
+# --- Benachrichtigungen (Telegram) ---
+TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "").strip()
+TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID", "").strip()
+NOTIFY_ACCOUNTS = [x.strip() for x in os.environ.get("NOTIFY_ACCOUNTS", "haupt").split(",") if x.strip()]
+DAILY_SUMMARY_HOUR = _i("DAILY_SUMMARY_HOUR", 22)   # Tageszusammenfassung um 22 Uhr (deutsche Zeit)
+
 # --- Ablauf ---
 SCAN_INTERVAL_MIN = _f("SCAN_INTERVAL_MIN", 10)
 AUTOSTART = os.environ.get("AUTOSTART", "1") == "1"

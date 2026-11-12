@@ -24,7 +24,22 @@ CREATE TABLE IF NOT EXISTS log (
     id INTEGER PRIMARY KEY AUTOINCREMENT, ts TEXT, level TEXT, msg TEXT
 );
 CREATE TABLE IF NOT EXISTS equity (ts TEXT PRIMARY KEY, equity REAL, cash REAL);
+CREATE TABLE IF NOT EXISTS equity_acc (account TEXT, ts TEXT, equity REAL, cash REAL, PRIMARY KEY (account, ts));
 """
+
+# Spalten, die nach dem ersten Start dazugekommen sind (werden bei alten Datenbanken ergänzt)
+NEW_COLUMNS = {
+    "account": "TEXT DEFAULT 'haupt'",
+    "grp": "TEXT",
+    "kind": "TEXT DEFAULT 'model'",
+    "game_start": "TEXT",
+    "close_p": "REAL",
+    "exit_price": "REAL",
+    "token_id": "TEXT",
+    "fill_note": "TEXT",
+}
+
+MAIN = "haupt"
 
 
 def now_iso():
@@ -41,6 +56,16 @@ class Store:
         self.db.row_factory = sqlite3.Row
         with self.lock:
             self.db.executescript(SCHEMA)
+            have = {r["name"] for r in self.db.execute("PRAGMA table_info(positions)")}
+            for col, typ in NEW_COLUMNS.items():
+                if col not in have:
+                    self.db.execute(f"ALTER TABLE positions ADD COLUMN {col} {typ}")
+            self.db.execute("UPDATE positions SET account='haupt' WHERE account IS NULL")
+            self.db.execute("UPDATE positions SET kind='model' WHERE kind IS NULL")
+            # alter Kontoverlauf -> Hauptkonto
+            if self.db.execute("SELECT COUNT(*) FROM equity_acc").fetchone()[0] == 0:
+                self.db.execute("INSERT OR IGNORE INTO equity_acc(account,ts,equity,cash) "
+                                "SELECT 'haupt', ts, equity, cash FROM equity")
             self.db.commit()
 
     # --- kv ---
@@ -61,34 +86,48 @@ class Store:
         except ValueError:
             return default
 
-    # --- Konto ---
-    def cash(self, start):
-        v = self.kv_get("cash")
-        if v is None:
-            self.kv_set("cash", start)
-            self.kv_set("started_at", now_iso())
-            return float(start)
-        return float(v)
+    # --- Konten ---
+    @staticmethod
+    def _ck(account):
+        return "cash" if account == MAIN else f"cash:{account}"
 
-    def add_cash(self, delta, start):
+    def cash(self, start, account=MAIN):
         with self.lock:
-            c = self.cash(start) + delta
-            self.kv_set("cash", round(c, 6))
+            v = self.kv_get(self._ck(account))
+            if v is None:
+                self.kv_set(self._ck(account), start)
+                if self.kv_get("started_at") is None:
+                    self.kv_set("started_at", now_iso())
+                if self.kv_get(f"started_at:{account}") is None:
+                    self.kv_set(f"started_at:{account}", now_iso())
+                return float(start)
+            return float(v)
+
+    def add_cash(self, delta, start, account=MAIN):
+        with self.lock:
+            c = self.cash(start, account) + delta
+            self.kv_set(self._ck(account), round(c, 6))
             return c
 
     # --- Positionen ---
-    def open_positions(self):
+    def open_positions(self, account=None):
+        q, args = "SELECT * FROM positions WHERE status='open'", []
+        if account:
+            q, args = q + " AND account=?", [account]
         with self.lock:
-            return [dict(r) for r in self.db.execute("SELECT * FROM positions WHERE status='open' ORDER BY opened_at")]
+            return [dict(r) for r in self.db.execute(q + " ORDER BY opened_at", args)]
 
-    def closed_positions(self, limit=300):
+    def closed_positions(self, limit=300, account=None):
+        q, args = "SELECT * FROM positions WHERE status!='open'", []
+        if account:
+            q, args = q + " AND account=?", [account]
         with self.lock:
-            return [dict(r) for r in self.db.execute(
-                "SELECT * FROM positions WHERE status!='open' ORDER BY closed_at DESC LIMIT ?", (limit,))]
+            return [dict(r) for r in self.db.execute(q + " ORDER BY closed_at DESC LIMIT ?", args + [limit])]
 
-    def has_position(self, market_id):
+    def has_position(self, market_id, account=MAIN):
         with self.lock:
-            return self.db.execute("SELECT 1 FROM positions WHERE market_id=? LIMIT 1", (market_id,)).fetchone() is not None
+            return self.db.execute("SELECT 1 FROM positions WHERE market_id=? AND account=? LIMIT 1",
+                                   (market_id, account)).fetchone() is not None
 
     def insert_position(self, p):
         cols = ",".join(p)
@@ -129,20 +168,21 @@ class Store:
     def log(self, msg, level="info"):
         with self.lock:
             self.db.execute("INSERT INTO log(ts,level,msg) VALUES(?,?,?)", (now_iso(), level, msg))
-            self.db.execute("DELETE FROM log WHERE id < (SELECT MAX(id) - 2000 FROM log)")
+            self.db.execute("DELETE FROM log WHERE id < (SELECT MAX(id) - 3000 FROM log)")
             self.db.commit()
 
     def recent_log(self, n=150):
         with self.lock:
             return [dict(r) for r in self.db.execute("SELECT * FROM log ORDER BY id DESC LIMIT ?", (n,))]
 
-    def add_equity(self, equity, cash):
+    def add_equity(self, equity, cash, account=MAIN):
         ts = now_iso()[:13] + ":00"  # ein Punkt pro Stunde
         with self.lock:
-            self.db.execute("INSERT INTO equity(ts,equity,cash) VALUES(?,?,?) ON CONFLICT(ts) DO UPDATE SET "
-                            "equity=excluded.equity, cash=excluded.cash", (ts, equity, cash))
+            self.db.execute("INSERT INTO equity_acc(account,ts,equity,cash) VALUES(?,?,?,?) ON CONFLICT(account,ts) "
+                            "DO UPDATE SET equity=excluded.equity, cash=excluded.cash", (account, ts, equity, cash))
             self.db.commit()
 
-    def equity_history(self):
+    def equity_history(self, account=MAIN):
         with self.lock:
-            return [dict(r) for r in self.db.execute("SELECT * FROM equity ORDER BY ts")]
+            return [dict(r) for r in self.db.execute(
+                "SELECT ts, equity, cash FROM equity_acc WHERE account=? ORDER BY ts", (account,))]

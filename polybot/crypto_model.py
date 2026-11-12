@@ -150,8 +150,40 @@ def _fmt(v):
     return f"{v:,.0f}".replace(",", ".") if v >= 100 else f"{v:.4g}"
 
 
-def analyze(market, now=None, closes_fn=hourly_closes):
+def probability_options(parsed, spot, ch, hours):
+    """Wie probability(), aber mit der Deribit-Volatilitätsoberfläche."""
+    above = lambda k: ch.prob_above(spot, k, hours)  # noqa: E731
+    k = parsed["kind"]
+    if k == "above":
+        return above(parsed["k1"])
+    if k == "below":
+        return 1 - above(parsed["k1"])
+    if k == "between":
+        return max(0.0, above(parsed["k1"]) - above(parsed["k2"]))
+    up = k == "touch" and parsed["k1"] >= spot
+    if up:
+        return 1.0 if spot >= parsed["k1"] else min(1.0, 2 * above(parsed["k1"]))
+    return 1.0 if spot <= parsed["k1"] else min(1.0, 2 * (1 - above(parsed["k1"])))
+
+
+def _vol_premium(now, chain_fn, closes_fn):
+    """Für Coins ohne Optionsdaten: Verhältnis BTC-Optionsvolatilität zu BTC-Vergangenheitsvolatilität."""
+    try:
+        ch = chain_fn("BTC", now)
+        if not ch:
+            return 1.0
+        closes, _ = closes_fn("BTC")
+        rv = hourly_vol(closes) / config.VOL_MULTIPLIER * math.sqrt(24 * 365)
+        iv = ch.atm_vol(24 / (24 * 365), closes[-1])
+        return min(max(iv / rv, 0.8), 1.6)
+    except Exception:  # noqa: BLE001
+        return 1.0
+
+
+def analyze(market, now=None, closes_fn=hourly_closes, chain_fn=None):
     """Gibt {'p_yes', 'info', ...} zurück oder {'skip': Grund}."""
+    from . import options
+    chain_fn = chain_fn or (lambda asset, n: options.chain(asset, n))
     now = now or datetime.now(timezone.utc)
     parsed = parse_question(market["question"])
     if not parsed:
@@ -176,9 +208,28 @@ def analyze(market, now=None, closes_fn=hourly_closes):
         if not (spot / 4 <= k <= spot * 4):
             return {"skip": "Ziel-Preis unplausibel"}
     sigma = hourly_vol(closes)
-    p = probability(parsed, spot, sigma, hours)
+    p_hist = probability(parsed, spot, sigma, hours)
+    ch = None
+    try:
+        ch = chain_fn(parsed["asset"], now)
+    except Exception:  # noqa: BLE001
+        ch = None
     strikes = _fmt(parsed["k1"]) + (f"–{_fmt(parsed['k2'])}" if parsed["kind"] == "between" else "")
-    info = (f"{parsed['asset']} {_fmt(spot)} $ · Ziel {KIND_DE[parsed['kind']]} {strikes} $ · "
-            f"{hours:.0f} h · Vol {f'{sigma * 100:.2f}'.replace('.', ',')} %/h ({source})")
-    return {"p_yes": min(max(p, 0.001), 0.999), "info": info, "asset": parsed["asset"],
-            "spot": spot, "sigma_h": sigma, "hours": hours, "kind": parsed["kind"]}
+    head = f"{parsed['asset']} {_fmt(spot)} $ · Ziel {KIND_DE[parsed['kind']]} {strikes} $ · {hours:.0f} h"
+    if ch:
+        p = probability_options(parsed, spot, ch, hours)
+        iv = ch.atm_vol(max(hours, 1) / (24 * 365), spot)
+        model = "Deribit-Optionen"
+        info = (f"{head} · Optionen-Vola {f'{iv * 100:.0f}'} % p. a. · ohne Optionen wären es "
+                f"{f'{p_hist * 100:.1f}'.replace('.', ',')} % ({source})")
+    else:
+        prem = _vol_premium(now, chain_fn, closes_fn)
+        sig2 = sigma * prem
+        p = probability(parsed, spot, sig2, hours)
+        model = "Kurshistorie"
+        info = (f"{head} · Vol {f'{sig2 * 100:.2f}'.replace('.', ',')} %/h "
+                f"(Historie × {f'{prem:.2f}'.replace('.', ',')} Optionsaufschlag, {source})")
+    day = tt.astimezone(ET).strftime("%Y-%m-%d")
+    return {"p_yes": min(max(p, 0.001), 0.999), "info": info, "asset": parsed["asset"], "model": model,
+            "spot": spot, "sigma_h": sigma, "hours": hours, "kind": parsed["kind"], "parsed": parsed,
+            "target": tt.isoformat(), "group": f"{parsed['asset']}:{day}"}

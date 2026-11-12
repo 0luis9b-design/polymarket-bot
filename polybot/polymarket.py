@@ -103,6 +103,10 @@ def normalize_market(raw, event=None, category="other"):
         "tags": tags,
         "category": category,
         "fee_rate": fee_rate_for(raw, category),
+        "token_ids": [str(t) for t in _loads(raw.get("clobTokenIds"), [])],
+        "neg_risk": bool(ev.get("negRisk") or ev.get("enableNegRisk")),
+        "event_n_markets": len(ev.get("markets") or []),
+        "min_size": _num(raw.get("orderMinSize"), 5.0),
     }
 
 
@@ -211,3 +215,60 @@ def resolution(raw):
     if abs(prices[0] - 0.5) < 0.01 and abs(prices[1] - 0.5) < 0.01:
         return "void"
     return None
+
+
+# ---------------------------------------------------------------- Orderbuch (CLOB)
+CLOB = "https://clob.polymarket.com"
+
+
+def fetch_book(token_id):
+    """Orderbuch eines Outcome-Tokens: (asks aufsteigend, bids absteigend) als [(preis, menge)]."""
+    data = get_json(f"{CLOB}/book", params={"token_id": token_id}, retries=1)
+    asks = sorted(((float(a["price"]), float(a["size"])) for a in data.get("asks") or []), key=lambda x: x[0])
+    bids = sorted(((float(b["price"]), float(b["size"])) for b in data.get("bids") or []), key=lambda x: -x[0])
+    return asks, bids
+
+
+def fill_buy(asks, budget, fee_rate, q=None, min_edge=0.0):
+    """Kauft für höchstens `budget` $ (inkl. Gebühr) über die Ask-Stufen.
+
+    Stoppt an der Stufe, ab der der Vorsprung (q − Preis − Gebühr) unter min_edge fällt.
+    Gibt (anteile, kosten_inkl_gebuehr, gebuehr, durchschnittskurs) zurück.
+    """
+    shares = cost = fee = 0.0
+    left = budget
+    for price, size in asks:
+        fps = fee_rate * price * (1 - price)
+        if q is not None and q - (price + fps) < min_edge:
+            break
+        per_share = price + fps
+        take = min(size, left / per_share)
+        if take <= 0:
+            break
+        shares += take
+        cost += take * per_share
+        fee += take * fps
+        left -= take * per_share
+        if left <= 1e-9:
+            break
+    avg = (cost - fee) / shares if shares else None
+    return shares, cost, fee, avg
+
+
+def fill_sell(bids, shares, fee_rate, min_price=0.0):
+    """Verkauft `shares` über die Bid-Stufen. Gibt (verkauft, erloes_nach_gebuehr, gebuehr, durchschnittskurs)."""
+    sold = proceeds = fee = 0.0
+    left = shares
+    for price, size in bids:
+        if price < min_price:
+            break
+        take = min(size, left)
+        fps = fee_rate * price * (1 - price)
+        sold += take
+        proceeds += take * (price - fps)
+        fee += take * fps
+        left -= take
+        if left <= 1e-9:
+            break
+    avg = (proceeds + fee) / sold if sold else None
+    return sold, proceeds, fee, avg
