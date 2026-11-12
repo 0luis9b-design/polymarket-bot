@@ -681,7 +681,7 @@ class Engine:
         if config.TELEGRAM_BOT_TOKEN:
             cid = notify.find_chat_id_cached()
             return (f"Token gesetzt, Chat-ID fehlt – gefunden: {cid} → als TELEGRAM_CHAT_ID eintragen" if cid else
-                    "Token gesetzt, Chat-ID fehlt – schreib deinem Bot in Telegram einmal „Hallo“ und lade neu")
+                    f"Token gesetzt, Chat-ID fehlt – {notify.last_status}")
         return notify.last_status
 
     def status(self):

@@ -44,7 +44,7 @@ _chat_cache = {"t": 0, "v": None}
 
 def find_chat_id_cached():
     import time
-    if time.time() - _chat_cache["t"] > 60:
+    if time.time() - _chat_cache["t"] > 20 or (_chat_cache["v"] is None and time.time() - _chat_cache["t"] > 10):
         _chat_cache["t"] = time.time()
         _chat_cache["v"] = find_chat_id()
     return _chat_cache["v"]
@@ -52,15 +52,28 @@ def find_chat_id_cached():
 
 def find_chat_id():
     """Hilfe beim Einrichten: letzte Chat-ID aus getUpdates lesen (nur Token nötig)."""
+    global last_status
     if not config.TELEGRAM_BOT_TOKEN:
         return None
     try:
         r = SESSION.get(f"https://api.telegram.org/bot{config.TELEGRAM_BOT_TOKEN}/getUpdates", timeout=config.HTTP_TIMEOUT)
-        res = r.json().get("result") or []
+        data = r.json()
+        if not data.get("ok"):
+            last_status = f"Telegram meldet: {data.get('description', r.status_code)}"
+            if r.status_code in (401, 404):
+                last_status += " – der Token ist vermutlich falsch kopiert (ohne Leerzeichen, komplett mit Doppelpunkt)"
+            log.warning("getUpdates: %s", last_status)
+            return None
+        res = data.get("result") or []
         for u in reversed(res):
-            msg = u.get("message") or u.get("channel_post") or {}
-            if msg.get("chat", {}).get("id"):
-                return str(msg["chat"]["id"])
+            for key in ("message", "edited_message", "channel_post", "my_chat_member"):
+                chat = (u.get(key) or {}).get("chat") or {}
+                if chat.get("id"):
+                    return str(chat["id"])
+        last_status = (f"Token ok, aber noch keine Nachricht an den Bot gefunden ({len(res)} Updates) – "
+                       "in Telegram den eigenen Bot öffnen und „Hallo“ schicken")
+        log.info("getUpdates: %s", last_status)
     except Exception as e:  # noqa: BLE001
+        last_status = f"Telegram nicht erreichbar: {e}"
         log.warning("getUpdates: %s", e)
     return None
