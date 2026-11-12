@@ -218,3 +218,18 @@ def test_nhl_two_way_ignores_three_way_books():
     m = normalize_market(raw, {"id": "e", "title": "Hurricanes vs. Kraken", "tags": [{"slug": "nhl"}]}, "sports")
     a = sm.analyze(m, client, now=now)
     assert abs(a["p_yes"] - (1 / 1.4) / (1 / 1.4 + 1 / 3.0)) < 1e-9
+
+
+def test_odds_cache_survives_restart(tmp_path):
+    from polybot.store import Store
+    st = Store(str(tmp_path / "o.sqlite"))
+    n = {"c": 0}
+
+    def fetch(url, params=None, want_headers=False):
+        n["c"] += 1
+        return [{"home_team": "A"}], {"x-requests-remaining": "400"}
+
+    sm.OddsClient(st, api_key="x", fetch=fetch).events("basketball_nba")
+    again = sm.OddsClient(st, api_key="x", fetch=fetch)  # "Neustart"
+    assert again.events("basketball_nba") == [{"home_team": "A"}]
+    assert n["c"] == 1

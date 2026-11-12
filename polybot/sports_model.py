@@ -7,6 +7,7 @@ davon ab, ist das eine Chance.
 Quelle: The Odds API (https://the-odds-api.com), Gratis-Plan 500 Abrufe/Monat.
 Jeder Abruf (1 Liga, Markt h2h, Region eu) kostet 1 Guthaben-Punkt.
 """
+import json
 import logging
 import re
 import statistics
@@ -178,6 +179,10 @@ class OddsClient:
         if not self.enabled:
             return []
         hit = self.cache.get(sport)
+        if hit is None:  # nach einem Neustart: gespeicherte Quoten nutzen statt Guthaben zu verbrauchen
+            saved = self.store.kv_json(f"odds_cache:{sport}") if hasattr(self.store, "kv_json") else None
+            if saved and "t" in saved:
+                hit = self.cache[sport] = (saved["t"], saved.get("data") or [])
         limit = max_age if max_age is not None else config.ODDS_REFRESH_MIN * 60
         if hit and time.time() - hit[0] < limit:
             return hit[1]
@@ -205,6 +210,10 @@ class OddsClient:
         if rem is not None:
             self.store.kv_set("odds_remaining", rem)
         self.cache[sport] = (time.time(), data or [])
+        try:
+            self.store.kv_set(f"odds_cache:{sport}", json.dumps({"t": time.time(), "data": data or []}))
+        except (TypeError, ValueError):
+            pass
         self.status = (f"OK – Restguthaben {rem if rem is not None else '?'} · heute "
                        f"{self.used_today()}/{self.daily_budget()} Abrufe")
         return data or []
