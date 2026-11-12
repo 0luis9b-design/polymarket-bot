@@ -205,7 +205,15 @@ class Engine:
         markets = []
         seen = {}
         try:
-            evs = self.fetch_events("crypto")
+            # Nur Märkte, die in den nächsten ~2 Wochen enden, und ohne die hunderten stündlichen
+            # "Up or Down"-Märkte – sonst sind es >2.100 Ereignisse und die Abfrage schneidet ab.
+            days = max(config.CRYPTO_MAX_DAYS, config.LONGSHOT_MAX_DAYS) + 1
+            extra = {"end_date_min": (now - timedelta(hours=1)).strftime("%Y-%m-%dT%H:%M:%SZ"),
+                     "end_date_max": (now + timedelta(days=days)).strftime("%Y-%m-%dT%H:%M:%SZ")}
+            ud = polymarket.tag_id("up-or-down") if self.fetch_events is polymarket.fetch_events else ""
+            if ud:
+                extra["exclude_tag_id"] = ud
+            evs = self.fetch_events("crypto", extra=extra)
             ms = polymarket.markets_from_events(evs, "crypto")
             seen["crypto"] = len(ms)
             markets += ms
@@ -380,7 +388,8 @@ class Engine:
         bk = self.book(token)
         if bk is not None:
             asks, _ = bk
-            shares, cost, fee, avg = polymarket.fill_buy(asks, stake, m["fee_rate"], ev["q"], min_edge)
+            shares, cost, fee, avg = polymarket.fill_buy(asks, stake, m["fee_rate"], ev["q"], min_edge,
+                                                         max_price=o.get("max_price"))
             if not shares or cost < floor or shares < (m.get("min_size") or 5):
                 return "Orderbuch zu dünn"
             note = f"Orderbuch: Ø {_cent(avg)} (bester {_cent(asks[0][0])})"
@@ -431,13 +440,15 @@ class Engine:
                 continue
             if m["liquidity"] < config.MIN_LIQUIDITY or self.store.has_position(m["id"], aid):
                 continue
+            if not m["best_bid"] or not m["best_ask"] or m["best_ask"] - m["best_bid"] > config.MAX_SPREAD:
+                continue  # ohne echtes, enges Orderbuch kein fairer Kurs
             ask_no, _ = polymarket.quote(m, 1)
             if ask_no > 0.985:
                 continue
             fee = fee_per_share(m["fee_rate"], ask_no)
             ev = {"side": 1, "price": ask_no, "fee_ps": fee, "eff": ask_no + fee, "q": 1 - mid, "edge": (1 - mid) - ask_no - fee}
             grp = (f"{m['category']}:{m['event_id'] or m['id']}")
-            o = {"market": m, "eval": ev, "group": grp, "status": {},
+            o = {"market": m, "eval": ev, "group": grp, "status": {}, "max_price": min(0.985, ask_no + 0.01),
                  "analysis": {"p_yes": mid, "info": f"Außenseiter-Regel: Ja steht bei {mid * 100:.1f} % → Nein gekauft"}}
             res = self.open_position(acc, o, min_edge=-1.0)
             if res == "Limit erreicht" and self.exposure(self.store.open_positions(aid)) > \
@@ -466,11 +477,14 @@ class Engine:
                 self._fill_order(acc, od, m, now)
                 continue
             o = by_market.get(od["market_id"])
-            if o:
-                q = o["analysis"]["p_yes"] if od["side"] == 0 else 1 - o["analysis"]["p_yes"]
-                if q - od["price"] < config.MAKER_EDGE / 2:
-                    self.store.update_order(od["id"], status="cancelled", done_at=now.isoformat(timespec="seconds"),
-                                            note="Vorsprung weg")
+            if not o:  # z. B. Spiel hat begonnen oder Messtag läuft – alter Preis wäre gefährlich
+                self.store.update_order(od["id"], status="cancelled", done_at=now.isoformat(timespec="seconds"),
+                                        note="Markt wird nicht mehr bewertet")
+                continue
+            q = o["analysis"]["p_yes"] if od["side"] == 0 else 1 - o["analysis"]["p_yes"]
+            if q - od["price"] < config.MAKER_EDGE / 2:
+                self.store.update_order(od["id"], status="cancelled", done_at=now.isoformat(timespec="seconds"),
+                                        note="Vorsprung weg")
         # 2) neue Gebote
         pos = self.store.open_positions(aid)
         orders = self.store.open_orders(aid)
@@ -561,7 +575,7 @@ class Engine:
             reason = None
             if manual:
                 reason = manual
-            elif eq <= config.START_BALANCE * (1 - config.RISK_TOTAL_LOSS_PCT):
+            elif eq <= float(self.store.kv_get(f"risk_base:{aid}") or config.START_BALANCE) * (1 - config.RISK_TOTAL_LOSS_PCT):
                 reason = f"−{config.RISK_TOTAL_LOSS_PCT * 100:.0f} % seit Start – pausiert bis „Fortsetzen“"
                 self.store.kv_set(f"paused:{aid}", reason)
             elif eq <= saved["equity"] * (1 - config.RISK_DAY_LOSS_PCT):
@@ -573,6 +587,8 @@ class Engine:
                 notify.send(f"⛔ <b>Risikobremse</b> ({a['name']})\n{reason}\nKontowert {_usd(eq)}", aid)
 
     def resume(self, aid):
+        # neue Bezugsgröße: −25 % zählen ab jetzt, sonst würde die Bremse sofort wieder greifen
+        self.store.kv_set(f"risk_base:{aid}", round(self.equity(aid), 2))
         self.store.kv_set(f"paused:{aid}", "")
         self.store.kv_set(f"daystart:{aid}", json.dumps({}))
         self.state["paused"][aid] = None
@@ -782,7 +798,8 @@ class Engine:
 
     def settle(self):
         pos = self.store.open_positions()
-        preds = self.store.open_predictions()
+        # Prognosen (für die Treffsicherheit) reicht es jeden 3. Lauf zu prüfen – das spart Abrufe
+        preds = self.store.open_predictions() if self.state["scans"] % 3 == 0 else []
         now = datetime.now(timezone.utc)
 
         def due(end):

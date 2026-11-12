@@ -175,25 +175,42 @@ def markets_from_events(events, category):
 
 
 def fetch_markets_by_ids(ids):
-    """Märkte (auch geschlossene) für die Abrechnung holen."""
+    """Nur GESCHLOSSENE Märkte für die Abrechnung holen.
+
+    Wichtig: Ohne closed=true liefert Polymarket geschlossene Märkte im Sammelabruf nicht mit.
+    Was nicht zurückkommt, ist noch offen – das wird nicht einzeln nachgefragt (das wären sonst
+    bei vielen Wetter-Märkten hunderte Einzelabrufe pro Lauf).
+    """
     result = {}
     ids = [str(i) for i in ids if i]
     for i in range(0, len(ids), 40):
         chunk = ids[i:i + 40]
         try:
-            data = get_json(f"{GAMMA}/markets", params=[("id", x) for x in chunk] + [("limit", len(chunk))])
+            data = get_json(f"{GAMMA}/markets",
+                            params=[("id", x) for x in chunk] + [("closed", "true"), ("limit", len(chunk))])
             for raw in data if isinstance(data, list) else data.get("data", []):
                 result[str(raw.get("id"))] = raw
         except HttpError as e:
             log.warning("Sammelabruf fehlgeschlagen (%s), einzeln weiter", e)
-        for x in chunk:
-            if x in result:
-                continue
-            try:
-                result[x] = get_json(f"{GAMMA}/markets/{x}")
-            except HttpError as e:
-                log.warning("Markt %s nicht abrufbar: %s", x, e)
+            for x in chunk:
+                try:
+                    result[x] = get_json(f"{GAMMA}/markets/{x}")
+                except HttpError as e2:
+                    log.warning("Markt %s nicht abrufbar: %s", x, e2)
     return result
+
+
+_tag_ids = {}
+
+
+def tag_id(slug):
+    """Numerische ID eines Tags (für exclude_tag_id), zwischengespeichert."""
+    if slug not in _tag_ids:
+        try:
+            _tag_ids[slug] = str(get_json(f"{GAMMA}/tags/slug/{slug}").get("id") or "")
+        except (HttpError, AttributeError):
+            return ""
+    return _tag_ids[slug]
 
 
 def resolution(raw):
@@ -229,7 +246,7 @@ def fetch_book(token_id):
     return asks, bids
 
 
-def fill_buy(asks, budget, fee_rate, q=None, min_edge=0.0):
+def fill_buy(asks, budget, fee_rate, q=None, min_edge=0.0, max_price=None):
     """Kauft für höchstens `budget` $ (inkl. Gebühr) über die Ask-Stufen.
 
     Stoppt an der Stufe, ab der der Vorsprung (q − Preis − Gebühr) unter min_edge fällt.
@@ -240,6 +257,8 @@ def fill_buy(asks, budget, fee_rate, q=None, min_edge=0.0):
     for price, size in asks:
         fps = fee_rate * price * (1 - price)
         if q is not None and q - (price + fps) < min_edge:
+            break
+        if max_price is not None and price > max_price + 1e-9:
             break
         per_share = price + fps
         take = min(size, left / per_share)

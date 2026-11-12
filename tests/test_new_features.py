@@ -153,3 +153,65 @@ def test_error_alert_after_three_failed_runs(tmp_path, monkeypatch):
     monkeypatch.setattr(eng, "settle", lambda: None)
     eng.run_cycle()
     assert any("klappt wieder" in t for t in sent)
+
+
+# ---------------------------------------------------------------- Prüfung 12.11. abends
+def test_settlement_fetch_asks_only_closed_and_no_single_calls(monkeypatch):
+    calls = []
+
+    def fake(url, params=None, **kw):
+        calls.append((url, params))
+        return [{"id": "1", "closed": True}]
+    monkeypatch.setattr(polymarket, "get_json", fake)
+    res = polymarket.fetch_markets_by_ids(["1", "2", "3"])
+    assert list(res) == ["1"]
+    assert len(calls) == 1 and ("closed", "true") in calls[0][1]
+
+
+def test_crypto_fetch_uses_time_window(tmp_path):
+    seen = {}
+
+    def fe(tag, **kw):
+        seen[tag] = kw.get("extra")
+        return []
+    store = Store(str(tmp_path / "t.sqlite"))
+    eng = Engine(store, fetch_events=fe, fetch_by_ids=lambda ids: {}, closes_fn=lambda a: (CLOSES, "T"),
+                 odds_client=OddsClient(store, api_key=""), chain_fn=lambda a, n: None, book_fn=None)
+    eng.collect_markets(datetime.now(timezone.utc))
+    assert "end_date_max" in seen["crypto"] and "end_date_min" in seen["crypto"]
+
+
+def test_maker_cancels_order_when_market_no_longer_rated(tmp_path):
+    now = datetime.now(timezone.utc).replace(microsecond=0)
+    end = _end(now)
+    ev = {"id": "e", "markets": [_market("mk", 100000, end, 0.20, 0.22)]}
+    store, eng = _eng(tmp_path, {"crypto": [ev]})
+    eng.run_cycle()
+    assert len(store.open_orders("limit")) == 1
+    # Markt läuft gleich ab -> wird nicht mehr bewertet -> Gebot weg
+    ev["markets"] = [_market("mk", 100000, now + timedelta(minutes=30), 0.20, 0.22)]
+    eng.run_cycle()
+    assert store.open_orders("limit") == []
+
+
+def test_resume_after_total_loss_does_not_retrigger(tmp_path):
+    now = datetime.now(timezone.utc).replace(microsecond=0)
+    store, eng = _eng(tmp_path, {})
+    store.add_cash(-300, config.START_BALANCE, "kelly")  # −30 %
+    eng.check_risk(now)
+    assert eng.paused("kelly")
+    eng.resume("kelly")
+    eng.check_risk(now)
+    assert not eng.paused("kelly")
+
+
+def test_longshot_skips_wide_spread_and_caps_price(tmp_path):
+    now = datetime.now(timezone.utc).replace(microsecond=0)
+    end = _end(now)
+    wide = _market("w", 130000, end, 0.001, 0.08)  # Mitte ~4 %, aber riesige Spanne
+    store, eng = _eng(tmp_path, {"crypto": [{"id": "e", "markets": [wide]}]})
+    eng.run_cycle()
+    assert store.open_positions("aussenseiter") == []
+    asks = [(0.97, 5.0), (0.999, 1000.0)]
+    sh, cost, fee, avg = polymarket.fill_buy(asks, 100, 0.0, max_price=0.98)
+    assert sh == 5.0 and avg == 0.97

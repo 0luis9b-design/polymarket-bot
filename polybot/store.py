@@ -31,6 +31,9 @@ CREATE TABLE IF NOT EXISTS orders (
     done_at TEXT, note TEXT
 );
 CREATE TABLE IF NOT EXISTS equity_acc (account TEXT, ts TEXT, equity REAL, cash REAL, PRIMARY KEY (account, ts));
+CREATE INDEX IF NOT EXISTS idx_pos_status ON positions(status);
+CREATE INDEX IF NOT EXISTS idx_pred_outcome ON predictions(outcome);
+CREATE INDEX IF NOT EXISTS idx_orders_status ON orders(status);
 """
 
 # Spalten, die nach dem ersten Start dazugekommen sind (werden bei alten Datenbanken ergänzt)
@@ -66,6 +69,7 @@ class Store:
             for col, typ in NEW_COLUMNS.items():
                 if col not in have:
                     self.db.execute(f"ALTER TABLE positions ADD COLUMN {col} {typ}")
+            self.db.execute("CREATE INDEX IF NOT EXISTS idx_pos_acc_mkt ON positions(account, market_id)")
             self.db.execute("UPDATE positions SET account='haupt' WHERE account IS NULL")
             self.db.execute("UPDATE positions SET kind='model' WHERE kind IS NULL")
             # alter Kontoverlauf -> Hauptkonto
