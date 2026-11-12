@@ -48,6 +48,7 @@ def test_full_cycle(tmp_path):
     assert any(p["market_id"] == "m1" and p["side"] == 0 for p in pos), eng.state["opportunities"]
     assert not any(p["market_id"] == "m2" for p in pos)
     total_cost = sum(p["cost"] for p in pos)
+    assert all(19.9 <= p["cost"] <= 60.1 for p in pos), [p["cost"] for p in pos]  # 2–6 % von 1.000 $
     assert total_cost <= config.START_BALANCE * config.MAX_EVENT_PCT + 1e-6
     assert abs(store.cash(config.START_BALANCE) - (config.START_BALANCE - total_cost)) < 1e-6
 
@@ -71,3 +72,11 @@ def test_evaluate_picks_better_side():
     m = {"best_bid": 0.70, "best_ask": 0.72, "prices": [0.71, 0.29], "fee_rate": 0.0}
     ev = evaluate(m, 0.5)  # Bot: 50 %, Markt 71 % -> "Nein" für 0.30 kaufen
     assert ev["side"] == 1 and abs(ev["price"] - 0.30) < 1e-9 and ev["edge"] > 0.19
+
+
+def test_confidence_stake_range():
+    from polybot.engine import confidence
+    assert confidence(0.30, 0.06, 0.06) == 0
+    assert abs(confidence(0.90, 0.20, 0.06) - 1) < 1e-12
+    c = confidence(0.60, 0.11, 0.06)
+    assert 0 < c < 1

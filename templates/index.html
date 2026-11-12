@@ -85,7 +85,8 @@
   </div>
   <p class="note">Der Bot wettet nur, wenn seine <b>eigene</b> Wahrscheinlichkeit nach Gebühren deutlich vom Polymarket-Kurs abweicht
     (Krypto ≥ {{ (cfg.MIN_EDGE_CRYPTO*100)|round(0)|int }} Pkt, Sport ≥ {{ (cfg.MIN_EDGE_SPORTS*100)|round(0)|int }} Pkt).
-    Einsatz: {{ (cfg.KELLY_FRACTION*100)|int }} % Kelly, max. {{ (cfg.MAX_STAKE_PCT*100)|round(0)|int }} % pro Wette.
+    Einsatz: {% if cfg.STAKE_MODE == 'kelly' %}{{ (cfg.KELLY_FRACTION*100)|int }} % Kelly{% else %}{{ (cfg.STAKE_MIN_PCT*100)|round(0)|int }}–{{ (cfg.STAKE_MAX_PCT*100)|round(0)|int }} % des Kontos je nach Sicherheit{% endif %},
+    max. {{ (cfg.MAX_EVENT_PCT*100)|round(0)|int }} % pro Ereignis, {{ (cfg.MAX_EXPOSURE_PCT*100)|round(0)|int }} % insgesamt.
     Ob der Bot wirklich besser ist als der Markt, zeigt der Reiter „Treffsicherheit“ – und das braucht einige hundert abgerechnete Märkte.</p>
 </section>
 

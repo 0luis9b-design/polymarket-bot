@@ -20,9 +20,15 @@ DATA_DIR = os.environ.get("DATA_DIR", os.path.join(os.path.dirname(os.path.dirna
 
 # --- Spielgeld-Konto ---
 START_BALANCE = _f("START_BALANCE", 1000)          # $ Spielgeld
-KELLY_FRACTION = _f("KELLY_FRACTION", 0.25)         # Viertel-Kelly
-MAX_STAKE_PCT = _f("MAX_STAKE_PCT", 0.04)           # max. 4 % des Kontos pro Wette
-MAX_EVENT_PCT = _f("MAX_EVENT_PCT", 0.08)           # max. 8 % pro Ereignis (z. B. alle BTC-Stufen eines Tages)
+# Einsatz: 2–6 % des Kontos, je nach Sicherheit der Wette
+#   Sicherheit = 60 % Vorsprung (Schwelle → +10 Punkte darüber = voll) + 40 % Trefferchance (35 % → 85 % = voll)
+STAKE_MODE = os.environ.get("STAKE_MODE", "sicherheit")  # "sicherheit" oder "kelly"
+STAKE_MIN_PCT = _f("STAKE_MIN_PCT", 0.02)
+STAKE_MAX_PCT = _f("STAKE_MAX_PCT", 0.06)
+EDGE_FULL_EXTRA = _f("EDGE_FULL_EXTRA", 0.10)
+KELLY_FRACTION = _f("KELLY_FRACTION", 0.25)         # nur bei STAKE_MODE=kelly
+MAX_STAKE_PCT = _f("MAX_STAKE_PCT", 0.06)           # max. 6 % des Kontos pro Wette
+MAX_EVENT_PCT = _f("MAX_EVENT_PCT", 0.10)           # max. 10 % pro Ereignis (z. B. alle BTC-Stufen eines Tages)
 MAX_EXPOSURE_PCT = _f("MAX_EXPOSURE_PCT", 0.60)     # max. 60 % des Kontos gleichzeitig im Markt
 MIN_STAKE = _f("MIN_STAKE", 2.0)                    # kleinere Einsätze lohnen nicht
 
@@ -42,6 +48,10 @@ VOL_MULTIPLIER = _f("VOL_MULTIPLIER", 1.0)          # >1 = vorsichtigeres Modell
 # --- Sport ---
 ODDS_API_KEY = os.environ.get("ODDS_API_KEY", "").strip()
 ODDS_REGIONS = os.environ.get("ODDS_REGIONS", "eu")
+# Polymarket-Ligen (Tag), getrennt durch Komma
+SPORTS_LEAGUES = [x.strip().lower() for x in os.environ.get(
+    "SPORTS_LEAGUES",
+    "bundesliga,bundesliga-2,epl,la-liga,serie-a,ligue-1,ucl,uel,nba,nhl,nfl,ufc").split(",") if x.strip()]
 ODDS_REFRESH_MIN = _f("ODDS_REFRESH_MIN", 360)      # Quoten pro Liga höchstens alle 6 h holen (Gratis-Kontingent)
 ODDS_CREDIT_RESERVE = _i("ODDS_CREDIT_RESERVE", 15)
 ODDS_DAILY_BUDGET = _i("ODDS_DAILY_BUDGET", 0)      # 0 = automatisch: Restguthaben / Resttage im Monat

@@ -14,14 +14,15 @@ Kein Konto, kein Wallet, kein echtes Geld – er liest nur öffentliche Daten.
 - Stichtag-Märkte: Binance-Schlusskurs um 12:00 Uhr New Yorker Zeit. Berühren-Märkte: Ziel irgendwann vor Ablauf erreicht.
 - Unterstützt: Bitcoin, Ethereum, Solana, XRP, Dogecoin. „Up or Down“-Minutenmärkte werden bewusst ignoriert.
 
-**Sport-Märkte** (Siegwetten in NBA, NFL, NHL, MLB, Fußball-Ligen, UFC …)
+**Sport-Märkte** – nur „Wer gewinnt“ in: Bundesliga, 2. Bundesliga, Premier League, La Liga, Serie A, Ligue 1, Champions League, Europa League, NBA, NHL, NFL, UFC (änderbar über `SPORTS_LEAGUES`)
 - Holt die Quoten vieler Buchmacher (The Odds API), rechnet deren Marge heraus und bildet den Mittelwert
   (Pinnacle – der genaueste Buchmacher – zählt doppelt).
 - Nur Spiele, die in den nächsten 24 Stunden beginnen, nur vor Anpfiff.
 
 ## Wann und wie viel gewettet wird
 - Vorsprung = eigene Wahrscheinlichkeit − Kaufkurs − Polymarket-Gebühr. Gekauft wird erst ab 6 Punkten (Krypto) bzw. 3 Punkten (Sport).
-- Einsatz nach Viertel-Kelly, höchstens 4 % des Kontos pro Wette, 8 % pro Ereignis, 60 % insgesamt.
+- Einsatz 2–6 % des Kontos je nach **Sicherheit**: 60 % zählt der Vorsprung (Schwelle = 2 %, 10 Punkte darüber = 6 %),
+  40 % die Trefferchance (35 % → wenig, 85 % → viel). Höchstens 10 % pro Ereignis, 60 % insgesamt im Markt.
 - Kauf zum echten Briefkurs (Ask) inkl. Gebühr – so realistisch wie möglich. Gehalten bis zur Entscheidung.
 - Startkapital: 1.000 $ Spielgeld.
 

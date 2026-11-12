@@ -25,6 +25,13 @@ def kelly_fraction(q, eff_price):
     return max(0.0, (q - eff_price) / (1 - eff_price))
 
 
+def confidence(q, edge, min_edge):
+    """Sicherheit 0..1 aus Vorsprung (60 %) und Trefferchance (40 %)."""
+    e = min(max((edge - min_edge) / config.EDGE_FULL_EXTRA, 0.0), 1.0)
+    h = min(max((q - 0.35) / 0.50, 0.0), 1.0)
+    return 0.6 * e + 0.4 * h
+
+
 def evaluate(m, p_yes):
     """Beide Seiten prüfen und die bessere zurückgeben (nach Gebühren)."""
     best = None
@@ -126,8 +133,17 @@ class Engine:
             try:
                 extra = {"end_date_min": (now - timedelta(hours=6)).strftime("%Y-%m-%dT%H:%M:%SZ"),
                          "end_date_max": (now + timedelta(hours=config.SPORTS_LOOKAHEAD_H + 48)).strftime("%Y-%m-%dT%H:%M:%SZ")}
-                evs = self.fetch_events("sports", extra=extra)
-                ms = polymarket.markets_from_events(evs, "sports")
+                evs, ids = [], set()
+                for tag in config.SPORTS_LEAGUES:  # nur die gewählten Ligen abrufen
+                    try:
+                        for e in self.fetch_events(tag, extra=extra):
+                            if e.get("id") not in ids:
+                                ids.add(e.get("id"))
+                                evs.append(e)
+                    except Exception as e:  # noqa: BLE001
+                        self.store.log(f"Liga {tag} nicht abrufbar: {e}", "error")
+                ms = [m for m in polymarket.markets_from_events(evs, "sports")
+                      if (m["sports_market_type"] or "moneyline").lower() == "moneyline"]
                 # Bald beginnende Spiele zuerst, damit das knappe Quoten-Budget dort landet
                 far = datetime.max.replace(tzinfo=timezone.utc)
                 ms.sort(key=lambda m: m["game_start"] or far)
@@ -207,15 +223,22 @@ class Engine:
         pos = self.store.open_positions()
         equity = self.equity(pos)
         cash = self.cash()
-        f = kelly_fraction(ev["q"], ev["eff"])
-        stake = equity * config.KELLY_FRACTION * f
+        min_edge = config.MIN_EDGE_CRYPTO if m["category"] == "crypto" else config.MIN_EDGE_SPORTS
+        conf = confidence(ev["q"], ev["edge"], min_edge)
+        if config.STAKE_MODE == "kelly":
+            stake = equity * config.KELLY_FRACTION * kelly_fraction(ev["q"], ev["eff"])
+            floor = config.MIN_STAKE
+        else:
+            pct = config.STAKE_MIN_PCT + (config.STAKE_MAX_PCT - config.STAKE_MIN_PCT) * conf
+            stake = equity * pct
+            floor = max(config.MIN_STAKE, equity * config.STAKE_MIN_PCT * 0.999)
         stake = min(stake, equity * config.MAX_STAKE_PCT)
         ev_exposure = sum(p["cost"] for p in pos if p["event_id"] and p["event_id"] == m["event_id"])
         stake = min(stake, equity * config.MAX_EVENT_PCT - ev_exposure)
         stake = min(stake, equity * config.MAX_EXPOSURE_PCT - self.exposure(pos))
         stake = min(stake, cash)
-        if stake < config.MIN_STAKE:
-            return "Limit erreicht / Einsatz zu klein"
+        if stake < floor:
+            return "Limit erreicht"
         stake = round(stake, 4)
         shares = stake / ev["eff"]
         fee = shares * ev["fee_ps"]
@@ -225,7 +248,8 @@ class Engine:
             "slug": m["slug"], "event_slug": m["event_slug"], "side": ev["side"], "side_name": side_name,
             "shares": round(shares, 4), "price": round(ev["price"], 4), "fee": round(fee, 4), "cost": round(stake, 4),
             "own_p": round(ev["q"], 4), "market_p": round(ev["price"], 4), "edge": round(ev["edge"], 4),
-            "info": o["analysis"].get("info", ""), "opened_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+            "info": f"{o['analysis'].get('info', '')} · Sicherheit {conf * 100:.0f} % → {stake / equity * 100:.1f} % Einsatz",
+            "opened_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
             "end_date": m["end_date"].isoformat() if m["end_date"] else None, "mark": round(ev["price"], 4),
         })
         self.store.add_cash(-stake, config.START_BALANCE)

@@ -39,12 +39,14 @@ LEAGUES = {
     "la-liga": "soccer_spain_la_liga",
     "laliga": "soccer_spain_la_liga",
     "bundesliga": "soccer_germany_bundesliga",
+    "bundesliga-2": "soccer_germany_bundesliga2",
     "serie-a": "soccer_italy_serie_a",
     "ligue-1": "soccer_france_ligue_one",
     "ucl": "soccer_uefa_champs_league",
     "champions-league": "soccer_uefa_champs_league",
     "uel": "soccer_uefa_europa_league",
     "europa-league": "soccer_uefa_europa_league",
+    "uecl": "soccer_uefa_europa_conference_league",
     "mls": "soccer_usa_mls",
     "eredivisie": "soccer_netherlands_eredivisie",
     "ufc": "mma_mixed_martial_arts",
@@ -200,7 +202,11 @@ class OddsClient:
 
 
 def league_for(market):
-    for t in market.get("tags") or []:
+    tags = [str(t).lower() for t in market.get("tags") or []]
+    for t in tags:  # zuerst die gewählten Ligen, damit z. B. "bundesliga-2" nicht als "bundesliga" gilt
+        if t in config.SPORTS_LEAGUES and t in LEAGUES:
+            return LEAGUES[t]
+    for t in tags:
         if t in LEAGUES:
             return LEAGUES[t]
     slug = market.get("event_slug") or ""
@@ -253,7 +259,7 @@ def analyze(market, odds_client, now=None):
     if hours < 0.1:
         return {"skip": "Spiel läuft schon"}
     if hours > config.SPORTS_LOOKAHEAD_H:
-        return {"skip": f"Spiel erst in {hours:.0f} h"}
+        return {"skip": "Spiel erst später"}
     sport = league_for(market)
     if not sport:
         return {"skip": "Liga nicht zugeordnet"}
