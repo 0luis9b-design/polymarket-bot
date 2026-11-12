@@ -75,32 +75,36 @@ def _dt(v):
 app.jinja_env.filters.update(pct=_pct, usd=_usd, susd=_susd, cent=_cent, dt=_dt)
 
 
-def _equity_svg(hist, w=600, h=140):
-    if len(hist) < 2:
-        return ""
-    vals = [r["equity"] for r in hist]
-    lo, hi = min(vals + [config.START_BALANCE]), max(vals + [config.START_BALANCE])
-    span = (hi - lo) or 1
-    pts = " ".join(f"{i * w / (len(vals) - 1):.1f},{h - (v - lo) / span * (h - 10) - 5:.1f}" for i, v in enumerate(vals))
-    y0 = h - (config.START_BALANCE - lo) / span * (h - 10) - 5
-    return (f'<svg viewBox="0 0 {w} {h}" preserveAspectRatio="none" class="chart">'
-            f'<line x1="0" x2="{w}" y1="{y0:.1f}" y2="{y0:.1f}" class="base"/>'
-            f'<polyline points="{pts}" class="line"/></svg>')
+def _dashboard_data():
+    st = engine.state
+    return {
+        "now": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        "stats": engine.stats(),
+        "state": {k: st.get(k) for k in ("last_scan", "last_error", "running", "duration", "markets_seen",
+                                          "skips", "opportunities", "scans")},
+        "sources": engine.status(),
+        "open": store.open_positions(),
+        "closed": store.closed_positions(5000),
+        "equity": store.equity_history(),
+        "logs": store.recent_log(150),
+        "cfg": {
+            "start": config.START_BALANCE, "interval": config.SCAN_INTERVAL_MIN,
+            "min_edge_crypto": config.MIN_EDGE_CRYPTO, "min_edge_sports": config.MIN_EDGE_SPORTS,
+            "stake_mode": config.STAKE_MODE, "stake_min": config.STAKE_MIN_PCT, "stake_max": config.STAKE_MAX_PCT,
+            "max_event": config.MAX_EVENT_PCT, "max_exposure": config.MAX_EXPOSURE_PCT,
+            "leagues": config.SPORTS_LEAGUES,
+        },
+    }
 
 
 @app.route("/")
 def index():
-    return render_template(
-        "index.html", s=engine.stats(), st=engine.state, src=engine.status(),
-        open_pos=store.open_positions(), closed=store.closed_positions(200), logs=store.recent_log(150),
-        chart=_equity_svg(store.equity_history()), cfg=config,
-        now=datetime.now(timezone.utc).isoformat(timespec="seconds"))
+    return render_template("index.html", data=_dashboard_data())
 
 
 @app.route("/api/state")
 def api_state():
-    return jsonify(stats=engine.stats(), state=engine.state, sources=engine.status(),
-                   open=store.open_positions(), closed=store.closed_positions(200))
+    return jsonify(_dashboard_data())
 
 
 @app.route("/api/scan", methods=["POST"])

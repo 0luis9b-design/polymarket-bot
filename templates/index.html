@@ -2,187 +2,581 @@
 <html lang="de">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Polymarket-Bot (Spielgeld)</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0a0e16">
+<title>Polymarket-Bot · Spielgeld</title>
 <style>
-  :root { --bg:#0f1115; --card:#181b22; --line:#262a33; --txt:#e6e8ec; --dim:#8b93a1; --pos:#3fb47e; --neg:#e5605a; --acc:#6aa3ff; }
-  * { box-sizing: border-box; }
-  body { margin:0; font:14px/1.45 system-ui,-apple-system,Segoe UI,Roboto,sans-serif; background:var(--bg); color:var(--txt); }
-  header { padding:14px 16px 6px; }
-  h1 { font-size:17px; margin:0; }
+  :root {
+    --bg:#0a0e16; --bg2:#0e1420; --card:#121a28; --card2:#172133; --line:#222d42; --line2:#2c3a54;
+    --txt:#e7ebf3; --dim:#8c97ab; --dim2:#5f6b80;
+    --acc:#5b8cff; --acc2:#3d6be0; --accbg:rgba(91,140,255,.12);
+    --pos:#2fd07f; --posbg:rgba(47,208,127,.13); --neg:#ff5d6c; --negbg:rgba(255,93,108,.13);
+    --warn:#f5b84a; --warnbg:rgba(245,184,74,.13);
+    --crypto:#f5a623; --sport:#38bdf8;
+    --r:14px;
+  }
+  * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  html, body { margin:0; background:var(--bg); color:var(--txt); overflow-x:hidden; }
+  body { font:14px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; font-variant-numeric:tabular-nums;
+         background:radial-gradient(1200px 500px at 50% -200px, #14203a 0%, var(--bg) 60%) fixed; }
+  .wrap { max-width:1080px; margin:0 auto; padding:0 14px 60px; }
+  button { font:inherit; color:inherit; }
+
+  /* Kopf */
+  header { display:flex; align-items:center; justify-content:space-between; gap:10px; padding:16px 0 10px; }
+  .brand { display:flex; align-items:center; gap:10px; }
+  .logo { width:34px; height:34px; border-radius:10px; background:linear-gradient(135deg,var(--acc),#8b5cf6);
+          display:grid; place-items:center; font-weight:800; font-size:15px; box-shadow:0 4px 18px rgba(91,140,255,.35); }
+  h1 { font-size:16px; margin:0; letter-spacing:.2px; }
   .sub { color:var(--dim); font-size:12px; }
-  .kpis { display:grid; grid-template-columns:repeat(auto-fit,minmax(140px,1fr)); gap:8px; padding:8px 16px; }
-  .kpi { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:10px 12px; }
+  .pill { display:inline-flex; align-items:center; gap:6px; font-size:12px; padding:4px 10px; border-radius:999px;
+          border:1px solid var(--line); background:var(--card); color:var(--dim); white-space:nowrap; }
+  .dot { width:7px; height:7px; border-radius:50%; background:var(--pos); box-shadow:0 0 8px var(--pos); }
+  .dot.err { background:var(--neg); box-shadow:0 0 8px var(--neg); }
+  .dot.run { background:var(--warn); box-shadow:0 0 8px var(--warn); }
+
+  /* Leiste mit Filter + Reitern */
+  .bar { position:sticky; top:0; z-index:5; background:rgba(10,14,22,.88); backdrop-filter:blur(10px);
+         -webkit-backdrop-filter:blur(10px); margin:0 -14px; padding:8px 14px; border-bottom:1px solid var(--line); }
+  .seg { display:flex; background:var(--card); border:1px solid var(--line); border-radius:12px; padding:3px; gap:3px; }
+  .seg button { flex:1; border:0; background:none; padding:7px 8px; border-radius:9px; color:var(--dim); cursor:pointer; font-weight:500; }
+  .seg button.on { background:var(--card2); color:var(--txt); box-shadow:inset 0 0 0 1px var(--line2); }
+  .seg button .c { display:inline-block; width:8px; height:8px; border-radius:50%; margin-right:6px; vertical-align:1px; }
+  .tabs { display:flex; gap:4px; overflow-x:auto; margin-top:8px; scrollbar-width:none; }
+  .tabs::-webkit-scrollbar { display:none; }
+  .tabs button { border:0; background:none; padding:7px 12px; border-radius:999px; color:var(--dim); white-space:nowrap; cursor:pointer; }
+  .tabs button.on { color:#fff; background:var(--accbg); box-shadow:inset 0 0 0 1px rgba(91,140,255,.45); }
+  .tabs .n { font-size:11px; margin-left:5px; padding:0 6px; border-radius:999px; background:var(--line); color:var(--dim); }
+
+  section { display:none; padding-top:14px; } section.on { display:block; }
+  h2 { font-size:13px; font-weight:600; color:var(--dim); text-transform:uppercase; letter-spacing:.6px; margin:18px 2px 8px; }
+  h2:first-child { margin-top:2px; }
+
+  /* Kennzahlen */
+  .kpis { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; }
+  @media (min-width:720px) { .kpis { grid-template-columns:repeat(3,1fr); } }
+  .kpi { background:linear-gradient(180deg,var(--card2),var(--card)); border:1px solid var(--line); border-radius:var(--r); padding:12px 13px; }
+  .kpi.big { grid-column:span 2; }
+  @media (min-width:720px) { .kpi.big { grid-column:span 1; } }
   .kpi .l { color:var(--dim); font-size:12px; }
-  .kpi .v { font-size:19px; font-weight:600; margin-top:2px; font-variant-numeric:tabular-nums; }
-  .pos { color:var(--pos); } .neg { color:var(--neg); }
-  nav { display:flex; gap:4px; overflow-x:auto; padding:8px 16px; position:sticky; top:0; background:var(--bg); border-bottom:1px solid var(--line); z-index:2; }
-  nav button { background:none; border:1px solid var(--line); color:var(--dim); padding:6px 12px; border-radius:999px; white-space:nowrap; font:inherit; cursor:pointer; }
-  nav button.on { color:var(--txt); border-color:var(--acc); background:#1d2633; }
-  section { display:none; padding:12px 16px 40px; } section.on { display:block; }
-  table { width:100%; border-collapse:collapse; font-size:13px; }
-  th, td { text-align:left; padding:7px 6px; border-bottom:1px solid var(--line); vertical-align:top; }
-  th { color:var(--dim); font-weight:500; font-size:12px; }
-  td.n { text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap; }
-  .q { max-width:420px; }
-  .info { color:var(--dim); font-size:12px; }
-  .wrap { overflow-x:auto; }
-  .card { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:12px; margin-bottom:12px; }
-  .chart { width:100%; height:140px; } .chart .line { fill:none; stroke:var(--acc); stroke-width:2; vector-effect:non-scaling-stroke; }
-  .chart .base { stroke:var(--line); stroke-dasharray:4 4; vector-effect:non-scaling-stroke; }
-  .tag { display:inline-block; font-size:11px; padding:1px 7px; border-radius:999px; border:1px solid var(--line); color:var(--dim); }
+  .kpi .v { font-size:22px; font-weight:700; margin-top:3px; letter-spacing:-.3px; }
+  .kpi .s { color:var(--dim); font-size:12px; margin-top:2px; }
+  .pos { color:var(--pos); } .neg { color:var(--neg); } .dim { color:var(--dim); }
+
+  .card { background:var(--card); border:1px solid var(--line); border-radius:var(--r); padding:13px; margin-bottom:10px; }
+  .card.flat { padding:0; overflow:hidden; }
+  .row { display:flex; align-items:center; justify-content:space-between; gap:10px; }
+  .note { color:var(--dim); font-size:12.5px; margin:8px 2px; }
+  .empty { color:var(--dim); text-align:center; padding:26px 10px; border:1px dashed var(--line); border-radius:var(--r); }
+
+  /* Chart */
+  .chart { width:100%; height:170px; display:block; }
+  .chart .ln { fill:none; stroke-width:2.2; vector-effect:non-scaling-stroke; }
+  .chart .base { stroke:var(--line2); stroke-dasharray:4 5; vector-effect:non-scaling-stroke; }
+  .axis { display:flex; justify-content:space-between; color:var(--dim2); font-size:11px; margin-top:4px; }
+
+  /* Tabelle Bereiche */
+  table { width:100%; border-collapse:collapse; }
+  th, td { padding:9px 10px; white-space:nowrap; border-bottom:1px solid var(--line); text-align:left; }
+  th { color:var(--dim); font-weight:500; font-size:12px; background:var(--bg2); }
+  tr:last-child td { border-bottom:0; }
+  td.n, th.n { text-align:right; }
+
+  /* Wetten-Karten */
+  .bet { background:var(--card); border:1px solid var(--line); border-radius:var(--r); padding:12px 13px; margin-bottom:8px;
+         border-left:3px solid var(--line2); }
+  .bet.win { border-left-color:var(--pos); } .bet.lose { border-left-color:var(--neg); } .bet.void { border-left-color:var(--warn); }
+  .bet .top { display:flex; align-items:center; gap:6px; flex-wrap:wrap; margin-bottom:5px; }
+  .bet .q { font-weight:500; }
+  .bet .meta { display:grid; grid-template-columns:repeat(3,1fr); gap:8px 10px; margin-top:9px; }
+  @media (min-width:720px) { .bet .meta { grid-template-columns:repeat(6,1fr); } }
+  .bet .meta div b { display:block; color:var(--dim); font-weight:400; font-size:11px; }
+  .bet .info { color:var(--dim2); font-size:12px; margin-top:8px; }
+  .badge { font-size:11.5px; font-weight:700; padding:2px 9px; border-radius:999px; letter-spacing:.2px; }
+  .b-yes { background:var(--posbg); color:var(--pos); box-shadow:inset 0 0 0 1px rgba(47,208,127,.35); }
+  .b-no { background:var(--negbg); color:var(--neg); box-shadow:inset 0 0 0 1px rgba(255,93,108,.35); }
+  .b-team { background:var(--accbg); color:#9db8ff; box-shadow:inset 0 0 0 1px rgba(91,140,255,.35); }
+  .tag { font-size:11px; padding:2px 8px; border-radius:6px; background:var(--bg2); color:var(--dim); border:1px solid var(--line); }
+  .tag.crypto { color:var(--crypto); border-color:rgba(245,166,35,.35); }
+  .tag.sports { color:var(--sport); border-color:rgba(56,189,248,.35); }
+  .res { margin-left:auto; font-weight:700; }
+  .chip { font-size:11px; padding:2px 8px; border-radius:999px; background:var(--bg2); color:var(--dim); }
+  .chip.win { color:var(--pos); background:var(--posbg); } .chip.lose { color:var(--neg); background:var(--negbg); }
+  .chip.void { color:var(--warn); background:var(--warnbg); } .chip.go { color:#9db8ff; background:var(--accbg); }
+
+  /* Wahrscheinlichkeits-Balken */
+  .pbar { position:relative; height:8px; border-radius:99px; background:var(--bg2); margin-top:10px; border:1px solid var(--line); }
+  .pbar .mk { position:absolute; top:-3px; width:3px; height:12px; border-radius:2px; transform:translateX(-50%); }
+  .pbar .mk.m { background:#c9d2e3; } .pbar .mk.b { background:var(--acc); box-shadow:0 0 6px var(--acc); }
+  .pbar .fill { position:absolute; top:0; bottom:0; border-radius:99px; }
+  .legend { display:flex; gap:12px; font-size:11px; color:var(--dim); margin-top:5px; }
+  .legend i { display:inline-block; width:8px; height:8px; border-radius:2px; margin-right:4px; vertical-align:0; }
+
+  /* Kalender */
+  .calhead { display:flex; align-items:center; justify-content:space-between; margin-bottom:10px; }
+  .calhead button { border:1px solid var(--line); background:var(--card); border-radius:10px; width:36px; height:34px; cursor:pointer; color:var(--txt); }
+  .calhead .t { font-weight:600; font-size:15px; text-align:center; }
+  .calsum { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:8px; margin-bottom:10px; }
+  .calsum div { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:8px 10px; }
+  .calsum b { display:block; font-size:11px; color:var(--dim); font-weight:400; }
+  .grid { display:grid; grid-template-columns:repeat(7,minmax(0,1fr)); gap:4px; }
+  .wd { text-align:center; color:var(--dim2); font-size:11px; padding-bottom:2px; }
+  .day { min-width:0; min-height:56px; border-radius:9px; background:var(--card); border:1px solid var(--line); padding:5px 5px 4px;
+         display:flex; flex-direction:column; justify-content:space-between; cursor:pointer; position:relative; }
+  .day.out { background:transparent; border-color:transparent; cursor:default; }
+  .day .d { font-size:11.5px; color:var(--dim); }
+  .day .p { font-size:10.5px; letter-spacing:-.2px; font-weight:700; text-align:right; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .day.today { box-shadow:inset 0 0 0 1px var(--acc); }
+  .day.today .d { color:var(--acc); font-weight:700; }
+  .day.up { background:linear-gradient(180deg,rgba(47,208,127,.18),rgba(47,208,127,.05)); border-color:rgba(47,208,127,.3); }
+  .day.down { background:linear-gradient(180deg,rgba(255,93,108,.18),rgba(255,93,108,.05)); border-color:rgba(255,93,108,.3); }
+  .day.sel { outline:2px solid var(--acc); outline-offset:1px; }
+  .day .dots { position:absolute; top:6px; right:6px; display:flex; gap:2px; }
+  .day .dots i { width:5px; height:5px; border-radius:50%; background:var(--dim2); }
+  .daypanel { margin-top:10px; border:1px solid var(--line2); border-radius:var(--r); background:var(--bg2); overflow:hidden;
+              max-height:0; opacity:0; transition:max-height .35s ease, opacity .25s ease; }
+  .daypanel.open { max-height:6000px; opacity:1; }
+  .daypanel .in { padding:12px; }
+  .daypanel .hd { display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; }
+  .daypanel .hd .t { font-weight:600; }
+  .daypanel .close { border:1px solid var(--line); background:var(--card); border-radius:8px; padding:3px 10px; cursor:pointer; color:var(--dim); }
+  .stats3 { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:6px; margin-bottom:10px; }
+  @media (min-width:600px) { .stats3 { grid-template-columns:repeat(4,minmax(0,1fr)); } }
+  .stats3 div { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:7px 8px; }
+  .stats3 b { display:block; font-size:10.5px; color:var(--dim); font-weight:400; }
+  .sub2 { color:var(--dim); font-size:12px; margin:12px 0 6px; font-weight:600; }
+
+  /* kleine Filter */
+  .mini { display:flex; gap:6px; margin-bottom:10px; flex-wrap:wrap; }
+  .mini button { border:1px solid var(--line); background:var(--card); border-radius:999px; padding:5px 12px; color:var(--dim); cursor:pointer; font-size:12.5px; }
+  .mini button.on { color:var(--txt); border-color:var(--acc); background:var(--accbg); }
+
+  .log { font-size:12.5px; }
+  .log div { padding:7px 12px; border-bottom:1px solid var(--line); display:flex; gap:10px; }
+  .log div:last-child { border-bottom:0; }
+  .log span.t { color:var(--dim2); white-space:nowrap; }
   .err { color:var(--neg); }
-  p.note { color:var(--dim); font-size:12.5px; }
-  a { color:var(--acc); text-decoration:none; }
-  .item { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:10px 12px; margin-bottom:8px; }
-  .item .t { font-weight:500; }
-  .row { display:flex; flex-wrap:wrap; gap:4px 14px; margin-top:6px; font-size:12.5px; font-variant-numeric:tabular-nums; }
-  .row span b { color:var(--dim); font-weight:400; margin-right:4px; }
+  .bars div { display:flex; align-items:center; gap:8px; margin:5px 0; font-size:12.5px; }
+  .bars .bl { flex:0 0 46%; color:var(--dim); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .bars .bt { flex:1; height:6px; background:var(--bg2); border-radius:99px; overflow:hidden; }
+  .bars .bt i { display:block; height:100%; background:var(--acc2); }
+  .bars .bv { width:44px; text-align:right; color:var(--dim); }
 </style>
 </head>
 <body>
-<header>
-  <h1>Polymarket-Bot · Spielgeld</h1>
-  <div class="sub">
-    Letzter Lauf: {{ st.last_scan|dt }}{% if st.duration %} ({{ st.duration }} s){% endif %} ·
-    alle {{ cfg.SCAN_INTERVAL_MIN|int }} min · Start {{ s.started_at|dt }}
-    {% if st.running %} · <b>läuft gerade…</b>{% endif %}
-    {% if st.last_error %}<div class="err">Fehler: {{ st.last_error }}</div>{% endif %}
-  </div>
-</header>
+<div class="wrap">
+  <header>
+    <div class="brand">
+      <div class="logo">P</div>
+      <div><h1>Polymarket-Bot</h1><div class="sub" id="hsub">Spielgeld</div></div>
+    </div>
+    <span class="pill" id="status"><span class="dot"></span>…</span>
+  </header>
 
-<div class="kpis">
-  <div class="kpi"><div class="l">Kontowert</div><div class="v">{{ s.equity|usd }}</div></div>
-  <div class="kpi"><div class="l">Gewinn/Verlust</div><div class="v {{ 'pos' if s.pnl_total >= 0 else 'neg' }}">{{ s.pnl_total|susd }}</div></div>
-  <div class="kpi"><div class="l">Bargeld / im Markt</div><div class="v">{{ s.cash|usd }}</div><div class="info">{{ s.exposure|usd }} investiert</div></div>
-  <div class="kpi"><div class="l">Trefferquote</div><div class="v">{{ s.winrate|pct(0) }}</div><div class="info">erwartet {{ s.expected_winrate|pct(0) }} · {{ s.closed_count }} abgeschl.</div></div>
-  <div class="kpi"><div class="l">Rendite auf Einsatz</div><div class="v">{{ s.roi|pct }}</div></div>
-  <div class="kpi"><div class="l">Offene Wetten</div><div class="v">{{ s.open_count }}</div></div>
+  <div class="bar">
+    <div class="seg" id="filter">
+      <button data-f="all" class="on">Alle</button>
+      <button data-f="crypto"><span class="c" style="background:var(--crypto)"></span>Krypto</button>
+      <button data-f="sports"><span class="c" style="background:var(--sport)"></span>Sport</button>
+    </div>
+    <div class="tabs" id="tabs">
+      <button data-t="overview">Übersicht</button>
+      <button data-t="open">Offen<span class="n" id="n-open">0</span></button>
+      <button data-t="calendar">Kalender</button>
+      <button data-t="history">Verlauf<span class="n" id="n-hist">0</span></button>
+      <button data-t="analysis">Analyse</button>
+      <button data-t="calib">Treffsicherheit</button>
+      <button data-t="status">Status</button>
+    </div>
+  </div>
+
+  <section id="overview">
+    <div class="kpis" id="kpis"></div>
+    <h2 id="chart-title">Kontowert</h2>
+    <div class="card"><div id="chart"></div></div>
+    <h2>Nach Bereich</h2>
+    <div class="card flat"><table id="cats"></table></div>
+    <h2>Endet als Nächstes</h2>
+    <div id="soon"></div>
+    <p class="note" id="rules"></p>
+  </section>
+
+  <section id="open"><div id="open-list"></div></section>
+
+  <section id="calendar">
+    <div class="calhead">
+      <button id="cal-prev" aria-label="Vormonat">‹</button>
+      <div class="t" id="cal-title"></div>
+      <button id="cal-next" aria-label="Nächster Monat">›</button>
+    </div>
+    <div class="calsum" id="cal-sum"></div>
+    <div class="grid" id="cal-grid"></div>
+    <div class="daypanel" id="daypanel"><div class="in" id="daypanel-in"></div></div>
+    <p class="note">Tippe auf einen Tag: Gewinn/Verlust der an diesem Tag abgerechneten Wetten, mit allen Einzelheiten. Punkte oben rechts = an dem Tag neu eröffnete Wetten.</p>
+  </section>
+
+  <section id="history">
+    <div class="mini" id="hist-filter">
+      <button data-h="all" class="on">Alle</button><button data-h="won">Gewonnen</button><button data-h="lost">Verloren</button>
+    </div>
+    <div id="hist-list"></div>
+  </section>
+
+  <section id="analysis">
+    <div class="mini" id="ana-filter">
+      <button data-a="all" class="on">Alle berechneten</button><button data-a="plus">Nur mit Vorsprung</button><button data-a="traded">Gekauft</button>
+    </div>
+    <p class="note" id="ana-note"></p>
+    <div id="ana-list"></div>
+    <h2>Übersprungen im letzten Lauf</h2>
+    <div class="card bars" id="skips"></div>
+  </section>
+
+  <section id="calib">
+    <p class="note">Der wichtigste Test: Sind die Wahrscheinlichkeiten des Bots genauer als die von Polymarket? Gemessen über alle berechneten Märkte, sobald sie entschieden sind (nur Märkte, die beim ersten Blick zwischen 5 % und 95 % standen). <b>Kleiner = besser.</b></p>
+    <div class="kpis" id="calib-kpis"></div>
+    <h2>Kalibrierung (alle Bereiche)</h2>
+    <div class="card flat"><table id="buckets"></table></div>
+    <p class="note">Sagt der Bot z. B. 30 %, sollte es in etwa 30 % der Fälle eintreten.</p>
+  </section>
+
+  <section id="status">
+    <h2>Datenquellen</h2>
+    <div class="card" id="sources"></div>
+    <h2>Protokoll</h2>
+    <div class="card flat log" id="log"></div>
+  </section>
 </div>
 
-<nav>
-  <button data-t="overview">Übersicht</button>
-  <button data-t="open">Offen ({{ open_pos|length }})</button>
-  <button data-t="closed">Abgeschlossen</button>
-  <button data-t="opps">Analyse</button>
-  <button data-t="calib">Treffsicherheit</button>
-  <button data-t="status">Status &amp; Protokoll</button>
-</nav>
-
-<section id="overview">
-  <div class="card">
-    <div class="info">Kontowert über die Zeit (gestrichelt = Startkapital {{ s.start|usd }})</div>
-    {{ chart|safe if chart else '<p class="note">Noch zu wenig Verlauf.</p>'|safe }}
-  </div>
-  <div class="card">
-    <table>
-      <tr><th>Bereich</th><th class="n">Offen</th><th class="n">Abgeschl.</th><th class="n">Treffer</th><th class="n">G/V</th></tr>
-      {% for cat, name in [('crypto','Krypto'),('sports','Sport')] %}{% set b = s.by_cat[cat] %}
-      <tr><td>{{ name }}</td><td class="n">{{ b.open }}</td><td class="n">{{ b.count }}</td><td class="n">{{ b.winrate|pct(0) }}</td>
-        <td class="n {{ 'pos' if b.pnl >= 0 else 'neg' }}">{{ b.pnl|susd }}</td></tr>
-      {% endfor %}
-    </table>
-  </div>
-  <p class="note">Der Bot wettet nur, wenn seine <b>eigene</b> Wahrscheinlichkeit nach Gebühren deutlich vom Polymarket-Kurs abweicht
-    (Krypto ≥ {{ (cfg.MIN_EDGE_CRYPTO*100)|round(0)|int }} Pkt, Sport ≥ {{ (cfg.MIN_EDGE_SPORTS*100)|round(0)|int }} Pkt).
-    Einsatz: {% if cfg.STAKE_MODE == 'kelly' %}{{ (cfg.KELLY_FRACTION*100)|int }} % Kelly{% else %}{{ (cfg.STAKE_MIN_PCT*100)|round(0)|int }}–{{ (cfg.STAKE_MAX_PCT*100)|round(0)|int }} % des Kontos je nach Sicherheit{% endif %},
-    max. {{ (cfg.MAX_EVENT_PCT*100)|round(0)|int }} % pro Ereignis, {{ (cfg.MAX_EXPOSURE_PCT*100)|round(0)|int }} % insgesamt.
-    Ob der Bot wirklich besser ist als der Markt, zeigt der Reiter „Treffsicherheit“ – und das braucht einige hundert abgerechnete Märkte.</p>
-</section>
-
-<section id="open">
-  {% for p in open_pos %}{% set val = p.shares * (p.mark or p.price) %}
-  <div class="item">
-    <div class="t"><span class="tag">{{ 'Krypto' if p.category=='crypto' else 'Sport' }}</span> <b>{{ p.side_name }}</b> · {{ p.question }}</div>
-    <div class="row">
-      <span><b>Kauf</b>{{ p.price|cent }}</span><span><b>Jetzt</b>{{ (p.mark or p.price)|cent }}</span>
-      <span><b>Bot</b>{{ p.own_p|pct(0) }}</span><span><b>Einsatz</b>{{ p.cost|usd }}</span>
-      <span class="{{ 'pos' if val >= p.cost else 'neg' }}"><b>Wert</b>{{ val|usd }}</span><span><b>Ende</b>{{ p.end_date|dt }}</span>
-    </div>
-    <div class="info">{{ p.info }}</div>
-  </div>
-  {% else %}<p class="note">Keine offenen Wetten.</p>{% endfor %}
-</section>
-
-<section id="closed">
-  {% for p in closed %}
-  <div class="item">
-    <div class="t"><span class="tag">{{ 'Krypto' if p.category=='crypto' else 'Sport' }}</span> <b>{{ p.side_name }}</b> · {{ p.question }}</div>
-    <div class="row">
-      <span><b>Kauf</b>{{ p.price|cent }}</span><span><b>Bot</b>{{ p.own_p|pct(0) }}</span><span><b>Einsatz</b>{{ p.cost|usd }}</span>
-      <span class="{{ 'pos' if (p.pnl or 0) >= 0 else 'neg' }}"><b>Ergebnis</b>{{ (p.pnl or 0)|susd }}</span><span><b>Datum</b>{{ p.closed_at|dt }}</span>
-    </div>
-  </div>
-  {% else %}<p class="note">Noch nichts abgerechnet.</p>{% endfor %}
-</section>
-
-<section id="opps">
-  <p class="note">Alle Märkte, die der Bot im letzten Lauf selbst berechnen konnte – sortiert nach Vorsprung (eigene Wahrscheinlichkeit minus Kaufkurs inkl. Gebühr).
-    Gesehen: {% for k, v in st.markets_seen.items() %}{{ v }} {{ 'Krypto' if k=='crypto' else 'Sport' }}{{ ', ' if not loop.last }}{% else %}–{% endfor %}.</p>
-  {% for o in st.opportunities %}
-  <div class="item">
-    <div class="t">{{ o.question }}</div>
-    <div class="row">
-      <span><b>Seite</b>{{ o.side_name }}</span><span><b>Bot (Ja)</b>{{ o.own_p|pct }}</span><span><b>Markt (Ja)</b>{{ o.market_p|pct }}</span>
-      <span class="{{ 'pos' if o.edge > 0 else 'neg' }}"><b>Vorsprung</b>{{ ('%+.1f'|format(o.edge*100)).replace('.', ',') }} Pkt</span>
-      <span><b>Status</b>{{ o.status }}</span>
-    </div>
-    <div class="info">{{ o.info }}</div>
-  </div>
-  {% else %}<p class="note">Noch kein Lauf mit berechenbaren Märkten.</p>{% endfor %}
-  {% if st.skips %}
-  <div class="card" style="margin-top:12px"><div class="info">Übersprungen im letzten Lauf:</div>
-    {% for k, v in st.skips.items() %}<div>{{ v }} × {{ k }}</div>{% endfor %}</div>
-  {% endif %}
-</section>
-
-<section id="calib">
-  <p class="note">Der wichtigste Test: Sind die Wahrscheinlichkeiten des Bots genauer als die von Polymarket?
-    Gemessen über <b>alle</b> berechneten Märkte (nicht nur die gehandelten), sobald sie entschieden sind.
-    Brier-Wert: kleiner = besser. Nur Märkte, bei denen der Kurs beim ersten Blick zwischen 5 % und 95 % lag.</p>
-  <div class="wrap"><table>
-    <tr><th>Bereich</th><th class="n">Märkte</th><th class="n">Brier Bot</th><th class="n">Brier Markt</th><th class="n">LogLoss Bot</th><th class="n">LogLoss Markt</th></tr>
-    {% for cat, name in [('all','Alle'),('crypto','Krypto'),('sports','Sport')] %}{% set c = s.calibration[cat] %}
-    <tr><td>{{ name }}</td><td class="n">{{ c.n }} <span class="info">/ {{ c.n_all }}</span></td>
-      {% for key in ['brier_bot','brier_market','logloss_bot','logloss_market'] %}
-      <td class="n">{{ '%.4f'|format(c[key]) if c[key] is not none else '–' }}</td>{% endfor %}</tr>
-    {% endfor %}
-  </table></div>
-  <div class="card" style="margin-top:12px">
-    <div class="info">Kalibrierung: Sagt der Bot z. B. 30 %, sollte es in etwa 30 % der Fälle eintreten.</div>
-    <table>
-      <tr><th>Bot sagt</th><th class="n">Märkte</th><th class="n">Ø Bot</th><th class="n">Ø Markt</th><th class="n">Eingetreten</th></tr>
-      {% for b in s.calibration_buckets %}
-      <tr><td>{{ b.range }}</td><td class="n">{{ b.n }}</td><td class="n">{{ b.bot|pct(0) }}</td><td class="n">{{ b.market|pct(0) }}</td><td class="n">{{ b.actual|pct(0) }}</td></tr>
-      {% else %}<tr><td colspan="5" class="info">Noch keine entschiedenen Märkte.</td></tr>{% endfor %}
-    </table>
-  </div>
-</section>
-
-<section id="status">
-  <div class="card">
-    <div><b>Kursquellen Krypto:</b></div>
-    {% for k, v in src.prices.items() %}<div>{{ k }}: <span class="{{ 'err' if v.startswith('FEHLER') else '' }}">{{ v }}</span></div>{% else %}<div class="info">noch nicht abgefragt</div>{% endfor %}
-    <div style="margin-top:8px"><b>Buchmacher-Quoten (The Odds API):</b> {{ src.odds }}</div>
-  </div>
-  <div class="wrap"><table>
-    <tr><th>Zeit</th><th>Meldung</th></tr>
-    {% for l in logs %}<tr><td class="n">{{ l.ts|dt }}</td><td class="{{ 'err' if l.level=='error' else '' }}">{{ l.msg }}</td></tr>{% endfor %}
-  </table></div>
-</section>
-
+<script type="application/json" id="data">{{ data|tojson }}</script>
 <script>
-  (function () {
-    var buttons = document.querySelectorAll('nav button');
-    function show(t) {
-      buttons.forEach(function (b) { b.classList.toggle('on', b.dataset.t === t); });
-      document.querySelectorAll('section').forEach(function (s) { s.classList.toggle('on', s.id === t); });
+(function () {
+  "use strict";
+  var D = JSON.parse(document.getElementById("data").textContent);
+  var TZ = "Europe/Berlin";
+  var state = { filter: "all", tab: "overview", hist: "all", ana: "all", calMonth: null, calDay: null };
+  try { state.filter = localStorage.getItem("pb_filter") || "all"; } catch (e) {}
+
+  // ---------- Helfer ----------
+  function esc(s) { return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) { return {"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c]; }); }
+  function num(v, d) { return Number(v).toLocaleString("de-DE", { minimumFractionDigits: d, maximumFractionDigits: d }); }
+  function usd(v) { return v == null || isNaN(v) ? "–" : num(v, 2) + " $"; }
+  function susd(v) { return v == null || isNaN(v) ? "–" : (v >= 0 ? "+" : "−") + num(Math.abs(v), 2) + " $"; }
+  function pct(v, d) { return v == null || isNaN(v) ? "–" : num(v * 100, d == null ? 1 : d) + " %"; }
+  function cent(v) { return v == null ? "–" : num(v * 100, 1) + " ¢"; }
+  function short(v) { var a = Math.abs(v); return (v >= 0 ? "+" : "−") + (a >= 100 ? num(a, 0) : num(a, 1)); }
+  function cls(v) { return v > 0.0049 ? "pos" : (v < -0.0049 ? "neg" : "dim"); }
+  function dt(iso) { if (!iso) return "–"; var d = new Date(iso); return d.toLocaleString("de-DE", { timeZone: TZ, day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }); }
+  function dayKey(iso) { return new Intl.DateTimeFormat("en-CA", { timeZone: TZ, year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date(iso)); }
+  function inF(cat) { return state.filter === "all" || state.filter === cat; }
+  function untilText(iso) {
+    if (!iso) return "";
+    var h = (new Date(iso) - new Date()) / 36e5;
+    if (h < 0) return "wartet auf Entscheidung";
+    if (h < 1) return "endet in " + Math.max(1, Math.round(h * 60)) + " min";
+    if (h < 48) return "endet in " + Math.round(h) + " h";
+    return "endet in " + Math.round(h / 24) + " Tagen";
+  }
+  function sideBadge(name) {
+    var n = String(name || "").toLowerCase();
+    if (n === "yes" || n === "ja") return '<span class="badge b-yes">JA</span>';
+    if (n === "no" || n === "nein") return '<span class="badge b-no">NEIN</span>';
+    return '<span class="badge b-team">' + esc(name) + "</span>";
+  }
+  function catTag(c) { return '<span class="tag ' + c + '">' + (c === "crypto" ? "Krypto" : "Sport") + "</span>"; }
+  function resChip(s) {
+    return { won: '<span class="chip win">Gewonnen</span>', lost: '<span class="chip lose">Verloren</span>',
+             void: '<span class="chip void">Storniert</span>' }[s] || '<span class="chip go">Offen</span>';
+  }
+  function betClass(s) { return { won: "win", lost: "lose", void: "void" }[s] || ""; }
+  function openVal(p) { return p.shares * (p.mark != null ? p.mark : p.price); }
+
+  var OPEN = D.open || [], CLOSED = D.closed || [];
+
+  // ---------- Kennzahlen ----------
+  function figures() {
+    var op = OPEN.filter(function (p) { return inF(p.category); });
+    var cl = CLOSED.filter(function (p) { return inF(p.category); });
+    var settled = cl.filter(function (p) { return p.status === "won" || p.status === "lost"; });
+    var wins = settled.filter(function (p) { return p.status === "won"; });
+    var realized = cl.reduce(function (a, p) { return a + (p.pnl || 0); }, 0);
+    var unreal = op.reduce(function (a, p) { return a + openVal(p) - p.cost; }, 0);
+    var staked = cl.reduce(function (a, p) { return a + p.cost; }, 0);
+    var invested = op.reduce(function (a, p) { return a + p.cost; }, 0);
+    var today = dayKey(new Date().toISOString());
+    var todayPnl = cl.filter(function (p) { return p.closed_at && dayKey(p.closed_at) === today; })
+                     .reduce(function (a, p) { return a + (p.pnl || 0); }, 0);
+    return { op: op, cl: cl, settled: settled, wins: wins, realized: realized, unreal: unreal, staked: staked,
+             invested: invested, todayPnl: todayPnl,
+             winrate: settled.length ? wins.length / settled.length : null,
+             expected: settled.length ? settled.reduce(function (a, p) { return a + p.own_p; }, 0) / settled.length : null };
+  }
+
+  function renderKpis() {
+    var f = figures(), s = D.stats;
+    var total = state.filter === "all" ? s.equity - s.start : f.realized + f.unreal;
+    var k = [];
+    k.push('<div class="kpi big"><div class="l">Kontowert (gesamt)</div><div class="v">' + usd(s.equity) +
+           '</div><div class="s">Start ' + usd(s.start) + ' · Bargeld ' + usd(s.cash) + "</div></div>");
+    k.push('<div class="kpi"><div class="l">Gewinn/Verlust' + (state.filter === "all" ? "" : " · " + (state.filter === "crypto" ? "Krypto" : "Sport")) +
+           '</div><div class="v ' + cls(total) + '">' + susd(total) + '</div><div class="s">' +
+           (state.filter === "all" ? pct(total / s.start) + " aufs Startkapital" : "inkl. offener Wetten") + "</div></div>");
+    k.push('<div class="kpi"><div class="l">Heute abgerechnet</div><div class="v ' + cls(f.todayPnl) + '">' + susd(f.todayPnl) + "</div></div>");
+    k.push('<div class="kpi"><div class="l">Offene Wetten</div><div class="v">' + f.op.length + '</div><div class="s">' + usd(f.invested) +
+           ' im Markt · <span class="' + cls(f.unreal) + '">' + susd(f.unreal) + "</span></div></div>");
+    k.push('<div class="kpi"><div class="l">Trefferquote</div><div class="v">' + pct(f.winrate, 0) + '</div><div class="s">erwartet ' +
+           pct(f.expected, 0) + " · " + f.wins.length + "/" + f.settled.length + "</div></div>");
+    k.push('<div class="kpi"><div class="l">Rendite auf Einsatz</div><div class="v ' + cls(f.realized) + '">' +
+           (f.staked ? pct(f.realized / f.staked) : "–") + '</div><div class="s">' + usd(f.staked) + " eingesetzt</div></div>");
+    document.getElementById("kpis").innerHTML = k.join("");
+  }
+
+  // ---------- Chart ----------
+  function renderChart() {
+    var pts, label, base;
+    if (state.filter === "all") {
+      pts = (D.equity || []).map(function (r) { return { t: r.ts, v: r.equity }; });
+      label = "Kontowert"; base = D.stats.start;
+    } else {
+      var cl = CLOSED.filter(function (p) { return p.category === state.filter && p.closed_at; })
+                     .sort(function (a, b) { return a.closed_at < b.closed_at ? -1 : 1; });
+      var acc = 0; pts = [{ t: D.stats.started_at, v: 0 }];
+      cl.forEach(function (p) { acc += p.pnl || 0; pts.push({ t: p.closed_at, v: acc }); });
+      label = "Gewinn/Verlust " + (state.filter === "crypto" ? "Krypto" : "Sport") + " (abgerechnet)"; base = 0;
     }
-    buttons.forEach(function (b) { b.addEventListener('click', function () { history.replaceState(null, '', '#' + b.dataset.t); show(b.dataset.t); }); });
-    show((location.hash || '#overview').slice(1));
-    window.scrollTo(0, 0);
-    setTimeout(function () { location.reload(); }, 120000);
-  })();
+    document.getElementById("chart-title").textContent = label;
+    var el = document.getElementById("chart");
+    if (pts.length < 2) { el.innerHTML = '<div class="empty">Noch zu wenig Verlauf – kommt mit den ersten Stunden/Abrechnungen.</div>'; return; }
+    var W = 600, H = 170, vals = pts.map(function (p) { return p.v; });
+    var lo = Math.min.apply(null, vals.concat([base])), hi = Math.max.apply(null, vals.concat([base]));
+    var pad = (hi - lo) * 0.08 || 1; lo -= pad; hi += pad;
+    function y(v) { return H - (v - lo) / (hi - lo) * H; }
+    var line = pts.map(function (p, i) { return (i * W / (pts.length - 1)).toFixed(1) + "," + y(p.v).toFixed(1); });
+    var last = vals[vals.length - 1], col = last >= base ? "var(--pos)" : "var(--neg)";
+    el.innerHTML = '<svg class="chart" viewBox="0 0 ' + W + " " + H + '" preserveAspectRatio="none">' +
+      '<defs><linearGradient id="g" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="' + col + '" stop-opacity=".28"/>' +
+      '<stop offset="1" stop-color="' + col + '" stop-opacity="0"/></linearGradient></defs>' +
+      '<line class="base" x1="0" x2="' + W + '" y1="' + y(base).toFixed(1) + '" y2="' + y(base).toFixed(1) + '"/>' +
+      '<polygon fill="url(#g)" points="0,' + H + " " + line.join(" ") + " " + W + "," + H + '"/>' +
+      '<polyline class="ln" stroke="' + col + '" points="' + line.join(" ") + '"/></svg>' +
+      '<div class="axis"><span>' + dt(pts[0].t) + '</span><span>' + (state.filter === "all" ? usd(last) : susd(last)) +
+      '</span><span>' + dt(pts[pts.length - 1].t) + "</span></div>";
+  }
+
+  // ---------- Übersicht ----------
+  function renderOverview() {
+    var rows = ['<tr><th>Bereich</th><th class="n">Offen</th><th class="n">Abgerechn.</th><th class="n">Treffer</th><th class="n">G/V</th></tr>'];
+    [["crypto", "Krypto"], ["sports", "Sport"]].forEach(function (c) {
+      var op = OPEN.filter(function (p) { return p.category === c[0]; });
+      var cl = CLOSED.filter(function (p) { return p.category === c[0]; });
+      var st = cl.filter(function (p) { return p.status === "won" || p.status === "lost"; });
+      var w = st.filter(function (p) { return p.status === "won"; }).length;
+      var pnl = cl.reduce(function (a, p) { return a + (p.pnl || 0); }, 0);
+      rows.push("<tr><td>" + catTag(c[0]) + '</td><td class="n">' + op.length + '</td><td class="n">' + cl.length +
+                '</td><td class="n">' + (st.length ? pct(w / st.length, 0) : "–") + '</td><td class="n ' + cls(pnl) + '">' + susd(pnl) + "</td></tr>");
+    });
+    document.getElementById("cats").innerHTML = rows.join("");
+    var soon = OPEN.filter(function (p) { return inF(p.category); })
+                   .sort(function (a, b) { return (a.end_date || "") < (b.end_date || "") ? -1 : 1; }).slice(0, 3);
+    document.getElementById("soon").innerHTML = soon.length ? soon.map(betCard).join("") : '<div class="empty">Keine offenen Wetten.</div>';
+    var c = D.cfg;
+    document.getElementById("rules").innerHTML = "Der Bot wettet nur, wenn seine <b>eigene</b> Wahrscheinlichkeit nach Gebühren deutlich vom Polymarket-Kurs abweicht (Krypto ≥ " +
+      num(c.min_edge_crypto * 100, 0) + " Pkt, Sport ≥ " + num(c.min_edge_sports * 100, 0) + " Pkt). Einsatz " +
+      (c.stake_mode === "kelly" ? "nach Kelly" : num(c.stake_min * 100, 0) + "–" + num(c.stake_max * 100, 0) + " % des Kontos je nach Sicherheit") +
+      ", max. " + num(c.max_event * 100, 0) + " % pro Ereignis und " + num(c.max_exposure * 100, 0) + " % insgesamt.";
+  }
+
+  // ---------- Wetten-Karte ----------
+  function betCard(p) {
+    var isOpen = p.status === "open";
+    var val = isOpen ? openVal(p) : null;
+    var right = isOpen ? '<span class="res ' + cls(val - p.cost) + '">' + susd(val - p.cost) + "</span>"
+                       : '<span class="res ' + cls(p.pnl) + '">' + susd(p.pnl) + "</span>";
+    var meta = [
+      ["Kauf", cent(p.price)],
+      [isOpen ? "Jetzt" : "Ergebnis", isOpen ? cent(p.mark != null ? p.mark : p.price) : resChip(p.status)],
+      ["Bot sagt", pct(p.own_p, 0)],
+      ["Einsatz", usd(p.cost)],
+      [isOpen ? "Wert jetzt" : "Auszahlung", usd(isOpen ? val : p.payout)],
+      [isOpen ? "Ende" : "Abgerechnet", isOpen ? dt(p.end_date) : dt(p.closed_at)]
+    ].map(function (m) { return "<div><b>" + m[0] + "</b>" + m[1] + "</div>"; }).join("");
+    return '<div class="bet ' + betClass(p.status) + '"><div class="top">' + catTag(p.category) + sideBadge(p.side_name) +
+      (isOpen ? '<span class="chip">' + untilText(p.end_date) + "</span>" : "") + right + '</div><div class="q">' + esc(p.question) +
+      '</div><div class="meta">' + meta + '</div><div class="info">' + esc(p.info || "") + "</div></div>";
+  }
+
+  function renderOpen() {
+    var op = OPEN.filter(function (p) { return inF(p.category); })
+                 .sort(function (a, b) { return (a.end_date || "") < (b.end_date || "") ? -1 : 1; });
+    document.getElementById("n-open").textContent = op.length;
+    document.getElementById("open-list").innerHTML = op.length ? op.map(betCard).join("") : '<div class="empty">Keine offenen Wetten in diesem Bereich.</div>';
+  }
+
+  function renderHistory() {
+    var cl = CLOSED.filter(function (p) { return inF(p.category) && (state.hist === "all" || p.status === state.hist); });
+    document.getElementById("n-hist").textContent = CLOSED.filter(function (p) { return inF(p.category); }).length;
+    document.getElementById("hist-list").innerHTML = cl.length ? cl.slice(0, 300).map(betCard).join("") : '<div class="empty">Noch nichts abgerechnet.</div>';
+  }
+
+  // ---------- Kalender ----------
+  var MONTHS = ["Januar","Februar","März","April","Mai","Juni","Juli","August","September","Oktober","November","Dezember"];
+  function dayMaps() {
+    var closed = {}, opened = {};
+    CLOSED.forEach(function (p) { if (!inF(p.category) || !p.closed_at) return; var k = dayKey(p.closed_at); (closed[k] = closed[k] || []).push(p); });
+    OPEN.concat(CLOSED).forEach(function (p) { if (!inF(p.category) || !p.opened_at) return; var k = dayKey(p.opened_at); (opened[k] = opened[k] || []).push(p); });
+    return { closed: closed, opened: opened };
+  }
+  function renderCalendar() {
+    if (!state.calMonth) { var t = dayKey(new Date().toISOString()); state.calMonth = t.slice(0, 7); }
+    var y = +state.calMonth.slice(0, 4), m = +state.calMonth.slice(5, 7);
+    document.getElementById("cal-title").textContent = MONTHS[m - 1] + " " + y;
+    var maps = dayMaps(), today = dayKey(new Date().toISOString());
+    var first = new Date(Date.UTC(y, m - 1, 1)), days = new Date(Date.UTC(y, m, 0)).getUTCDate();
+    var offset = (first.getUTCDay() + 6) % 7;
+    var html = ["Mo","Di","Mi","Do","Fr","Sa","So"].map(function (d) { return '<div class="wd">' + d + "</div>"; });
+    for (var i = 0; i < offset; i++) html.push('<div class="day out"></div>');
+    var mPnl = 0, mN = 0, mW = 0, best = null, worst = null;
+    for (var d = 1; d <= days; d++) {
+      var key = y + "-" + String(m).padStart(2, "0") + "-" + String(d).padStart(2, "0");
+      var list = maps.closed[key] || [], op = maps.opened[key] || [];
+      var pnl = list.reduce(function (a, p) { return a + (p.pnl || 0); }, 0);
+      mPnl += pnl; mN += list.length; mW += list.filter(function (p) { return p.status === "won"; }).length;
+      if (list.length) { if (!best || pnl > best.v) best = { d: d, v: pnl }; if (!worst || pnl < worst.v) worst = { d: d, v: pnl }; }
+      var c = "day" + (list.length ? (pnl >= 0 ? " up" : " down") : "") + (key === today ? " today" : "") + (key === state.calDay ? " sel" : "");
+      var dots = op.length ? '<span class="dots">' + new Array(Math.min(op.length, 3) + 1).join("<i></i>") + "</span>" : "";
+      html.push('<div class="' + c + '" data-day="' + key + '"><span class="d">' + d + "</span>" + dots +
+                '<span class="p ' + (list.length ? cls(pnl) : "") + '">' + (list.length ? short(pnl) : "") + "</span></div>");
+    }
+    document.getElementById("cal-grid").innerHTML = html.join("");
+    document.getElementById("cal-sum").innerHTML =
+      '<div><b>Monat G/V</b><span class="' + cls(mPnl) + '">' + susd(mPnl) + "</span></div>" +
+      "<div><b>Wetten · Treffer</b>" + mN + " · " + (mN ? pct(mW / mN, 0) : "–") + "</div>" +
+      "<div><b>Bester / schwächster</b>" + (best ? '<span class="pos">' + best.d + ".</span> / <span class=\"neg\">" + worst.d + ".</span>" : "–") + "</div>";
+    Array.prototype.forEach.call(document.querySelectorAll("#cal-grid .day[data-day]"), function (el) {
+      el.addEventListener("click", function () { state.calDay = state.calDay === el.dataset.day ? null : el.dataset.day; renderCalendar(); });
+    });
+    renderDayPanel(maps);
+  }
+  function renderDayPanel(maps) {
+    var panel = document.getElementById("daypanel"), inner = document.getElementById("daypanel-in");
+    if (!state.calDay) { panel.classList.remove("open"); return; }
+    var list = maps.closed[state.calDay] || [], op = maps.opened[state.calDay] || [];
+    var pnl = list.reduce(function (a, p) { return a + (p.pnl || 0); }, 0);
+    var stake = list.reduce(function (a, p) { return a + p.cost; }, 0);
+    var w = list.filter(function (p) { return p.status === "won"; }).length;
+    var d = new Date(state.calDay + "T12:00:00Z");
+    var title = d.toLocaleDateString("de-DE", { weekday: "long", day: "numeric", month: "long", timeZone: "UTC" });
+    inner.innerHTML = '<div class="hd"><span class="t">' + title + '</span><button class="close" id="dp-close">Schließen</button></div>' +
+      '<div class="stats3"><div><b>G/V</b><span class="' + cls(pnl) + '">' + susd(pnl) + "</span></div><div><b>Abgerechnet</b>" + list.length +
+      "</div><div><b>Gewonnen</b>" + w + " / " + list.length + "</div><div><b>Eingesetzt</b>" + usd(stake) + "</div></div>" +
+      '<div class="sub2">Abgerechnete Wetten</div>' + (list.length ? list.map(betCard).join("") : '<div class="empty">An diesem Tag wurde nichts abgerechnet.</div>') +
+      (op.length ? '<div class="sub2">Neu eröffnet (' + op.length + ")</div>" + op.map(betCard).join("") : "");
+    panel.classList.add("open");
+    document.getElementById("dp-close").addEventListener("click", function () { state.calDay = null; renderCalendar(); });
+  }
+
+  // ---------- Analyse ----------
+  function renderAnalysis() {
+    var all = (D.state.opportunities || []).filter(function (o) { return inF(o.category); });
+    var list = all.filter(function (o) {
+      if (state.ana === "plus") return o.edge > 0;
+      if (state.ana === "traded") return /eröffnet|schon gehandelt/.test(o.status);
+      return true;
+    });
+    var seen = D.state.markets_seen || {};
+    document.getElementById("ana-note").innerHTML = "Letzter Lauf " + dt(D.state.last_scan) + ": " +
+      Object.keys(seen).map(function (k) { return seen[k] + " " + (k === "crypto" ? "Krypto" : "Sport") + "-Märkte"; }).join(", ") +
+      " gesehen, " + all.length + " selbst berechnet. <b>Vorsprung</b> = eigene Wahrscheinlichkeit minus Kaufkurs inkl. Gebühr.";
+    document.getElementById("ana-list").innerHTML = list.length ? list.slice(0, 150).map(function (o) {
+      var traded = /eröffnet/.test(o.status);
+      var lo = Math.min(o.own_p, o.market_p) * 100, hi = Math.max(o.own_p, o.market_p) * 100;
+      var col = o.own_p >= o.market_p ? "rgba(47,208,127,.35)" : "rgba(255,93,108,.35)";
+      return '<div class="bet' + (traded ? " win" : "") + '"><div class="top">' + catTag(o.category) + sideBadge(o.side_name) +
+        (traded ? '<span class="chip win">gekauft</span>' : '<span class="chip">' + esc(o.status) + "</span>") +
+        '<span class="res ' + cls(o.edge) + '">' + (o.edge >= 0 ? "+" : "−") + num(Math.abs(o.edge) * 100, 1) + " Pkt</span></div>" +
+        '<div class="q">' + esc(o.question) + "</div>" +
+        '<div class="pbar"><span class="fill" style="left:' + lo + "%;width:" + (hi - lo) + "%;background:" + col + '"></span>' +
+        '<span class="mk m" style="left:' + o.market_p * 100 + '%"></span><span class="mk b" style="left:' + o.own_p * 100 + '%"></span></div>' +
+        '<div class="legend"><span><i style="background:var(--acc)"></i>Bot ' + pct(o.own_p) + '</span><span><i style="background:#c9d2e3"></i>Markt ' +
+        pct(o.market_p) + "</span><span>Kurs " + cent(o.price) + "</span></div>" +
+        '<div class="info">' + esc(o.info || "") + "</div></div>";
+    }).join("") : '<div class="empty">Keine passenden Märkte im letzten Lauf.</div>';
+    var sk = D.state.skips || {}, keys = Object.keys(sk), max = Math.max.apply(null, keys.map(function (k) { return sk[k]; }).concat([1]));
+    document.getElementById("skips").innerHTML = keys.length ? keys.map(function (k) {
+      return '<div><span class="bl">' + esc(k) + '</span><span class="bt"><i style="width:' + (sk[k] / max * 100) + '%"></i></span><span class="bv">' + sk[k] + "</span></div>";
+    }).join("") : '<div class="dim">–</div>';
+  }
+
+  // ---------- Treffsicherheit ----------
+  function renderCalib() {
+    var key = state.filter === "all" ? "all" : state.filter;
+    var c = (D.stats.calibration || {})[key] || {};
+    function f4(v) { return v == null ? "–" : num(v, 4); }
+    var better = c.brier_bot != null && c.brier_market != null ? c.brier_bot < c.brier_market : null;
+    document.getElementById("calib-kpis").innerHTML =
+      '<div class="kpi"><div class="l">Entschiedene Märkte</div><div class="v">' + (c.n || 0) + '</div><div class="s">von ' + (c.n_all || 0) + " insgesamt</div></div>" +
+      '<div class="kpi"><div class="l">Brier Bot</div><div class="v ' + (better === true ? "pos" : better === false ? "neg" : "") + '">' + f4(c.brier_bot) + '</div><div class="s">LogLoss ' + f4(c.logloss_bot) + "</div></div>" +
+      '<div class="kpi"><div class="l">Brier Markt</div><div class="v">' + f4(c.brier_market) + '</div><div class="s">LogLoss ' + f4(c.logloss_market) + "</div></div>" +
+      '<div class="kpi big"><div class="l">Urteil</div><div class="v" style="font-size:16px">' +
+      (better === null || (c.n || 0) < 50 ? "Noch zu wenig Daten (ab ~200 Märkten aussagekräftig)" : better ? "Bot genauer als der Markt" : "Markt genauer als der Bot") + "</div></div>";
+    var b = D.stats.calibration_buckets || [];
+    document.getElementById("buckets").innerHTML = '<tr><th>Bot sagt</th><th class="n">Märkte</th><th class="n">Ø Bot</th><th class="n">Ø Markt</th><th class="n">Eingetreten</th></tr>' +
+      (b.length ? b.map(function (r) {
+        return "<tr><td>" + r.range + '</td><td class="n">' + r.n + '</td><td class="n">' + pct(r.bot, 0) + '</td><td class="n">' + pct(r.market, 0) + '</td><td class="n"><b>' + pct(r.actual, 0) + "</b></td></tr>";
+      }).join("") : '<tr><td colspan="5" class="dim">Noch keine entschiedenen Märkte.</td></tr>');
+  }
+
+  // ---------- Status ----------
+  function renderStatus() {
+    var st = D.state, src = D.sources;
+    var pill = document.getElementById("status");
+    var dc = st.running ? "run" : (st.last_error ? "err" : "");
+    pill.innerHTML = '<span class="dot ' + dc + '"></span>' + (st.running ? "Lauf aktiv" : st.last_error ? "Fehler" : "Läuft · " + dt(st.last_scan).slice(-5));
+    document.getElementById("hsub").textContent = "Spielgeld · alle " + num(D.cfg.interval, 0) + " min";
+    var pr = src.prices || {};
+    document.getElementById("sources").innerHTML =
+      Object.keys(pr).map(function (k) { return '<div class="row"><span>' + k + '</span><span class="' + (/^FEHLER/.test(pr[k]) ? "err" : "dim") + '">' + esc(pr[k]) + "</span></div>"; }).join("") +
+      '<div class="row" style="margin-top:8px"><span>Buchmacher-Quoten</span><span class="dim">' + esc(src.odds) + "</span></div>" +
+      '<div class="row"><span>Ligen</span><span class="dim" style="text-align:right">' + esc((D.cfg.leagues || []).join(", ")) + "</span></div>" +
+      (st.last_error ? '<div class="err" style="margin-top:8px">' + esc(st.last_error) + "</div>" : "");
+    document.getElementById("log").innerHTML = (D.logs || []).map(function (l) {
+      return '<div><span class="t">' + dt(l.ts) + '</span><span class="' + (l.level === "error" ? "err" : "") + '">' + esc(l.msg) + "</span></div>";
+    }).join("") || '<div class="dim">–</div>';
+  }
+
+  // ---------- Steuerung ----------
+  function renderAll() {
+    renderKpis(); renderChart(); renderOverview(); renderOpen(); renderHistory(); renderCalendar(); renderAnalysis(); renderCalib(); renderStatus();
+  }
+  function setOn(sel, attr, val) { Array.prototype.forEach.call(document.querySelectorAll(sel), function (b) { b.classList.toggle("on", b.dataset[attr] === val); }); }
+  function showTab(t) {
+    state.tab = t; setOn("#tabs button", "t", t);
+    Array.prototype.forEach.call(document.querySelectorAll("section"), function (s) { s.classList.toggle("on", s.id === t); });
+    try { history.replaceState(null, "", "#tab-" + t); } catch (e) {}
+  }
+  function bind(sel, attr, fn) { Array.prototype.forEach.call(document.querySelectorAll(sel), function (b) { b.addEventListener("click", function () { fn(b.dataset[attr]); }); }); }
+  bind("#filter button", "f", function (f) { state.filter = f; try { localStorage.setItem("pb_filter", f); } catch (e) {} setOn("#filter button", "f", f); renderAll(); });
+  bind("#tabs button", "t", showTab);
+  bind("#hist-filter button", "h", function (h) { state.hist = h; setOn("#hist-filter button", "h", h); renderHistory(); });
+  bind("#ana-filter button", "a", function (a) { state.ana = a; setOn("#ana-filter button", "a", a); renderAnalysis(); });
+  function shiftMonth(n) { var y = +state.calMonth.slice(0, 4), m = +state.calMonth.slice(5, 7) - 1 + n; y += Math.floor(m / 12); m = ((m % 12) + 12) % 12;
+    state.calMonth = y + "-" + String(m + 1).padStart(2, "0"); state.calDay = null; renderCalendar(); }
+  document.getElementById("cal-prev").addEventListener("click", function () { shiftMonth(-1); });
+  document.getElementById("cal-next").addEventListener("click", function () { shiftMonth(1); });
+
+  setOn("#filter button", "f", state.filter);
+  var h = (location.hash || "").replace(/^#(tab-)?/, "");
+  showTab(document.getElementById(h) && document.querySelector('#tabs button[data-t="' + h + '"]') ? h : "overview");
+  renderAll();
+  window.scrollTo(0, 0);
+
+  // Daten alle 60 s im Hintergrund auffrischen (ohne Neuladen, Auswahl bleibt erhalten)
+  setInterval(function () {
+    fetch("api/state").then(function (r) { return r.json(); }).then(function (d) {
+      D = d; OPEN = d.open || []; CLOSED = d.closed || []; renderAll();
+    }).catch(function () {});
+  }, 60000);
+})();
 </script>
 </body>
 </html>
