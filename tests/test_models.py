@@ -27,6 +27,7 @@ def test_parse(q, exp):
     "Bitcoin Up or Down - November 11, 3PM ET",
     "Will MicroStrategy buy more Bitcoin?",
     "Will Trump win?",
+    "Will Bitcoin hashprice be greater than $40 for the week of November 9?",
 ])
 def test_parse_unsupported(q):
     assert cm.parse_question(q) is None

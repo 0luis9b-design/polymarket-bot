@@ -46,7 +46,8 @@ def _amount(num, suffix):
 def parse_question(q):
     """Erkennt Coin, Art der Wette und Ziel-Preis(e). None = kein unterstützter Markt."""
     t = q.lower()
-    if "up or down" in t or "all time high" in t or "all-time high" in t:
+    if any(x in t for x in ("up or down", "all time high", "all-time high", "hashprice", "hash rate", "hashrate",
+                            "dominance", "market cap", "etf", "flows", "fees", "transactions", "reserve")):
         return None
     asset = next((a for a, pat in ASSET_PATTERNS if re.search(pat, t)), None)
     if not asset:
@@ -162,12 +163,18 @@ def analyze(market, now=None, closes_fn=hourly_closes):
         return {"skip": "kein Enddatum"}
     tt = end if parsed["kind"] in ("touch", "touch_down") else target_time(market["question"], end)
     hours = (tt - now).total_seconds() / 3600
+    if hours < 0:
+        return {"skip": "Stichtag vorbei, wartet auf Entscheidung"}
     if hours < config.CRYPTO_MIN_HOURS:
-        return {"skip": f"läuft in {hours:.1f} h ab"}
+        return {"skip": "läuft bald ab"}
     if hours > config.CRYPTO_MAX_DAYS * 24:
-        return {"skip": f"zu lange Laufzeit ({hours / 24:.0f} Tage)"}
+        return {"skip": "zu lange Laufzeit"}
     closes, source = closes_fn(parsed["asset"])
     spot = closes[-1]
+    # Schutz vor Fehlerkennung: Ziel-Preis muss in der Nähe des echten Kurses liegen
+    for k in (parsed["k1"], parsed.get("k2") or parsed["k1"]):
+        if not (spot / 4 <= k <= spot * 4):
+            return {"skip": "Ziel-Preis unplausibel"}
     sigma = hourly_vol(closes)
     p = probability(parsed, spot, sigma, hours)
     strikes = _fmt(parsed["k1"]) + (f"–{_fmt(parsed['k2'])}" if parsed["kind"] == "between" else "")
