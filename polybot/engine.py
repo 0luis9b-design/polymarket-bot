@@ -123,6 +123,10 @@ class Engine:
             now = now or datetime.now(timezone.utc)
             for a in config.ACCOUNTS:  # Konten anlegen
                 self.cash(a["id"])
+            if notify.enabled() and self.store.kv_get("telegram_hello") != config.TELEGRAM_CHAT_ID:
+                self.store.kv_set("telegram_hello", config.TELEGRAM_CHAT_ID)
+                notify.send("✅ <b>Polymarket-Bot verbunden</b>\nAb jetzt kommt hier eine Nachricht bei jedem Kauf, Verkauf "
+                            f"und jeder Abrechnung im Hauptkonto, dazu um {config.DAILY_SUMMARY_HOUR} Uhr die Tagesbilanz.")
             self.settle()
             markets = self.collect_markets(now)
             self.refresh_closing_odds(markets, now)
