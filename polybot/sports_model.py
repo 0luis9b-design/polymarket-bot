@@ -105,15 +105,23 @@ def devig(prices):
     return [x / tot for x in inv]
 
 
-def consensus(event):
-    """Faire Wahrscheinlichkeit je Outcome-Name. Pinnacle zählt doppelt, sonst Median."""
+def consensus(event, n_outcomes=None):
+    """Faire Wahrscheinlichkeit je Outcome-Name. Pinnacle zählt doppelt, sonst Median.
+
+    n_outcomes=2: nur Buchmacher mit Zwei-Wege-Quote (inkl. Verlängerung, z. B. NHL bei Polymarket),
+    n_outcomes=3: nur Drei-Wege-Quoten (Fußball mit Unentschieden).
+    """
     per_name = {}
     books = 0
+    pin = False
     for bm in event.get("bookmakers") or []:
         for mk in bm.get("markets") or []:
             if mk.get("key") != "h2h":
                 continue
             outs = mk.get("outcomes") or []
+            if n_outcomes and len(outs) != n_outcomes:
+                continue
+            pin = pin or bm.get("key") == "pinnacle"
             fair = devig([o.get("price") for o in outs])
             if not fair:
                 continue
@@ -121,8 +129,7 @@ def consensus(event):
             weight = 2 if bm.get("key") == "pinnacle" else 1
             for o, p in zip(outs, fair):
                 per_name.setdefault(o["name"], []).extend([p] * weight)
-    if books < config.SPORTS_MIN_BOOKS and not any(
-            bm.get("key") == "pinnacle" for bm in event.get("bookmakers") or []):
+    if books < config.SPORTS_MIN_BOOKS and not pin:
         return None, books
     if not per_name:
         return None, books
@@ -270,13 +277,17 @@ def analyze(market, odds_client, now=None):
     ev, score = find_event(events, teams[0], teams[1], start)
     if not ev:
         return {"skip": f"kein Buchmacher-Spiel gefunden ({score:.2f})"}
-    fair, books = consensus(ev)
-    if not fair:
-        return {"skip": f"zu wenige Buchmacher ({books})"}
-
     outs = [o.lower() for o in market["outcomes"]]
+    yes_no = outs[0] in ("yes", "ja")
+    if yes_no:
+        fair, books = consensus(ev, 3 if sport.startswith("soccer") else None)
+    else:
+        fair, books = consensus(ev, 2)  # Polymarket-Sieger-Markt mit zwei Teams: Verlängerung zählt
+    if not fair:
+        return {"skip": "zu wenige passende Buchmacher-Quoten"}
+
     q = market["question"]
-    if outs[0] in ("yes", "ja"):
+    if yes_no:
         ql = q.lower()
         if "draw" in ql or "unentschieden" in ql:
             p = next((v for k, v in fair.items() if k.lower() == "draw"), None)

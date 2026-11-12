@@ -205,7 +205,10 @@ class Engine:
                 if res:
                     o["reasons"] = [res]
         self.state["skips"] = dict(skips.most_common())
-        self.state["opportunities"] = [self._opp_view(o) for o in opps[:150]]
+        sports = [o for o in opps if o["market"]["category"] == "sports"]
+        crypto = [o for o in opps if o["market"]["category"] == "crypto"][:120]
+        self.state["opportunities"] = [self._opp_view(o) for o in sorted(
+            sports + crypto, key=lambda o: o["eval"]["edge"], reverse=True)]
 
     def _opp_view(self, o):
         m, ev = o["market"], o["eval"]

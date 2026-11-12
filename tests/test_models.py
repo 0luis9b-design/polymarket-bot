@@ -200,3 +200,21 @@ def test_odds_daily_budget():
         client.events(f"sport_{i}")
     assert n["c"] == budget
     assert "Tagesbudget" in client.status
+
+
+def test_nhl_two_way_ignores_three_way_books():
+    now = datetime(2026, 11, 12, 12, 0, tzinfo=timezone.utc)
+    ev_odds = {"home_team": "Carolina Hurricanes", "away_team": "Seattle Kraken", "commence_time": "2026-11-12T17:00:00Z",
+               "bookmakers": [
+                   {"key": "pinnacle", "markets": [{"key": "h2h", "outcomes": [
+                       {"name": "Carolina Hurricanes", "price": 1.4}, {"name": "Seattle Kraken", "price": 3.0}]}]},
+                   {"key": "x", "markets": [{"key": "h2h", "outcomes": [
+                       {"name": "Carolina Hurricanes", "price": 1.9}, {"name": "Seattle Kraken", "price": 4.5},
+                       {"name": "Draw", "price": 4.2}]}]}]}
+    client = sm.OddsClient(FakeStore(), api_key="x", fetch=lambda *a, **k: ([ev_odds], {}))
+    raw = {"id": "1", "question": "Hurricanes vs. Kraken", "outcomes": '["Hurricanes", "Kraken"]',
+           "outcomePrices": '["0.72", "0.28"]', "endDate": "2026-11-12T20:00:00Z",
+           "gameStartTime": "2026-11-12 17:00:00+00", "sportsMarketType": "moneyline"}
+    m = normalize_market(raw, {"id": "e", "title": "Hurricanes vs. Kraken", "tags": [{"slug": "nhl"}]}, "sports")
+    a = sm.analyze(m, client, now=now)
+    assert abs(a["p_yes"] - (1 / 1.4) / (1 / 1.4 + 1 / 3.0)) < 1e-9
