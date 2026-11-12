@@ -51,6 +51,15 @@ LEAGUES = {
     "mls": "soccer_usa_mls",
     "eredivisie": "soccer_netherlands_eredivisie",
     "ufc": "mma_mixed_martial_arts",
+    "efl-championship": "soccer_efl_champ",
+    "la-liga-2": "soccer_spain_segunda_division",
+    "ligue-2": "soccer_france_ligue_two",
+    "serie-b": "soccer_italy_serie_b",
+    "scottish-premiership": "soccer_spl",
+    "soccer-el1": "soccer_england_league1",
+    "soccer-el2": "soccer_england_league2",
+    "brazil-serie-a": "soccer_brazil_campeonato",
+    "mex": "soccer_mexico_ligamx",
     "mma": "mma_mixed_martial_arts",
 }
 

@@ -24,6 +24,12 @@ CREATE TABLE IF NOT EXISTS log (
     id INTEGER PRIMARY KEY AUTOINCREMENT, ts TEXT, level TEXT, msg TEXT
 );
 CREATE TABLE IF NOT EXISTS equity (ts TEXT PRIMARY KEY, equity REAL, cash REAL);
+CREATE TABLE IF NOT EXISTS orders (
+    id INTEGER PRIMARY KEY AUTOINCREMENT, account TEXT, market_id TEXT, event_id TEXT, category TEXT, question TEXT,
+    slug TEXT, event_slug TEXT, side INTEGER, side_name TEXT, token_id TEXT, price REAL, shares REAL, stake REAL,
+    q REAL, grp TEXT, info TEXT, created_at TEXT, end_date TEXT, game_start TEXT, status TEXT DEFAULT 'open',
+    done_at TEXT, note TEXT
+);
 CREATE TABLE IF NOT EXISTS equity_acc (account TEXT, ts TEXT, equity REAL, cash REAL, PRIMARY KEY (account, ts));
 """
 
@@ -140,6 +146,36 @@ class Store:
         sets = ",".join(f"{k}=?" for k in kw)
         with self.lock:
             self.db.execute(f"UPDATE positions SET {sets} WHERE id=?", [*kw.values(), pid])
+            self.db.commit()
+
+    # --- Limit-Orders ---
+    def open_orders(self, account=None):
+        q, args = "SELECT * FROM orders WHERE status='open'", []
+        if account:
+            q, args = q + " AND account=?", [account]
+        with self.lock:
+            return [dict(r) for r in self.db.execute(q + " ORDER BY created_at", args)]
+
+    def recent_orders(self, limit=200):
+        with self.lock:
+            return [dict(r) for r in self.db.execute("SELECT * FROM orders ORDER BY id DESC LIMIT ?", (limit,))]
+
+    def has_order(self, market_id, account):
+        with self.lock:
+            return self.db.execute("SELECT 1 FROM orders WHERE market_id=? AND account=? AND status='open' LIMIT 1",
+                                   (market_id, account)).fetchone() is not None
+
+    def insert_order(self, o):
+        cols = ",".join(o)
+        with self.lock:
+            cur = self.db.execute(f"INSERT INTO orders({cols}) VALUES({','.join('?' * len(o))})", list(o.values()))
+            self.db.commit()
+            return cur.lastrowid
+
+    def update_order(self, oid, **kw):
+        sets = ",".join(f"{k}=?" for k in kw)
+        with self.lock:
+            self.db.execute(f"UPDATE orders SET {sets} WHERE id=?", [*kw.values(), oid])
             self.db.commit()
 
     # --- Prognosen (für den Vergleich Bot vs. Markt) ---

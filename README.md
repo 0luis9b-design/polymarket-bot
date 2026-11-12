@@ -37,6 +37,14 @@ Kein Konto, kein Wallet, kein echtes Geld – er liest nur öffentliche Daten.
 - **Gruppen-Grenze:** max. 10 % für alles am selben Coin+Stichtag bzw. Spiel.
 - **Telegram:** `TELEGRAM_BOT_TOKEN` und `TELEGRAM_CHAT_ID` setzen (Chat-ID zeigt das Dashboard unter Status an).
 
+## Neu (12.11.2026, Abend)
+- **Wetter-Märkte:** Temperatur-Märkte (Höchst-/Tiefstwert an ~60 Flughäfen) mit dem Open-Meteo-Ensemble (ECMWF, GFS, ICON, >120 Szenarien).
+- **Ligen:** NBA/NHL raus, dafür 2. Bundesliga, Championship, La Liga 2, Ligue 2, Serie B, Schottland, League One.
+- **Neue Testkonten:** „Limit-Orders“ (Gebote unter fairem Wert, ohne Gebühr – Füllung nur angenähert) und „Außenseiter verkaufen“ (Nein bei 2–5 %).
+- **Risikobremse:** −8 % an einem Tag → Pause bis morgen; −25 % gesamt → Pause bis „Fortsetzen“ im Dashboard.
+- **Selbstkorrektur:** Ab 200 entschiedenen Märkten pro Bereich mischt der Bot seine Zahl mit dem Marktkurs (Gewicht aus der Vergangenheit gelernt).
+- **Wochenbericht:** sonntags 18 Uhr per Telegram.
+
 ## Ist der Bot besser als der Markt?
 Reiter **Treffsicherheit**: Für jeden berechneten Markt wird beim ersten Mal die Bot-Prognose und der Marktkurs gespeichert.
 Nach der Entscheidung wird verglichen (Brier-Wert, kleiner = besser). Erst nach einigen hundert Märkten ist das aussagekräftig.

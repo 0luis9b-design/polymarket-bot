@@ -142,15 +142,17 @@ def _dashboard_data():
         "stats": engine.stats(),
         "accounts": engine.accounts_overview(),
         "state": {k: st.get(k) for k in ("last_scan", "last_error", "running", "duration", "markets_seen",
-                                          "skips", "opportunities", "scans", "arbs")},
+                                          "skips", "opportunities", "scans", "arbs", "weights", "paused")},
         "sources": engine.status(),
         "open": store.open_positions(),
         "closed": store.closed_positions(8000),
+        "orders": store.recent_orders(300),
         "equity": {a["id"]: store.equity_history(a["id"]) for a in config.ACCOUNTS},
         "logs": store.recent_log(200),
         "cfg": {
             "start": config.START_BALANCE, "interval": config.SCAN_INTERVAL_MIN,
             "min_edge_crypto": config.MIN_EDGE_CRYPTO, "min_edge_sports": config.MIN_EDGE_SPORTS,
+            "min_edge_weather": config.MIN_EDGE_WEATHER, "calib_min_n": config.CALIB_MIN_N,
             "stake_mode": config.STAKE_MODE, "stake_min": config.STAKE_MIN_PCT, "stake_max": config.STAKE_MAX_PCT,
             "max_event": config.MAX_EVENT_PCT, "max_group": config.MAX_GROUP_PCT, "max_exposure": config.MAX_EXPOSURE_PCT,
             "leagues": config.SPORTS_LEAGUES,
@@ -173,6 +175,14 @@ def api_scan():
     if request.args.get("key") != os.environ.get("SCAN_KEY", "") or not os.environ.get("SCAN_KEY"):
         return jsonify(error="SCAN_KEY fehlt oder falsch"), 403
     threading.Thread(target=engine.run_cycle, daemon=True).start()
+    return jsonify(ok=True)
+
+
+@app.route("/api/account/<aid>/resume", methods=["POST"])
+def api_resume(aid):
+    if aid not in {a["id"] for a in config.ACCOUNTS}:
+        return jsonify(error="unbekanntes Konto"), 404
+    engine.resume(aid)
     return jsonify(ok=True)
 
 

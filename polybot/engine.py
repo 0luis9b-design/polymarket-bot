@@ -18,13 +18,29 @@ from collections import Counter
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
-from . import config, crypto_model, notify, polymarket, sports_model
+from . import config, crypto_model, notify, polymarket, sports_model, weather_model
 from .prices import hourly_closes, source_status
 
 log = logging.getLogger("polybot.engine")
 BERLIN = ZoneInfo("Europe/Berlin")
 ACC = {a["id"]: a for a in config.ACCOUNTS}
 MAIN = config.ACCOUNTS[0]["id"]
+
+
+def edge_for(acc, cat):
+    return {"crypto": acc["edge_c"], "weather": acc.get("edge_w", config.MIN_EDGE_WEATHER)}.get(cat, acc["edge_s"])
+
+
+def best_weight(rows):
+    """Mischgewicht w für p = w·Bot + (1−w)·Markt, das in der Vergangenheit am besten getroffen hätte."""
+    best_w, best_l = 1.0, None
+    for i in range(21):
+        w = i / 20
+        mixed = [{"p": w * r["own_p"] + (1 - w) * r["market_p"], "outcome": r["outcome"]} for r in rows]
+        loss = logloss(mixed, "p")
+        if best_l is None or loss < best_l - 1e-12:
+            best_w, best_l = w, loss
+    return best_w
 
 
 def fee_per_share(rate, price):
@@ -90,13 +106,15 @@ class Engine:
         self.closes_fn = closes_fn
         self.chain_fn = chain_fn
         self.book_fn = book_fn if config.USE_ORDERBOOK else None
+        self.weather_fetch = None
         self.odds = odds_client or sports_model.OddsClient(store)
         self.lock = threading.Lock()
         self._books = {}
         self.state = {"last_scan": None, "last_error": None, "running": False, "scans": 0,
-                      "opportunities": [], "skips": {}, "markets_seen": {}, "duration": None, "arbs": []}
+                      "opportunities": [], "skips": {}, "markets_seen": {}, "duration": None, "arbs": [],
+                      "weights": {}, "paused": {}}
         saved = store.kv_json("last_state", {})  # letzte Analyse nach Neustart weiter anzeigen
-        for k in ("last_scan", "opportunities", "skips", "markets_seen", "duration", "arbs"):
+        for k in ("last_scan", "opportunities", "skips", "markets_seen", "duration", "arbs", "weights"):
             if k in saved:
                 self.state[k] = saved[k]
 
@@ -128,14 +146,24 @@ class Engine:
                 notify.send("✅ <b>Polymarket-Bot verbunden</b>\nAb jetzt kommt hier eine Nachricht bei jedem Kauf, Verkauf "
                             f"und jeder Abrechnung im Hauptkonto, dazu um {config.DAILY_SUMMARY_HOUR} Uhr die Tagesbilanz.")
             self.settle()
+            self.update_weights()
             markets = self.collect_markets(now)
             self.refresh_closing_odds(markets, now)
             results = self.analyze_all(markets, now)
             by_market = {o["market"]["id"]: o for o in results}
+            self.check_risk(now)
             for a in config.ACCOUNTS:
                 if a["exit"]:
                     self.do_exits(a, by_market, now)
-                if a["model"]:
+                if self.paused(a["id"]):
+                    for o in results:
+                        o["status"][a["id"]] = "Risikobremse aktiv"
+                    continue
+                if a.get("maker"):
+                    self.do_maker(a, results, markets, by_market, now)
+                elif a.get("longshot"):
+                    self.do_longshots(a, markets, now)
+                elif a["model"]:
                     self.do_entries(a, results)
             self.do_arbitrage(markets, now)
             self.update_closing(by_market)
@@ -145,6 +173,7 @@ class Engine:
                 self.store.add_equity(round(self.equity(a["id"], pos), 2), round(self.cash(a["id"]), 2), a["id"])
             self.state["opportunities"] = [self._opp_view(o) for o in self._shown(results)]
             self.daily_summary(now)
+            self.weekly_report(now)
             self._log_summary(results)
             self.state["last_error"] = None
         except Exception as e:  # noqa: BLE001
@@ -158,7 +187,8 @@ class Engine:
             self.state["running"] = False
             try:
                 self.store.kv_set("last_state", json.dumps(
-                    {k: self.state[k] for k in ("last_scan", "opportunities", "skips", "markets_seen", "duration", "arbs")}))
+                    {k: self.state[k] for k in ("last_scan", "opportunities", "skips", "markets_seen", "duration", "arbs",
+                                                "weights")}))
             except (TypeError, ValueError) as e:
                 log.warning("Zustand nicht speicherbar: %s", e)
             self.lock.release()
@@ -195,6 +225,20 @@ class Engine:
                 markets += ms
             except Exception as e:  # noqa: BLE001
                 self.store.log(f"Sport-Märkte nicht abrufbar: {e}", "error")
+        if config.WEATHER_ENABLED:
+            try:
+                extra = {"end_date_min": (now - timedelta(hours=12)).strftime("%Y-%m-%dT%H:%M:%SZ"),
+                         "end_date_max": (now + timedelta(days=config.WEATHER_MAX_DAYS + 1)).strftime("%Y-%m-%dT%H:%M:%SZ")}
+                evs = self.fetch_events("daily-temperature", extra=extra)
+                ms = polymarket.markets_from_events(evs, "weather")
+                for m in ms:  # Station steht in der Beschreibung des Ereignisses
+                    if not m["description"]:
+                        ev = next((e for e in evs if str(e.get("id")) == m["event_id"]), {})
+                        m["description"] = ev.get("description") or ""
+                seen["weather"] = len(ms)
+                markets += ms
+            except Exception as e:  # noqa: BLE001
+                self.store.log(f"Wetter-Märkte nicht abrufbar: {e}", "error")
         self.state["markets_seen"] = seen
         return markets
 
@@ -203,6 +247,9 @@ class Engine:
             return crypto_model.analyze(m, now=now, closes_fn=self.closes_fn, chain_fn=self.chain_fn)
         if m["category"] == "sports":
             return sports_model.analyze(m, self.odds, now=now)
+        if m["category"] == "weather":
+            return weather_model.analyze(m, now=now, fetch=self.weather_fetch) if self.weather_fetch else \
+                weather_model.analyze(m, now=now)
         return {"skip": "Kategorie nicht unterstützt"}
 
     def analyze_all(self, markets, now):
@@ -224,6 +271,11 @@ class Engine:
             mkt_p = polymarket.mid_yes(m)
             self.store.add_prediction(m["id"], m["category"], m["question"], a["p_yes"], mkt_p,
                                       m["end_date"].isoformat() if m["end_date"] else None)
+            w = self.state["weights"].get(m["category"], {}).get("w")
+            if w is not None and w < 1:  # Selbstkorrektur: mit dem Marktkurs mischen, so viel wie es früher geholfen hätte
+                a["p_raw"] = a["p_yes"]
+                a["p_yes"] = w * a["p_yes"] + (1 - w) * mkt_p
+                a["info"] = f"{a.get('info', '')} · gemischt {w * 100:.0f} % Bot / {(1 - w) * 100:.0f} % Markt (roh {a['p_raw'] * 100:.1f} %)"
             ev = evaluate(m, a["p_yes"])
             spread = (m["best_ask"] - m["best_bid"]) if (m["best_ask"] and m["best_bid"]) else None
             base = []
@@ -233,7 +285,7 @@ class Engine:
                 base.append("Spanne zu groß")
             if m["liquidity"] < config.MIN_LIQUIDITY:
                 base.append("zu wenig Liquidität")
-            grp = a.get("group") if m["category"] == "crypto" else f"spiel:{m['event_id'] or m['id']}"
+            grp = a.get("group") if m["category"] in ("crypto", "weather") else f"spiel:{m['event_id'] or m['id']}"
             out.append({"market": m, "analysis": a, "eval": ev, "market_p": mkt_p, "base": base,
                         "group": grp, "status": {}})
         out.sort(key=lambda o: o["eval"]["edge"], reverse=True)
@@ -243,8 +295,9 @@ class Engine:
     @staticmethod
     def _shown(results):
         sports = [o for o in results if o["market"]["category"] == "sports"]
-        crypto = [o for o in results if o["market"]["category"] == "crypto"][:120]
-        return sorted(sports + crypto, key=lambda o: o["eval"]["edge"], reverse=True)
+        crypto = [o for o in results if o["market"]["category"] == "crypto"][:100]
+        weather = [o for o in results if o["market"]["category"] == "weather"][:100]
+        return sorted(sports + crypto + weather, key=lambda o: o["eval"]["edge"], reverse=True)
 
     def _opp_view(self, o):
         m, ev = o["market"], o["eval"]
@@ -280,7 +333,7 @@ class Engine:
         for o in results:
             m, ev = o["market"], o["eval"]
             aid = acc["id"]
-            min_edge = acc["edge_c"] if m["category"] == "crypto" else acc["edge_s"]
+            min_edge = edge_for(acc, m["category"])
             if ev["edge"] < min_edge:
                 o["status"][aid] = "Vorsprung zu klein"
             elif o["base"]:
@@ -295,6 +348,8 @@ class Engine:
         mode = acc.get("stake", "sicherheit")
         if mode == "kelly":
             return equity * config.KELLY_FRACTION * kelly_fraction(ev["q"], ev["eff"]), config.MIN_STAKE, conf
+        if mode == "longshot":
+            return equity * config.LONGSHOT_STAKE_PCT, config.MIN_STAKE, conf
         if mode == "fest":
             return acc.get("fixed", 10.0), min(acc.get("fixed", 10.0), max(config.MIN_STAKE, 5.0)), conf
         pct = config.STAKE_MIN_PCT + (config.STAKE_MAX_PCT - config.STAKE_MIN_PCT) * conf
@@ -351,6 +406,182 @@ class Engine:
         notify.send(f"🟢 <b>Kauf</b> ({acc['name']})\n{m['question']}\n<b>{side_name}</b> zu {_cent(price)} · Einsatz {_usd(cost)}\n"
                     f"Bot: {q * 100:.0f} % · Vorsprung {edge * 100:.1f} Pkt", aid)
         return "eröffnet"
+
+    # ------------------------------------------------------------------ Außenseiter-Konto
+    def do_longshots(self, acc, markets, now):
+        """Ohne Modell: "Nein" kaufen, wenn "Ja" nur 2–5 % kostet (Märkte überschätzen oft Außenseiter)."""
+        aid = acc["id"]
+        for m in markets:
+            if not m["accepting_orders"] or not m["end_date"] or m["outcomes"][0].lower() not in ("yes", "ja"):
+                continue
+            days = (m["end_date"] - now).total_seconds() / 86400
+            if days < 0.1 or days > config.LONGSHOT_MAX_DAYS:
+                continue
+            if m["category"] == "sports" and m.get("game_start") and m["game_start"] <= now:
+                continue
+            mid = polymarket.mid_yes(m)
+            if not (config.LONGSHOT_MIN <= mid <= config.LONGSHOT_MAX):
+                continue
+            if m["liquidity"] < config.MIN_LIQUIDITY or self.store.has_position(m["id"], aid):
+                continue
+            ask_no, _ = polymarket.quote(m, 1)
+            if ask_no > 0.985:
+                continue
+            fee = fee_per_share(m["fee_rate"], ask_no)
+            ev = {"side": 1, "price": ask_no, "fee_ps": fee, "eff": ask_no + fee, "q": 1 - mid, "edge": (1 - mid) - ask_no - fee}
+            grp = (f"{m['category']}:{m['event_id'] or m['id']}")
+            o = {"market": m, "eval": ev, "group": grp, "status": {},
+                 "analysis": {"p_yes": mid, "info": f"Außenseiter-Regel: Ja steht bei {mid * 100:.1f} % → Nein gekauft"}}
+            res = self.open_position(acc, o, min_edge=-1.0)
+            if res == "Limit erreicht" and self.exposure(self.store.open_positions(aid)) > \
+                    self.equity(aid) * config.MAX_EXPOSURE_PCT * 0.98:
+                break
+
+    # ------------------------------------------------------------------ Limit-Orders (Maker)
+    def do_maker(self, acc, results, markets, by_market, now):
+        """Gebote unter den fairen Wert legen. Gefüllt gilt ein Gebot, wenn der Briefkurs es erreicht.
+
+        Achtung: Das ist eine Annäherung – in Wirklichkeit stehen andere Gebote vor einem in der Schlange,
+        und gefüllt wird man oft gerade dann, wenn der Kurs gegen einen läuft.
+        """
+        aid = acc["id"]
+        by_id = {m["id"]: m for m in markets}
+        # 1) offene Gebote prüfen: gefüllt? zurückziehen?
+        for od in self.store.open_orders(aid):
+            m = by_id.get(od["market_id"])
+            created = polymarket.parse_dt(od["created_at"])
+            if not m or (created and (now - created).total_seconds() > config.MAKER_MAX_HOURS * 3600):
+                self.store.update_order(od["id"], status="cancelled", done_at=now.isoformat(timespec="seconds"),
+                                        note="abgelaufen" if m else "Markt nicht mehr offen")
+                continue
+            ask, _bid = polymarket.quote(m, od["side"])
+            if ask <= od["price"] + 1e-9:
+                self._fill_order(acc, od, m, now)
+                continue
+            o = by_market.get(od["market_id"])
+            if o:
+                q = o["analysis"]["p_yes"] if od["side"] == 0 else 1 - o["analysis"]["p_yes"]
+                if q - od["price"] < config.MAKER_EDGE / 2:
+                    self.store.update_order(od["id"], status="cancelled", done_at=now.isoformat(timespec="seconds"),
+                                            note="Vorsprung weg")
+        # 2) neue Gebote
+        pos = self.store.open_positions(aid)
+        orders = self.store.open_orders(aid)
+        equity = self.equity(aid, pos)
+        committed = self.exposure(pos) + sum(o_["stake"] for o_ in orders)
+        for o in results:
+            m = o["market"]
+            if o["base"] or self.store.has_position(m["id"], aid) or self.store.has_order(m["id"], aid):
+                o["status"][aid] = "schon gehandelt" if not o["base"] else ", ".join(o["base"])
+                continue
+            p_yes = o["analysis"]["p_yes"]
+            best = None
+            for side in (0, 1):
+                q = p_yes if side == 0 else 1 - p_yes
+                ask, bid = polymarket.quote(m, side)
+                limit = min(q - config.MAKER_EDGE, ask - 0.001)  # nie über/auf dem Briefkurs (sonst wäre es ein Sofortkauf)
+                limit = math.floor(limit * 1000) / 1000
+                if limit < max(bid, config.MIN_PRICE) or limit > config.MAX_PRICE:
+                    continue
+                if best is None or q - limit > best[2]:
+                    best = (side, limit, q - limit, q)
+            if not best:
+                o["status"][aid] = "kein sinnvolles Gebot"
+                continue
+            side, limit, edge, q = best
+            conf = confidence(q, edge, config.MAKER_EDGE)
+            stake = equity * (config.STAKE_MIN_PCT + (config.STAKE_MAX_PCT - config.STAKE_MIN_PCT) * conf)
+            grp_exp = sum(p["cost"] for p in pos if p.get("grp") == o["group"]) + \
+                sum(x["stake"] for x in orders if x.get("grp") == o["group"])
+            stake = min(stake, equity * config.MAX_GROUP_PCT - grp_exp, equity * config.MAX_EXPOSURE_PCT - committed,
+                        self.cash(aid) - sum(x["stake"] for x in orders))
+            if stake < equity * config.STAKE_MIN_PCT * 0.999:
+                o["status"][aid] = "Limit erreicht"
+                continue
+            shares = stake / limit
+            if shares < (m.get("min_size") or 5):
+                o["status"][aid] = "zu klein"
+                continue
+            self.store.insert_order({
+                "account": aid, "market_id": m["id"], "event_id": m["event_id"], "category": m["category"],
+                "question": m["question"], "slug": m["slug"], "event_slug": m["event_slug"], "side": side,
+                "side_name": m["outcomes"][side], "token_id": self._token(m, side), "price": limit,
+                "shares": round(shares, 4), "stake": round(stake, 4), "q": round(q, 4), "grp": o["group"],
+                "info": o["analysis"].get("info", ""), "created_at": now.isoformat(timespec="seconds"),
+                "end_date": m["end_date"].isoformat() if m["end_date"] else None,
+                "game_start": m["game_start"].isoformat() if m.get("game_start") else None,
+            })
+            orders = self.store.open_orders(aid)
+            committed += stake
+            o["status"][aid] = "Gebot gestellt"
+
+    def _fill_order(self, acc, od, m, now):
+        aid = acc["id"]
+        cost = round(od["shares"] * od["price"], 4)  # Maker zahlen keine Gebühr
+        if cost > self.cash(aid):
+            self.store.update_order(od["id"], status="cancelled", done_at=now.isoformat(timespec="seconds"), note="kein Bargeld")
+            return
+        self.store.update_order(od["id"], status="filled", done_at=now.isoformat(timespec="seconds"), note="gefüllt")
+        self.store.insert_position({
+            "account": aid, "kind": "model", "grp": od["grp"], "token_id": od["token_id"],
+            "market_id": od["market_id"], "event_id": od["event_id"], "category": od["category"], "question": od["question"],
+            "slug": od["slug"], "event_slug": od["event_slug"], "side": od["side"], "side_name": od["side_name"],
+            "shares": od["shares"], "price": od["price"], "fee": 0.0, "cost": cost, "own_p": od["q"],
+            "market_p": od["price"], "edge": round(od["q"] - od["price"], 4), "info": od["info"],
+            "fill_note": f"Limit-Order zu {_cent(od['price'])} gefüllt (ohne Gebühr)",
+            "opened_at": now.isoformat(timespec="seconds"), "end_date": od["end_date"], "game_start": od["game_start"],
+            "mark": od["price"],
+        })
+        self.store.add_cash(-cost, config.START_BALANCE, aid)
+        self.store.log(f"[{acc['name']}] GEBOT GEFÜLLT {od['side_name']} @ {_cent(od['price'])} für {_usd(cost)} · {od['question']}")
+        notify.send(f"🟢 <b>Gebot gefüllt</b> ({acc['name']})\n{od['question']}\n<b>{od['side_name']}</b> zu {_cent(od['price'])} · {_usd(cost)}", aid)
+
+    # ------------------------------------------------------------------ Risikobremse
+    def paused(self, aid):
+        return bool(self.state["paused"].get(aid))
+
+    def check_risk(self, now):
+        day = now.astimezone(BERLIN).strftime("%Y-%m-%d")
+        for a in config.ACCOUNTS:
+            aid = a["id"]
+            eq = self.equity(aid)
+            k = f"daystart:{aid}"
+            saved = self.store.kv_json(k, {})
+            if saved.get("day") != day:
+                saved = {"day": day, "equity": eq}
+                self.store.kv_set(k, json.dumps(saved))
+            manual = self.store.kv_get(f"paused:{aid}")
+            reason = None
+            if manual:
+                reason = manual
+            elif eq <= config.START_BALANCE * (1 - config.RISK_TOTAL_LOSS_PCT):
+                reason = f"−{config.RISK_TOTAL_LOSS_PCT * 100:.0f} % seit Start – pausiert bis „Fortsetzen“"
+                self.store.kv_set(f"paused:{aid}", reason)
+            elif eq <= saved["equity"] * (1 - config.RISK_DAY_LOSS_PCT):
+                reason = f"−{config.RISK_DAY_LOSS_PCT * 100:.0f} % heute – pausiert bis morgen"
+            was = self.state["paused"].get(aid)
+            self.state["paused"][aid] = reason
+            if reason and reason != was:
+                self.store.log(f"[{a['name']}] RISIKOBREMSE: {reason}", "error")
+                notify.send(f"⛔ <b>Risikobremse</b> ({a['name']})\n{reason}\nKontowert {_usd(eq)}", aid)
+
+    def resume(self, aid):
+        self.store.kv_set(f"paused:{aid}", "")
+        self.store.kv_set(f"daystart:{aid}", json.dumps({}))
+        self.state["paused"][aid] = None
+        self.store.log(f"[{ACC.get(aid, {}).get('name', aid)}] wieder freigegeben (Fortsetzen)")
+
+    # ------------------------------------------------------------------ Selbstkorrektur
+    def update_weights(self):
+        preds = self.store.resolved_predictions()
+        out = {}
+        for cat in ("crypto", "sports", "weather"):
+            rows = [r for r in preds if r["category"] == cat and 0.05 <= r["market_p"] <= 0.95]
+            if len(rows) >= config.CALIB_MIN_N:
+                out[cat] = {"w": best_weight(rows), "n": len(rows)}
+            else:
+                out[cat] = {"w": None, "n": len(rows)}
+        self.state["weights"] = out
 
     # ------------------------------------------------------------------ Ausstieg
     def do_exits(self, acc, by_market, now):
@@ -611,6 +842,38 @@ class Engine:
             lines.append(f"{a['name']}: heute {pnl:+.2f} $ ({len(closed)} abgerechnet) · Konto {_usd(self.equity(a['id']))}")
         notify.send("\n".join(lines))
 
+    def weekly_report(self, now):
+        if not notify.enabled():
+            return
+        local = now.astimezone(BERLIN)
+        key = local.strftime("%G-W%V")
+        if local.weekday() != 6 or local.hour < config.WEEKLY_REPORT_HOUR or self.store.kv_get("last_weekly") == key:
+            return
+        self.store.kv_set("last_weekly", key)
+        since = now - timedelta(days=7)
+        lines = [f"🗓 <b>Wochenbericht bis {local:%d.%m.}</b>"]
+        rows = []
+        for a in config.ACCOUNTS:
+            closed = [c for c in self.store.closed_positions(5000, a["id"])
+                      if c["closed_at"] and polymarket.parse_dt(c["closed_at"]) >= since]
+            pnl = sum(c["pnl"] or 0 for c in closed)
+            st = [c for c in closed if c["status"] in ("won", "lost") and c.get("kind") != "arb"]
+            wr = (sum(1 for c in st if c["status"] == "won") / len(st)) if st else None
+            eq = self.equity(a["id"])
+            rows.append((eq, f"{a['name']}: {pnl:+.2f} $ diese Woche · {len(closed)} abgerechnet"
+                             f"{f' · Treffer {wr * 100:.0f} %' if wr is not None else ''} · Konto {_usd(eq)}"
+                             f"{' · ⛔ pausiert' if self.paused(a['id']) else ''}"))
+        rows.sort(key=lambda r: -r[0])
+        lines += [r[1] for r in rows]
+        cal = self.calibration()
+        for cat, name in (("crypto", "Krypto"), ("sports", "Sport"), ("weather", "Wetter")):
+            c = cal.get(cat, {})
+            if c.get("n"):
+                better = "Bot genauer" if c["brier_bot"] < c["brier_market"] else "Markt genauer"
+                lines.append(f"Treffsicherheit {name}: {better} (Brier {c['brier_bot']:.3f} vs. {c['brier_market']:.3f}, {c['n']} Märkte)")
+        lines.append("Mehr im Dashboard – bis zur Besprechung um 19 Uhr!")
+        notify.send("\n".join(lines))
+
     # ------------------------------------------------------------------ Auswertung
     def stats(self, acc=MAIN):
         pos = self.store.open_positions(acc)
@@ -645,7 +908,7 @@ class Engine:
     def calibration(self):
         preds = self.store.resolved_predictions()
         out = {}
-        for cat in ("all", "crypto", "sports"):
+        for cat in ("all", "crypto", "sports", "weather"):
             rows = preds if cat == "all" else [r for r in preds if r["category"] == cat]
             mid = [r for r in rows if 0.05 <= r["market_p"] <= 0.95]
             out[cat] = {
@@ -661,7 +924,8 @@ class Engine:
             s = self.stats(a["id"])
             s.pop("calibration", None)
             s.pop("calibration_buckets", None)
-            rows.append({**{k: a[k] for k in ("id", "name", "desc")}, **s})
+            rows.append({**{k: a[k] for k in ("id", "name", "desc")}, **s,
+                         "paused": self.state["paused"].get(a["id"]), "orders": len(self.store.open_orders(a["id"]))})
         return rows
 
     @staticmethod
@@ -693,6 +957,7 @@ class Engine:
         return {
             "prices": dict(source_status),
             "options": dict(options.status),
+            "weather": dict(weather_model.status),
             "odds": self.odds.status,
             "odds_credits": self.odds.credits_left(),
             "telegram": self._telegram_status(),

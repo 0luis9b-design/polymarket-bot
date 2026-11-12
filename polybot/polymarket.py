@@ -65,7 +65,7 @@ def fee_rate_for(raw, category):
                 r = _num(v)
                 if r is not None and 0 <= r < 1:
                     return r
-    return config.FEE_RATE_CRYPTO if category == "crypto" else config.FEE_RATE_SPORTS
+    return {"crypto": config.FEE_RATE_CRYPTO, "weather": config.FEE_RATE_WEATHER}.get(category, config.FEE_RATE_SPORTS)
 
 
 def normalize_market(raw, event=None, category="other"):

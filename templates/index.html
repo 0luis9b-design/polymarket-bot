@@ -12,7 +12,7 @@
     --acc:#5b8cff; --acc2:#3d6be0; --accbg:rgba(91,140,255,.12);
     --pos:#2fd07f; --posbg:rgba(47,208,127,.13); --neg:#ff5d6c; --negbg:rgba(255,93,108,.13);
     --warn:#f5b84a; --warnbg:rgba(245,184,74,.13);
-    --crypto:#f5a623; --sport:#38bdf8;
+    --crypto:#f5a623; --sport:#38bdf8; --weather:#2dd4bf;
     --r:14px;
   }
   * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
@@ -99,6 +99,8 @@
   .tag { font-size:11px; padding:2px 8px; border-radius:6px; background:var(--bg2); color:var(--dim); border:1px solid var(--line); }
   .tag.crypto { color:var(--crypto); border-color:rgba(245,166,35,.35); }
   .tag.sports { color:var(--sport); border-color:rgba(56,189,248,.35); }
+  .tag.weather { color:var(--weather); border-color:rgba(45,212,191,.35); }
+  .pausebtn { margin-top:8px; border:1px solid var(--neg); background:var(--negbg); color:var(--neg); border-radius:9px; padding:6px 12px; cursor:pointer; font-weight:600; }
   .res { margin-left:auto; font-weight:700; }
   .chip { font-size:11px; padding:2px 8px; border-radius:999px; background:var(--bg2); color:var(--dim); }
   .chip.win { color:var(--pos); background:var(--posbg); } .chip.lose { color:var(--neg); background:var(--negbg); }
@@ -193,6 +195,7 @@
       <button data-f="all" class="on">Alle</button>
       <button data-f="crypto"><span class="c" style="background:var(--crypto)"></span>Krypto</button>
       <button data-f="sports"><span class="c" style="background:var(--sport)"></span>Sport</button>
+      <button data-f="weather"><span class="c" style="background:var(--weather)"></span>Wetter</button>
     </div>
     <div class="accsel"><span class="lbl">Konto</span><select id="accsel"></select></div>
     <div class="tabs" id="tabs">
@@ -218,7 +221,7 @@
     <p class="note" id="rules"></p>
   </section>
 
-  <section id="open"><div id="open-list"></div></section>
+  <section id="open"><div id="open-list"></div><div id="orders-wrap"></div></section>
 
   <section id="calendar">
     <div class="calhead">
@@ -258,7 +261,7 @@
   </section>
 
   <section id="calib">
-    <p class="note">Der wichtigste Test: Sind die Wahrscheinlichkeiten des Bots genauer als die von Polymarket? Gemessen über alle berechneten Märkte, sobald sie entschieden sind (nur Märkte, die beim ersten Blick zwischen 5 % und 95 % standen). <b>Kleiner = besser.</b></p>
+    <p class="note">Der Filter oben (Alle/Krypto/Sport/Wetter) gilt auch hier. Der wichtigste Test: Sind die Wahrscheinlichkeiten des Bots genauer als die von Polymarket? Gemessen über alle berechneten Märkte, sobald sie entschieden sind (nur Märkte, die beim ersten Blick zwischen 5 % und 95 % standen). <b>Kleiner = besser.</b></p>
     <div class="kpis" id="calib-kpis"></div>
     <h2>Kalibrierung (alle Bereiche)</h2>
     <div class="card flat"><table id="buckets"></table></div>
@@ -311,7 +314,8 @@
     if (n === "no" || n === "nein") return '<span class="badge b-no">NEIN</span>';
     return '<span class="badge b-team">' + esc(name) + "</span>";
   }
-  function catTag(c) { return '<span class="tag ' + c + '">' + (c === "crypto" ? "Krypto" : "Sport") + "</span>"; }
+  var CATN = { crypto: "Krypto", sports: "Sport", weather: "Wetter" };
+  function catTag(c) { return '<span class="tag ' + c + '">' + (CATN[c] || c) + "</span>"; }
   function resChip(s) {
     return { won: '<span class="chip win">Gewonnen</span>', lost: '<span class="chip lose">Verloren</span>',
              void: '<span class="chip void">Storniert</span>', sold: '<span class="chip go">Verkauft</span>' }[s] || '<span class="chip go">Offen</span>';
@@ -346,7 +350,7 @@
     var k = [];
     k.push('<div class="kpi big"><div class="l">Kontowert · ' + esc(s.name) + '</div><div class="v">' + usd(s.equity) +
            '</div><div class="s">Start ' + usd(s.start) + ' · Bargeld ' + usd(s.cash) + "</div></div>");
-    k.push('<div class="kpi"><div class="l">Gewinn/Verlust' + (state.filter === "all" ? "" : " · " + (state.filter === "crypto" ? "Krypto" : "Sport")) +
+    k.push('<div class="kpi"><div class="l">Gewinn/Verlust' + (state.filter === "all" ? "" : " · " + CATN[state.filter]) +
            '</div><div class="v ' + cls(total) + '">' + susd(total) + '</div><div class="s">' +
            (state.filter === "all" ? pct(total / s.start) + " aufs Startkapital" : "inkl. offener Wetten") + "</div></div>");
     k.push('<div class="kpi"><div class="l">Heute abgerechnet</div><div class="v ' + cls(f.todayPnl) + '">' + susd(f.todayPnl) + "</div></div>");
@@ -357,7 +361,7 @@
     k.push('<div class="kpi"><div class="l">Rendite auf Einsatz</div><div class="v ' + cls(f.realized) + '">' +
            (f.staked ? pct(f.realized / f.staked) : "–") + '</div><div class="s">' + usd(f.staked) + " eingesetzt</div></div>");
     var clvRows = OPEN.concat(CLOSED).filter(function (p) { return mine(p) && p.category === "sports" && p.close_p != null && p.kind !== "arb"; });
-    if (state.filter !== "crypto") {
+    if (state.filter === "all" || state.filter === "sports") {
       var clv = clvRows.length ? clvRows.reduce(function (a, p) { return a + p.close_p - p.price; }, 0) / clvRows.length : null;
       k.push('<div class="kpi"><div class="l">Schlusskurs-Vorteil Sport</div><div class="v ' + (clv == null ? "" : cls(clv)) + '">' +
              (clv == null ? "–" : (clv >= 0 ? "+" : "−") + num(Math.abs(clv) * 100, 1) + " Pkt") + '</div><div class="s">' + clvRows.length + " Wetten · positiv = besser als der Markt kurz vor Anpfiff</div></div>");
@@ -367,7 +371,12 @@
       var sp = sold.reduce(function (a, p) { return a + (p.pnl || 0); }, 0);
       k.push('<div class="kpi"><div class="l">Früh verkauft</div><div class="v ' + cls(sp) + '">' + susd(sp) + '</div><div class="s">' + sold.length + " Wetten vor der Entscheidung verkauft</div></div>");
     }
+    if (s.paused) {
+      k.unshift('<div class="kpi big" style="border-color:var(--neg)"><div class="l neg">⛔ Risikobremse aktiv</div><div class="s">' + esc(s.paused) +
+                '</div><button class="pausebtn" data-resume="' + s.id + '">Fortsetzen</button></div>');
+    }
     document.getElementById("kpis").innerHTML = k.join("");
+    bindResume(document.getElementById("kpis"));
   }
 
   // ---------- Chart ----------
@@ -381,7 +390,7 @@
                      .sort(function (a, b) { return a.closed_at < b.closed_at ? -1 : 1; });
       var acc = 0; pts = [{ t: accObj().started_at, v: 0 }];
       cl.forEach(function (p) { acc += p.pnl || 0; pts.push({ t: p.closed_at, v: acc }); });
-      label = "Gewinn/Verlust " + (state.filter === "crypto" ? "Krypto" : "Sport") + " (abgerechnet)"; base = 0;
+      label = "Gewinn/Verlust " + CATN[state.filter] + " (abgerechnet)"; base = 0;
     }
     document.getElementById("chart-title").textContent = label;
     var el = document.getElementById("chart");
@@ -405,7 +414,7 @@
   // ---------- Übersicht ----------
   function renderOverview() {
     var rows = ['<tr><th>Bereich</th><th class="n">Offen</th><th class="n">Abgerechn.</th><th class="n">Treffer</th><th class="n">G/V</th></tr>'];
-    [["crypto", "Krypto"], ["sports", "Sport"]].forEach(function (c) {
+    [["crypto", "Krypto"], ["sports", "Sport"], ["weather", "Wetter"]].forEach(function (c) {
       var op = OPEN.filter(function (p) { return inA(p) && p.category === c[0]; });
       var cl = CLOSED.filter(function (p) { return inA(p) && p.category === c[0]; });
       var st = cl.filter(function (p) { return (p.status === "won" || p.status === "lost") && p.kind !== "arb"; });
@@ -420,7 +429,7 @@
     document.getElementById("soon").innerHTML = soon.length ? soon.map(betCard).join("") : '<div class="empty">Keine offenen Wetten.</div>';
     var c = D.cfg;
     document.getElementById("rules").innerHTML = "<b>" + esc(accObj().name) + ":</b> " + esc(accObj().desc || "") + ". Der Bot wettet nur, wenn seine <b>eigene</b> Wahrscheinlichkeit nach Gebühren deutlich vom Polymarket-Kurs abweicht (Krypto ≥ " +
-      num(c.min_edge_crypto * 100, 0) + " Pkt, Sport ≥ " + num(c.min_edge_sports * 100, 0) + " Pkt). Einsatz " +
+      num(c.min_edge_crypto * 100, 0) + " Pkt, Sport ≥ " + num(c.min_edge_sports * 100, 0) + " Pkt, Wetter ≥ " + num(c.min_edge_weather * 100, 0) + " Pkt). Einsatz " +
       (c.stake_mode === "kelly" ? "nach Kelly" : num(c.stake_min * 100, 0) + "–" + num(c.stake_max * 100, 0) + " % des Kontos je nach Sicherheit") +
       ", max. " + num(c.max_group * 100, 0) + " % für alles am selben Coin+Stichtag bzw. Spiel und " + num(c.max_exposure * 100, 0) + " % insgesamt.";
   }
@@ -457,6 +466,12 @@
                  .sort(function (a, b) { return (a.end_date || "") < (b.end_date || "") ? -1 : 1; });
     document.getElementById("n-open").textContent = op.length;
     document.getElementById("open-list").innerHTML = op.length ? op.map(betCard).join("") : '<div class="empty">Keine offenen Wetten in diesem Bereich.</div>';
+    var ords = (D.orders || []).filter(function (o) { return o.status === "open" && mine(o); });
+    document.getElementById("orders-wrap").innerHTML = ords.length ? '<h2>Offene Kaufgebote (Limit-Orders)</h2>' + ords.map(function (o) {
+      return '<div class="bet"><div class="top">' + catTag(o.category) + sideBadge(o.side_name) + '<span class="chip">Gebot</span><span class="res">' + cent(o.price) +
+             '</span></div><div class="q">' + esc(o.question) + '</div><div class="meta"><div><b>Gebot</b>' + cent(o.price) + '</div><div><b>Bot sagt</b>' + pct(o.q, 0) +
+             '</div><div><b>Einsatz</b>' + usd(o.stake) + '</div></div><div class="info">gestellt ' + dt(o.created_at) + " · gilt als gekauft, sobald der Briefkurs das Gebot erreicht</div></div>";
+    }).join("") : "";
   }
 
   function renderHistory() {
@@ -532,7 +547,7 @@
     });
     var seen = D.state.markets_seen || {};
     document.getElementById("ana-note").innerHTML = "Letzter Lauf " + dt(D.state.last_scan) + ": " +
-      Object.keys(seen).map(function (k) { return seen[k] + " " + (k === "crypto" ? "Krypto" : "Sport") + "-Märkte"; }).join(", ") +
+      Object.keys(seen).map(function (k) { return seen[k] + " " + (CATN[k] || k) + "-Märkte"; }).join(", ") +
       " gesehen, " + all.length + " selbst berechnet. <b>Vorsprung</b> = eigene Wahrscheinlichkeit minus Kaufkurs inkl. Gebühr.";
     document.getElementById("ana-list").innerHTML = list.length ? list.slice(0, 150).map(function (o) {
       var traded = /eröffnet/.test(o.status);
@@ -569,12 +584,18 @@
     var c = (D.stats.calibration || {})[key] || {};
     function f4(v) { return v == null ? "–" : num(v, 4); }
     var better = c.brier_bot != null && c.brier_market != null ? c.brier_bot < c.brier_market : null;
+    var W = D.state.weights || {};
+    var wtxt = ["crypto", "sports", "weather"].map(function (k) {
+      var x = W[k] || {}; return CATN[k] + ": " + (x.w == null ? "noch aus (" + (x.n || 0) + "/" + D.cfg.calib_min_n + " Märkte)" : num(x.w * 100, 0) + " % Bot / " + num((1 - x.w) * 100, 0) + " % Markt");
+    }).join(" · ");
     document.getElementById("calib-kpis").innerHTML =
       '<div class="kpi"><div class="l">Entschiedene Märkte</div><div class="v">' + (c.n || 0) + '</div><div class="s">von ' + (c.n_all || 0) + " insgesamt</div></div>" +
       '<div class="kpi"><div class="l">Brier Bot</div><div class="v ' + (better === true ? "pos" : better === false ? "neg" : "") + '">' + f4(c.brier_bot) + '</div><div class="s">LogLoss ' + f4(c.logloss_bot) + "</div></div>" +
       '<div class="kpi"><div class="l">Brier Markt</div><div class="v">' + f4(c.brier_market) + '</div><div class="s">LogLoss ' + f4(c.logloss_market) + "</div></div>" +
       '<div class="kpi big"><div class="l">Urteil</div><div class="v" style="font-size:16px">' +
-      (better === null || (c.n || 0) < 50 ? "Noch zu wenig Daten (ab ~200 Märkten aussagekräftig)" : better ? "Bot genauer als der Markt" : "Markt genauer als der Bot") + "</div></div>";
+      (better === null || (c.n || 0) < 50 ? "Noch zu wenig Daten (ab ~200 Märkten aussagekräftig)" : better ? "Bot genauer als der Markt" : "Markt genauer als der Bot") + "</div></div>" +
+      '<div class="kpi big"><div class="l">Selbstkorrektur (Mischung Bot/Markt)</div><div class="s" style="font-size:13px;color:var(--txt)">' + wtxt +
+      '</div><div class="s">Ab ' + D.cfg.calib_min_n + " entschiedenen Märkten pro Bereich mischt der Bot seine Zahl mit dem Marktkurs – so stark, wie es in der Vergangenheit am besten getroffen hätte.</div></div>";
     var b = D.stats.calibration_buckets || [];
     document.getElementById("buckets").innerHTML = '<tr><th>Bot sagt</th><th class="n">Märkte</th><th class="n">Ø Bot</th><th class="n">Ø Markt</th><th class="n">Eingetreten</th></tr>' +
       (b.length ? b.map(function (r) {
@@ -608,21 +629,33 @@
       var meta = [
         ["Kontowert", usd(a.equity)], ["G/V", '<span class="' + cls(a.pnl_total) + '">' + susd(a.pnl_total) + "</span>"],
         ["Offen / abgerechnet", a.open_count + " / " + a.closed_count], ["Treffer", pct(a.winrate, 0) + ' <span class="dim">(erw. ' + pct(a.expected_winrate, 0) + ")</span>"],
-        ["Rendite auf Einsatz", pct(a.roi)], [a.id === "arbitrage" ? "Arbitrage-G/V" : "Früh verkauft", a.id === "arbitrage" ? susd(a.arb_pnl) : a.sold + " (" + susd(a.sold_pnl) + ")"]
+        ["Rendite auf Einsatz", pct(a.roi)], a.id === "limit" ? ["Offene Gebote", a.orders] : [a.id === "arbitrage" ? "Arbitrage-G/V" : "Früh verkauft", a.id === "arbitrage" ? susd(a.arb_pnl) : a.sold + " (" + susd(a.sold_pnl) + ")"]
       ].map(function (m) { return "<div><b>" + m[0] + "</b>" + m[1] + "</div>"; }).join("");
       return '<div class="acc' + (a.id === state.account ? " cur" : "") + '" data-acc="' + a.id + '"><div class="row"><span class="nm">' + esc(a.name) +
              (i === 0 && a.closed_count ? '<span class="rank">vorne</span>' : "") + '</span><span class="' + cls(a.pnl_total) + '">' + pct(a.pnl_total / a.start) + "</span></div>" +
-             '<div class="ds">' + esc(a.desc) + '</div><div class="meta">' + meta + "</div></div>";
+             '<div class="ds">' + esc(a.desc) + '</div><div class="meta">' + meta + "</div>" +
+             (a.paused ? '<div class="clv neg">⛔ ' + esc(a.paused) + '</div><button class="pausebtn" data-resume="' + a.id + '">Fortsetzen</button>' : "") + "</div>";
     }).join("");
     Array.prototype.forEach.call(document.querySelectorAll("#acc-list .acc"), function (el) {
-      el.addEventListener("click", function () { setAccount(el.dataset.acc); showTab("overview"); window.scrollTo(0, 0); });
+      el.addEventListener("click", function (ev) { if (ev.target.dataset.resume) return; setAccount(el.dataset.acc); showTab("overview"); window.scrollTo(0, 0); });
     });
+    bindResume(document.getElementById("acc-list"));
   }
   function renderAccSel() {
     var sel = document.getElementById("accsel");
     sel.innerHTML = (D.accounts || []).map(function (a) {
       return '<option value="' + a.id + '"' + (a.id === state.account ? " selected" : "") + ">" + esc(a.name) + " · " + usd(a.equity) + "</option>";
     }).join("");
+  }
+  function bindResume(root) {
+    Array.prototype.forEach.call(root.querySelectorAll("[data-resume]"), function (b) {
+      b.addEventListener("click", function (ev) {
+        ev.stopPropagation(); b.disabled = true; b.textContent = "…";
+        fetch("api/account/" + b.dataset.resume + "/resume", { method: "POST" }).then(function () { return fetch("api/state"); })
+          .then(function (r) { return r.json(); }).then(function (d) { D = d; OPEN = d.open || []; CLOSED = d.closed || []; renderAll(); })
+          .catch(function () { b.textContent = "Fehler"; });
+      });
+    });
   }
   function setAccount(id) {
     state.account = id; state.calDay = null;
@@ -641,6 +674,9 @@
     document.getElementById("sources").innerHTML =
       Object.keys(pr).map(function (k) { return '<div class="row"><span>' + k + '</span><span class="' + (/^FEHLER/.test(pr[k]) ? "err" : "dim") + '">' + esc(pr[k]) + "</span></div>"; }).join("") +
       Object.keys(src.options || {}).map(function (k) { return '<div class="row"><span>Optionen ' + k + '</span><span class="dim">' + esc(src.options[k]) + "</span></div>"; }).join("") +
+      (function () { var w = src.weather || {}, ks = Object.keys(w), ok = ks.filter(function (k) { return /^OK/.test(w[k]); }).length;
+        return ks.length ? '<div class="row"><span>Wetter-Vorhersagen</span><span class="dim">' + ok + " von " + ks.length + " Stationen OK" +
+          (ok < ks.length ? " · Fehler: " + esc(ks.filter(function (k) { return !/^OK/.test(w[k]); }).slice(0, 3).join(", ")) : "") + "</span></div>" : ""; })() +
       '<div class="row" style="margin-top:8px"><span>Buchmacher-Quoten</span><span class="dim">' + esc(src.odds) + "</span></div>" +
       '<div class="row"><span>Telegram</span><span class="dim" style="text-align:right">' + esc(src.telegram || "") + "</span></div>" +
       '<div class="row"><span>Ligen</span><span class="dim" style="text-align:right">' + esc((D.cfg.leagues || []).join(", ")) + "</span></div>" +
