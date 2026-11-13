@@ -99,15 +99,15 @@ def test_risk_brake_day_loss(tmp_path):
     end = _end(now)
     store, eng = _eng(tmp_path, {"crypto": [{"id": "e", "markets": [_market("r", 100000, end, 0.20, 0.22)]}]})
     eng.check_risk(now)
-    assert not eng.paused("haupt")
-    store.add_cash(-100, config.START_BALANCE, "haupt")  # −10 % heute
+    assert not eng.paused("haupt_krypto")
+    store.add_cash(-100, config.START_BALANCE, "haupt_krypto")  # −10 % heute
     eng.check_risk(now)
-    assert eng.paused("haupt")
+    assert eng.paused("haupt_krypto")
     eng.run_cycle()
-    assert store.open_positions("haupt") == []
-    eng.resume("haupt")
+    assert store.open_positions("haupt_krypto") == []
+    eng.resume("haupt_krypto")
     eng.check_risk(now)
-    assert not eng.paused("haupt")
+    assert not eng.paused("haupt_krypto")
 
 
 def test_best_weight_prefers_market_when_bot_is_noise():
@@ -134,7 +134,7 @@ def test_resume_endpoint(tmp_path, monkeypatch):
     import app as app_module
     importlib.reload(app_module)
     c = app_module.app.test_client()
-    assert c.post("/api/account/haupt/resume").status_code == 200
+    assert c.post("/api/account/haupt_krypto/resume").status_code == 200
     assert c.post("/api/account/gibtsnicht/resume").status_code == 404
 
 
@@ -215,3 +215,22 @@ def test_longshot_skips_wide_spread_and_caps_price(tmp_path):
     asks = [(0.97, 5.0), (0.999, 1000.0)]
     sh, cost, fee, avg = polymarket.fill_buy(asks, 100, 0.0, max_price=0.98)
     assert sh == 5.0 and avg == 0.97
+
+
+def test_weather_failure_is_not_retried_per_market():
+    calls = {"n": 0}
+
+    def failing(url, params=None, **kw):
+        calls["n"] += 1
+        raise wm.HttpError("HTTP 429 Too Many Requests", 429)
+    wm._cache.clear()
+    wm._failed.clear()
+    m = {"question": "Will the highest temperature in London be 12°C on November 20?", "outcomes": ["Yes", "No"],
+         "description": "London City Airport (EGLC)", "event_title": "x"}
+    now = datetime(2026, 11, 18, 12, 0, tzinfo=timezone.utc)
+    for _ in range(50):  # 50 Märkte derselben Station
+        try:
+            wm.analyze(m, now=now, fetch=failing)
+        except wm.HttpError:
+            pass
+    assert calls["n"] == 1

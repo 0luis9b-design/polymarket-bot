@@ -25,6 +25,13 @@ log = logging.getLogger("polybot.engine")
 BERLIN = ZoneInfo("Europe/Berlin")
 ACC = {a["id"]: a for a in config.ACCOUNTS}
 MAIN = config.ACCOUNTS[0]["id"]
+CATS = ("crypto", "sports", "weather")
+# Hauptkonto je Bereich (für den Status in der Analyse)
+MAIN_BY_CAT = {c: next((a["id"] for a in config.ACCOUNTS if a.get("cats") == [c]), MAIN) for c in CATS}
+
+
+def acc_cats(acc):
+    return acc.get("cats") or list(CATS)
 
 
 def edge_for(acc, cat):
@@ -114,10 +121,44 @@ class Engine:
         self.state = {"last_scan": None, "last_error": None, "running": False, "scans": 0,
                       "opportunities": [], "skips": {}, "markets_seen": {}, "duration": None, "arbs": [],
                       "weights": {}, "paused": {}}
+        self.migrate_split()
         saved = store.kv_json("last_state", {})  # letzte Analyse nach Neustart weiter anzeigen
         for k in ("last_scan", "opportunities", "skips", "markets_seen", "duration", "arbs", "weights"):
             if k in saved:
                 self.state[k] = saved[k]
+
+    # ------------------------------------------------------------------ Umzug altes Hauptkonto
+    def migrate_split(self):
+        """13.11.: Das alte Konto "haupt" wird auf Haupt·Krypto/Sport/Wetter verteilt (einmalig).
+
+        Jede Wette wandert in das Konto ihres Bereichs. Jedes neue Konto startet mit 1.000 $
+        plus Gewinn/Verlust der übernommenen abgerechneten Wetten minus Einsatz der offenen.
+        """
+        st = self.store
+        if st.kv_get("split_v1") or not any(a["id"] == "haupt_krypto" for a in config.ACCOUNTS):
+            return
+        with st.lock:
+            rows = [dict(r) for r in st.db.execute("SELECT * FROM positions WHERE account='haupt'")]
+            if rows:
+                for r in rows:
+                    st.db.execute("UPDATE positions SET account=? WHERE id=?",
+                                  (MAIN_BY_CAT.get(r["category"], MAIN), r["id"]))
+                st.db.execute("UPDATE orders SET account='haupt_krypto' WHERE account='haupt' AND category='crypto'")
+                st.db.commit()
+            started = st.kv_get("started_at")
+            for c in CATS:
+                aid = MAIN_BY_CAT[c]
+                mine = [r for r in rows if MAIN_BY_CAT.get(r["category"], MAIN) == aid]
+                if st.kv_get(f"cash:{aid}") is not None and not mine:
+                    continue  # Konto gibt es schon, nichts zu übernehmen -> nicht anfassen
+                cash = config.START_BALANCE + sum(r["pnl"] or 0 for r in mine if r["status"] != "open") \
+                    - sum(r["cost"] for r in mine if r["status"] == "open")
+                st.kv_set(f"cash:{aid}", round(cash, 6))
+                if started:
+                    st.kv_set(f"started_at:{aid}", started)
+            st.kv_set("split_v1", datetime.now(timezone.utc).isoformat(timespec="seconds"))
+        if rows:
+            st.log(f"Hauptkonto aufgeteilt: {len(rows)} Wetten auf Haupt·Krypto/Sport/Wetter verteilt (je 1.000 $ Start)")
 
     # ------------------------------------------------------------------ Konto
     def cash(self, acc=MAIN):
@@ -146,11 +187,19 @@ class Engine:
                 self.store.kv_set("telegram_hello", config.TELEGRAM_CHAT_ID)
                 notify.send("✅ <b>Polymarket-Bot verbunden</b>\nAb jetzt kommt hier eine Nachricht bei jedem Kauf, Verkauf "
                             f"und jeder Abrechnung im Hauptkonto, dazu um {config.DAILY_SUMMARY_HOUR} Uhr die Tagesbilanz.")
+            tm = self._timer = {}
+            t = time.time()
             self.settle()
+            tm["abrechnen"] = time.time() - t
             self.update_weights()
+            t = time.time()
             markets = self.collect_markets(now)
+            tm["märkte"] = time.time() - t
             self.refresh_closing_odds(markets, now)
+            t = time.time()
             results = self.analyze_all(markets, now)
+            tm["berechnen"] = time.time() - t
+            t = time.time()
             by_market = {o["market"]["id"]: o for o in results}
             self.check_risk(now)
             for a in config.ACCOUNTS:
@@ -166,6 +215,7 @@ class Engine:
                     self.do_longshots(a, markets, now)
                 elif a["model"]:
                     self.do_entries(a, results)
+            tm["konten"] = time.time() - t
             self.do_arbitrage(markets, now)
             self.update_closing(by_market)
             self.mark_positions(markets)
@@ -321,7 +371,8 @@ class Engine:
             "id": m["id"], "question": m["question"], "category": m["category"], "slug": m["event_slug"],
             "side_name": m["outcomes"][ev["side"]], "own_p": round(o["analysis"]["p_yes"], 4),
             "market_p": round(o["market_p"], 4), "price": round(ev["price"], 4), "edge": round(ev["edge"], 4),
-            "info": o["analysis"].get("info", ""), "status": o["status"].get(MAIN, "–"), "bought": bought,
+            "info": o["analysis"].get("info", ""), "status": o["status"].get(MAIN_BY_CAT.get(m["category"], MAIN), "–"),
+            "bought": bought,
             "model": o["analysis"].get("model", ""),
             "end": m["end_date"].isoformat() if m["end_date"] else None,
         }
@@ -345,9 +396,12 @@ class Engine:
 
     # ------------------------------------------------------------------ Einstieg
     def do_entries(self, acc, results):
+        cats = acc_cats(acc)
         for o in results:
             m, ev = o["market"], o["eval"]
             aid = acc["id"]
+            if m["category"] not in cats:
+                continue
             min_edge = edge_for(acc, m["category"])
             if ev["edge"] < min_edge:
                 o["status"][aid] = "Vorsprung zu klein"
@@ -710,13 +764,15 @@ class Engine:
                                "profit": round(a["payout"] - a["cost"], 4), "status": {}} for a in arbs]
         for a, view in zip(arbs, self.state["arbs"]):
             for acc in config.ACCOUNTS:
-                if acc["arb"]:
+                if acc["arb"] and all(m["category"] in acc_cats(acc) for m, _ in a["legs"]):
                     view["status"][acc["id"]] = self.execute_arb(acc, a, now)
         if arbs:
             log.info("%d Arbitrage-Chancen gefunden", len(arbs))
 
     def execute_arb(self, acc, a, now):
         aid = acc["id"]
+        if any(m["category"] not in acc_cats(acc) for m, _ in a["legs"]):
+            return "anderer Bereich"
         if any(self.store.has_position(m["id"], aid) for m, _ in a["legs"]):
             return "schon gehandelt"
         pos = self.store.open_positions(aid)
@@ -844,9 +900,12 @@ class Engine:
         models = Counter(o["analysis"].get("model", o["market"]["category"]) for o in results)
         bought = Counter(k for o in results for k, v in o["status"].items() if v == "eröffnet")
         arbs = [(a["type"], a["profit"], a["status"]) for a in self.state.get("arbs", [])]
-        log.info("Lauf: Märkte %s · berechnet %d %s · neue Wetten %s · Arbitrage %s · Optionen %s · Quoten: %s",
+        wfail = sum(1 for v in weather_model.status.values() if not str(v).startswith("OK"))
+        timing = " ".join(f"{k} {v:.0f}s" for k, v in getattr(self, "_timer", {}).items())
+        log.info("Lauf: Märkte %s · berechnet %d %s · neue Wetten %s · Arbitrage %s · Optionen %s · Quoten: %s · "
+                 "Wetter-Stationen mit Fehler: %d · Dauer: %s",
                  self.state["markets_seen"], len(results), dict(models), dict(bought) or "keine", arbs or "keine",
-                 dict(options.status), self.odds.status)
+                 dict(options.status), self.odds.status, wfail, timing)
 
     def daily_summary(self, now):
         if not notify.enabled():

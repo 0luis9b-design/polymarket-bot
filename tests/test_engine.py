@@ -59,14 +59,14 @@ def test_full_cycle_all_accounts(tmp_path):
     store, eng = _engine(tmp_path, events, resolved)
     assert eng.run_cycle()
     assert eng.state["last_error"] is None, eng.state["last_error"]
-    pos = store.open_positions("haupt")
+    pos = store.open_positions("haupt_krypto")
     assert any(p["market_id"] == "m1" and p["side"] == 0 for p in pos), eng.state["opportunities"]
     assert not any(p["market_id"] == "m2" for p in pos)
     assert all(19.9 <= p["cost"] <= 60.1 for p in pos), [p["cost"] for p in pos]  # 2–6 % von 1.000 $
-    assert abs(store.cash(config.START_BALANCE) - (config.START_BALANCE - sum(p["cost"] for p in pos))) < 1e-6
+    assert abs(store.cash(config.START_BALANCE, "haupt_krypto") - (config.START_BALANCE - sum(p["cost"] for p in pos))) < 1e-6
     # Testkonten: jedes Modell-Konto kauft für sich, das Arbitrage-Konto nicht
     accs = {p["account"] for p in store.open_positions()}
-    assert {"haupt", "schwelle4", "schwelle8", "fest10", "halten", "kelly"} <= accs
+    assert {"haupt_krypto", "schwelle4", "schwelle8", "fest10", "halten", "kelly"} <= accs
     assert "arbitrage" not in accs
     fest = store.open_positions("fest10")[0]
     assert abs(fest["cost"] - 10.0) < 1e-6
@@ -82,7 +82,7 @@ def test_full_cycle_all_accounts(tmp_path):
         store.update_position(p["id"], end_date=(now - timedelta(hours=2)).isoformat())
     resolved["m1"] = {**markets[0], "closed": True, "outcomePrices": '["1", "0"]', "umaResolutionStatus": "resolved"}
     eng.settle()
-    closed = store.closed_positions(account="haupt")
+    closed = store.closed_positions(account="haupt_krypto")
     assert closed[0]["status"] == "won"
     assert abs(closed[0]["pnl"] - (p1["shares"] - p1["cost"])) < 1e-3
     st = eng.stats()
@@ -100,7 +100,7 @@ def test_group_limit_coin_and_day(tmp_path):
     events = [{"id": "e1", "markets": ms[:1] + ms[2:]}, {"id": "e2", "markets": ms[1:2]}]
     store, eng = _engine(tmp_path, events)
     eng.run_cycle()
-    pos = store.open_positions("haupt")
+    pos = store.open_positions("haupt_krypto")
     assert len({p["grp"] for p in pos}) == 1
     assert sum(p["cost"] for p in pos) <= config.START_BALANCE * config.MAX_GROUP_PCT + 1e-6
 
@@ -119,7 +119,7 @@ def test_orderbook_fill_and_thin_book(tmp_path):
     books = {"m1-y": ([(0.22, 10.0)], [(0.20, 100.0)]), "m1-n": ([(0.80, 100.0)], [(0.78, 100.0)])}
     store, eng = _engine(tmp_path, [{"id": "e1", "markets": [m]}], books=books)
     eng.run_cycle()
-    assert store.open_positions("haupt") == []  # 10 Anteile × 22 ¢ = 2,20 $ < 2 % des Kontos
+    assert store.open_positions("haupt_krypto") == []  # 10 Anteile × 22 ¢ = 2,20 $ < 2 % des Kontos
     assert eng.state["opportunities"][0]["status"] == "Orderbuch zu dünn"
 
 
@@ -130,12 +130,12 @@ def test_early_exit_takes_profit(tmp_path):
     events = [{"id": "e1", "markets": [m]}]
     store, eng = _engine(tmp_path, events)
     eng.run_cycle()
-    p = next(p for p in store.open_positions("haupt"))
+    p = next(p for p in store.open_positions("haupt_krypto"))
     store.update_position(p["id"], opened_at=(now - timedelta(hours=2)).isoformat())
     # Markt zieht auf 49/50 Cent – fair laut Bot ~49 % -> Gewinn mitnehmen
     events[0]["markets"] = [_market("m1", 100000, end, 0.50, 0.51)]
     eng.run_cycle()
-    sold = [c for c in store.closed_positions(account="haupt") if c["status"] == "sold"]
+    sold = [c for c in store.closed_positions(account="haupt_krypto") if c["status"] == "sold"]
     assert sold and sold[0]["pnl"] > 0
     # Konto "Ohne Ausstieg" hält weiter
     assert store.open_positions("halten")
@@ -219,3 +219,35 @@ def test_options_chain_flat_vol_matches_lognormal():
     exp = 0.5 * (1 + math.erf((math.log(100000 / 102000) - sd * sd / 2) / sd / math.sqrt(2)))
     assert abs(ch.prob_above(100000, 102000, hours) - exp) < 0.003
     assert options.parse_instrument("XRP_USDC-27NOV26-1d08-P")[1] == 1.08
+
+
+
+def test_split_moves_old_main_account(tmp_path):
+    store = Store(str(tmp_path / "s.sqlite"))
+    base = {"event_id": "e", "question": "q", "slug": "", "event_slug": "", "side": 0, "side_name": "Yes",
+            "shares": 10, "price": 0.5, "fee": 0, "own_p": 0.6, "market_p": 0.5, "edge": 0.1, "info": "",
+            "opened_at": "2026-11-12T10:00:00+00:00", "end_date": "2026-11-14T10:00:00+00:00", "account": "haupt"}
+    store.insert_position({**base, "market_id": "c1", "category": "crypto", "cost": 30.0, "status": "open"})
+    store.insert_position({**base, "market_id": "w1", "category": "weather", "cost": 40.0, "status": "lost",
+                           "pnl": -40.0, "payout": 0.0, "closed_at": "2026-11-13T06:00:00+00:00"})
+    store.insert_position({**base, "market_id": "w2", "category": "weather", "cost": 20.0, "status": "open"})
+    eng = Engine(store, odds_client=OddsClient(store, api_key=""), chain_fn=lambda a, n: None)
+    assert [p["market_id"] for p in store.open_positions("haupt_krypto")] == ["c1"]
+    assert {p["market_id"] for p in store.open_positions("haupt_wetter")} == {"w2"}
+    assert store.closed_positions(account="haupt_wetter")[0]["market_id"] == "w1"
+    assert abs(eng.cash("haupt_krypto") - 970) < 1e-9
+    assert abs(eng.cash("haupt_wetter") - (1000 - 40 - 20)) < 1e-9
+    assert abs(eng.cash("haupt_sport") - 1000) < 1e-9
+    assert store.open_positions("haupt") == []
+    Engine(store, odds_client=OddsClient(store, api_key=""), chain_fn=lambda a, n: None)  # zweiter Start: nichts doppelt
+    assert abs(eng.cash("haupt_wetter") - 940) < 1e-9
+
+
+def test_category_accounts_only_trade_their_area(tmp_path):
+    now = datetime.now(timezone.utc).replace(microsecond=0)
+    end = _end(now)
+    events = [{"id": "e1", "markets": [_market("m1", 100000, end, 0.20, 0.22)]}]
+    store, eng = _engine(tmp_path, events)
+    eng.run_cycle()
+    assert store.open_positions("haupt_krypto")
+    assert store.open_positions("haupt_sport") == [] and store.open_positions("haupt_wetter") == []

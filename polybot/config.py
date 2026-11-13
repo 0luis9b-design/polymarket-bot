@@ -98,9 +98,17 @@ ARB_MAX_PCT = _f("ARB_MAX_PCT", 0.10)        # max. 10 % des Kontos pro Arbitrag
 
 # --- Testkonten: alle sehen dieselben Märkte, entscheiden aber mit eigenen Regeln ---
 ACCOUNTS = [
-    {"id": "haupt", "name": "Hauptkonto", "desc": "Schwelle 6/3/10 Pkt (Krypto/Sport/Wetter) · Einsatz 2–6 % nach Sicherheit · früher Ausstieg · Arbitrage",
+    # Hauptkonto, aufgeteilt nach Bereich (13.11.): jedes mit eigenen 1.000 $, damit sich die Bereiche nicht vermischen
+    {"id": "haupt_krypto", "name": "Haupt · Krypto", "cats": ["crypto"],
+     "desc": "nur Krypto · Schwelle 6 Pkt · Einsatz 2–6 % nach Sicherheit · früher Ausstieg · Arbitrage",
      "edge_c": MIN_EDGE_CRYPTO, "edge_s": MIN_EDGE_SPORTS, "edge_w": MIN_EDGE_WEATHER, "stake": "sicherheit", "exit": True, "arb": True, "model": True},
-    {"id": "schwelle4", "name": "Schwelle 4/2/7", "desc": "wie Hauptkonto, aber schon ab 4 Pkt (Krypto) / 2 Pkt (Sport) / 7 Pkt (Wetter)",
+    {"id": "haupt_sport", "name": "Haupt · Sport", "cats": ["sports"],
+     "desc": "nur Sport · Schwelle 3 Pkt · Einsatz 2–6 % nach Sicherheit · früher Ausstieg · Arbitrage",
+     "edge_c": MIN_EDGE_CRYPTO, "edge_s": MIN_EDGE_SPORTS, "edge_w": MIN_EDGE_WEATHER, "stake": "sicherheit", "exit": True, "arb": True, "model": True},
+    {"id": "haupt_wetter", "name": "Haupt · Wetter", "cats": ["weather"],
+     "desc": "nur Wetter · Schwelle 10 Pkt · Einsatz 2–6 % nach Sicherheit · früher Ausstieg · Arbitrage",
+     "edge_c": MIN_EDGE_CRYPTO, "edge_s": MIN_EDGE_SPORTS, "edge_w": MIN_EDGE_WEATHER, "stake": "sicherheit", "exit": True, "arb": True, "model": True},
+    {"id": "schwelle4", "name": "Schwelle 4/2/7", "desc": "alle Bereiche, Regeln wie Haupt, aber schon ab 4 Pkt (Krypto) / 2 Pkt (Sport) / 7 Pkt (Wetter)",
      "edge_c": 0.04, "edge_s": 0.02, "edge_w": 0.07, "stake": "sicherheit", "exit": True, "arb": False, "model": True},
     {"id": "schwelle8", "name": "Schwelle 8/4/14", "desc": "wie Hauptkonto, aber erst ab 8 Pkt (Krypto) / 4 Pkt (Sport) / 14 Pkt (Wetter)",
      "edge_c": 0.08, "edge_s": 0.04, "edge_w": 0.14, "stake": "sicherheit", "exit": True, "arb": False, "model": True},
@@ -121,7 +129,8 @@ ACCOUNTS = [
 # --- Benachrichtigungen (Telegram) ---
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "").strip()
 TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID", "").strip()
-NOTIFY_ACCOUNTS = [x.strip() for x in os.environ.get("NOTIFY_ACCOUNTS", "haupt").split(",") if x.strip()]
+NOTIFY_ACCOUNTS = [x.strip() for x in os.environ.get("NOTIFY_ACCOUNTS", "haupt_krypto,haupt_sport,haupt_wetter").split(",")
+                   if x.strip()]
 DAILY_SUMMARY_HOUR = _i("DAILY_SUMMARY_HOUR", 22)   # Tageszusammenfassung um 22 Uhr (deutsche Zeit)
 WEEKLY_REPORT_HOUR = _i("WEEKLY_REPORT_HOUR", 18)   # Wochenbericht sonntags um 18 Uhr (vor der Besprechung um 19 Uhr)
 

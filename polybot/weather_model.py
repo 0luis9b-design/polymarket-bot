@@ -21,9 +21,13 @@ from .http import HttpError, get_json
 log = logging.getLogger("polybot.weather")
 API = "https://ensemble-api.open-meteo.com/v1/ensemble"
 MODELS = "ecmwf_ifs025,gfs025,icon_seamless"
-CACHE_SEC = 1800
+# Open-Meteo zählt eine Ensemble-Abfrage (~120 Szenarien) wie ~12 normale Abfragen; gratis sind 10.000/Tag.
+# Ensembles werden nur alle 6 h neu gerechnet -> 3 h Zwischenspeicher reicht und hält das Kontingent ein.
+CACHE_SEC = 3 * 3600
+FAIL_PAUSE_SEC = 30 * 60   # nach einem Fehler diese Station 30 min in Ruhe lassen (statt pro Markt neu zu versuchen)
 status = {}
 _cache = {}
+_failed = {}
 
 # Station (ICAO) -> (Breite, Länge, Zeitzone). Polymarket nennt die Station in der Beschreibung.
 STATIONS = {
@@ -121,12 +125,18 @@ def ensemble(icao, unit, fetch=get_json):
     hit = _cache.get(key)
     if hit and time.time() - hit[0] < CACHE_SEC:
         return hit[1]
+    if time.time() - _failed.get(key, 0) < FAIL_PAUSE_SEC:
+        if hit:
+            return hit[1]  # lieber etwas ältere Vorhersage als gar keine
+        raise HttpError(f"Pause nach Fehler ({icao})")
     lat, lon, tz = STATIONS[icao]
     try:
+        kw = {"retries": 0} if fetch is get_json else {}
         data = fetch(API, params={"latitude": lat, "longitude": lon, "hourly": "temperature_2m", "models": MODELS,
-                                  "timezone": tz, "forecast_days": 6,
-                                  "temperature_unit": "fahrenheit" if unit == "F" else "celsius"})
+                                  "timezone": tz, "forecast_days": int(config.WEATHER_MAX_DAYS) + 2,
+                                  "temperature_unit": "fahrenheit" if unit == "F" else "celsius"}, **kw)
     except HttpError as e:
+        _failed[key] = time.time()
         status[icao] = f"Fehler: {str(e)[:100]}"
         if hit:
             return hit[1]
