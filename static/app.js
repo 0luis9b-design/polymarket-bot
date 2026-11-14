@@ -5,7 +5,7 @@
   var PB = window.PB = { pages: {} };
   var TZ = "Europe/Berlin", SVGNS = "http://www.w3.org/2000/svg";
   PB.CAT = { crypto: "Krypto", sports: "Sport", weather: "Wetter", esports: "E-Sport", politics: "Politik", world: "Welt",
-             economy: "Wirtschaft", tech: "Technik", science: "Wissenschaft", culture: "Kultur" };
+             economy: "Wirtschaft", tech: "Technik", science: "Wissenschaft", culture: "Kultur", other: "Sonstiges", base: "Alle übrigen (Basisraten)" };
   PB.COL = { crypto: "var(--s-krypto)", sports: "var(--s-sport)", weather: "var(--s-wetter)", modell: "var(--s-modell)", markt: "var(--s-markt)" };
   PB.MODELED = ["crypto", "sports", "weather"];
 

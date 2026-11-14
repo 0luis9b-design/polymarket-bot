@@ -20,7 +20,7 @@ CATEGORY_TAGS = [
     ("tech", 1401), ("tech", 439), ("science", 74), ("culture", 596),
 ]
 CATEGORY_NAMES = {"crypto": "Krypto", "weather": "Wetter", "sports": "Sport", "esports": "E-Sport", "politics": "Politik",
-                  "world": "Welt", "economy": "Wirtschaft", "tech": "Technik", "science": "Wissenschaft", "culture": "Kultur"}
+                  "world": "Welt", "economy": "Wirtschaft", "tech": "Technik", "science": "Wissenschaft", "culture": "Kultur", "other": "Sonstiges"}
 MODELED = ("crypto", "sports", "weather")
 
 
