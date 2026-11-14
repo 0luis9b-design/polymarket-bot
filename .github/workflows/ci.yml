@@ -12,6 +12,17 @@ jobs:
       - run: AUTOSTART=0 python -m pytest -q
       - name: Dashboard-Skripte auf Syntaxfehler prüfen
         run: for f in static/*.js; do node --check "$f"; done
+  browser:
+    # Alle Seiten der Zentrale in echtem Chromium (Desktop- und Handybreite): keine Skriptfehler, Inhalt da, nichts zu breit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r requirements-dev.txt playwright
+      - run: python -m playwright install --with-deps chromium
+      - run: BROWSER_TESTS=1 AUTOSTART=0 python -m pytest -q tests/browser
   abhaengigkeiten:
     # Prüft die verwendeten Pakete gegen bekannte Sicherheitslücken. Meldet nur – ein Fund blockiert nichts,
     # weil sonst eine neu veröffentlichte Lücke in einem fremden Paket jeden Push rot färben würde.
