@@ -179,6 +179,30 @@ def test_notify_levels_dedupe_quiet_and_cap(monkeypatch):
     assert notify.decide("hoch", now=noon)[0] is True            # Tageslimit gilt nur für normale Meldungen
 
 
+def test_telegram_retries_connection_error_once_but_not_refusals(monkeypatch):
+    from polybot.http import HttpError
+    monkeypatch.setattr(config, "TELEGRAM_BOT_TOKEN", "123456789:AAExampleExampleExampleExampleExample")
+    monkeypatch.setattr(config, "TELEGRAM_CHAT_ID", "1")
+    monkeypatch.setattr(notify.time, "sleep", lambda s: None)
+    calls = []
+
+    def flaky(url, payload):
+        calls.append(payload["text"])
+        if len(calls) == 1:
+            raise HttpError("ConnectionError bei Telegram")
+        return {"ok": True}
+    monkeypatch.setattr(notify, "post_json", flaky)
+    assert notify._send("hallo") is True and calls == ["hallo", "hallo"] and notify.last_status == "OK"
+
+    def refused(url, payload):
+        calls.append("x")
+        raise HttpError("HTTP 400: chat not found", 400)
+    calls.clear()
+    monkeypatch.setattr(notify, "post_json", refused)
+    assert notify._send("hallo") is False and calls == ["x"]                 # eine Ablehnung wird nicht wiederholt
+    assert "AAExample" not in notify.last_status
+
+
 def test_events_dedupe_and_redaction(tmp_path):
     st = _store(tmp_path)
     assert events.emit(st, "hoch", "quelle", "Ausfall token=abc123", "x", key="q1", telegram=False)
@@ -686,7 +710,7 @@ def test_risk_brake_day_lock_stays_until_next_day(tmp_path):
     assert store.scalar("SELECT COUNT(*) FROM events WHERE type='risikobremse'") == 1
 
 
-def test_coordinator_cycle_runs_background_agents_within_budget(tmp_path, monkeypatch):
+def test_coordinator_cycle_runs_background_agents_within_budget(tmp_path, monkeypatch, caplog):
     monkeypatch.setattr(config, "DATA_DIR", str(tmp_path))
     store = _store(tmp_path)
     co = _coord(store)
@@ -696,8 +720,11 @@ def test_coordinator_cycle_runs_background_agents_within_budget(tmp_path, monkey
     eng = Engine(store, fetch_events=lambda tag, **kw: [], fetch_by_ids=lambda ids: {}, closes_fn=lambda a: (CLOSES, "Test"),
                  odds_client=OddsClient(store, api_key=""), chain_fn=lambda a, n: None, book_fn=None, intel=co)
     assert eng.intel is co and co.engine is eng
-    tick = co.cycle()
+    with caplog.at_level("INFO", logger="polybot.takt"):
+        tick = co.cycle()
     assert set(tick["gelaufen"]) >= {"scanner", "news", "learning", "strategy", "guardian"} and tick["zurückgestellt"] == []
+    line = [r.getMessage() for r in caplog.records if r.name == "polybot.takt"][-1]                          # Zustand steht auch im Log
+    assert "gelaufen: scanner" in line and "Agenten mit Fehler: keine" in line and "Märkte offen" in line
     states = {a["id"]: a for a in co.registry.view()}
     assert all(states[k]["state"] == "ok" for k in ("trader", "scanner", "news", "learning", "strategy", "guardian")), states
     assert store.scalar("SELECT COUNT(*) FROM source_stats") >= 0

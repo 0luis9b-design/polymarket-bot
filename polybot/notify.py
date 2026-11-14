@@ -35,16 +35,27 @@ def enabled():
     return bool(config.TELEGRAM_BOT_TOKEN and config.TELEGRAM_CHAT_ID)
 
 
+_send_lock = threading.Lock()         # eine Nachricht nach der anderen (Reihenfolge bleibt, keine gleichzeitigen Verbindungen)
+
+
 def _send(text):
     global last_status
-    try:
-        post_json(f"https://api.telegram.org/bot{config.TELEGRAM_BOT_TOKEN}/sendMessage",
-                  {"chat_id": config.TELEGRAM_CHAT_ID, "text": text[:3900], "parse_mode": "HTML",
-                   "disable_web_page_preview": True})
-        last_status = "OK"
-    except HttpError as e:
-        last_status = redact(f"Fehler: {e}")[:160]
-        log.warning("Telegram: %s", last_status)
+    with _send_lock:
+        for attempt in (0, 1):
+            try:
+                post_json(f"https://api.telegram.org/bot{config.TELEGRAM_BOT_TOKEN}/sendMessage",
+                          {"chat_id": config.TELEGRAM_CHAT_ID, "text": text[:3900], "parse_mode": "HTML",
+                           "disable_web_page_preview": True})
+                last_status = "OK"
+                return True
+            except HttpError as e:
+                last_status = redact(f"Fehler: {e}")[:160]
+                # nur ein Verbindungsfehler wird einmal wiederholt; eine Ablehnung (4xx) oder ein leeres Budget nicht
+                if attempt == 0 and e.status is None and not e.blocked:
+                    time.sleep(3)
+                    continue
+                log.warning("Telegram: %s", last_status)
+                return False
 
 
 def _in_quiet_hours(now):

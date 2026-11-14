@@ -115,3 +115,7 @@ Der Bot schreibt Mi und So um 17 Uhr einen Review-Bericht (13 Abschnitte, nur ge
 ihn, zeigt ihn im Dashboard und schreibt ihn zusätzlich ins Railway-Log. Eine geplante Claude-Sitzung
 (Mi und So, 18:09) liest ihn dort, prüft die Logs und schreibt Luis eine Einschätzung mit Vorschlägen.
 Claude ändert nichts ohne Freigabe.
+
+Weil das Dashboard passwortgeschützt ist, schreibt der Koordinator zusätzlich nach jedem Takt eine Zeile ins Log
+(`polybot.takt`: gelaufene und zurückgestellte Agenten, Agenten mit Fehler, pausierte Quellen, Ergebnis der Prüfung,
+pausierte Konten, Bestand). Damit lässt sich der Zustand auch ohne Anmeldung nachvollziehen – Geheimnisse stehen dort nie.

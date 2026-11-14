@@ -10,6 +10,7 @@ Ein Takt (alle SCAN_INTERVAL_MIN Minuten):
 
 Die Agenten sind Programm-Module, keine Sprachmodelle – das Budget für externe Dienste ist 0 €.
 """
+import logging
 import time
 from datetime import datetime, timezone
 
@@ -22,6 +23,9 @@ from .probability import ProbabilityAgent
 from .scanner import ScannerAgent
 from .strategy import StrategyAgent
 from .validation import ValidationAgent
+
+
+log = logging.getLogger("polybot.takt")
 
 
 class _Self(Agent):
@@ -116,7 +120,32 @@ class Coordinator:
             pass
         self.last_tick = {"zeit": now.isoformat(timespec="seconds"), "dauer": round(time.time() - t0, 1), "gelaufen": ran,
                           "zurückgestellt": skipped, "budget": config.CYCLE_BUDGET_SEC}
+        self._log_tick(ran, skipped)
         return self.last_tick
+
+    def _log_tick(self, ran, skipped):
+        """Eine Zeile pro Takt ins Log: Das Dashboard ist passwortgeschützt, das Log ist der Weg, auf dem der
+        Claude-Supervisor (und jeder, der die Railway-Logs liest) den Zustand der Agenten sieht."""
+        try:
+            st = self.registry.status
+            parts = [f"{aid} {st[aid]['last_duration']:.0f}s" if aid in st and st[aid]["last_duration"] is not None else aid for aid in ran]
+            failing = [f"{s['id']}: {s['last_error']}" for s in st.values() if s["state"] == "fehler"]
+            snap = sources.snapshot()
+            paused = [f"{x['name']} ({x['paused_s'] // 60:.0f} min)" for x in snap if x["paused_s"] > 0]
+            held = [f"{x['name']} {x['blocked']}×" for x in snap if x["blocked"]]
+            c = self.counts()
+            v = dict(self.validation.cycle or {})
+            checked, valid = v.pop("geprüft", 0), v.pop("gültig", 0)
+            check = f"{checked} geprüft, {valid} gültig" + "".join(f", {k}: {n}" for k, n in sorted(v.items(), key=lambda x: -x[1]))
+            paused_acc = sorted(k for k, r in (self.engine.state.get("paused") or {}).items() if r) if self.engine is not None else []
+            log.info("Takt %.0f s · gelaufen: %s · zurückgestellt: %s · Agenten mit Fehler: %s · pausierte Quellen: %s · "
+                     "heute vom Budget gebremst: %s · Prüfung: %s · pausierte Konten: %s · "
+                     "Bestand: %s Märkte offen (%s mit Modell), %s Prognosen, %s Ergebnisse, %s im Datensatz, %s Schlagzeilen",
+                     self.last_tick["dauer"], ", ".join(parts) or "–", ", ".join(skipped) or "–", "; ".join(failing) or "keine",
+                     ", ".join(paused) or "keine", ", ".join(held) or "nichts", check, ", ".join(paused_acc) or "keine", c["märkte_offen"], c["märkte_mit_modell"], c["prognosen"], c["ergebnisse"],
+                     c["entschiedene_märkte_datensatz"], c["nachrichten"])
+        except Exception:  # noqa: BLE001 – eine Logzeile darf nie stören
+            pass
 
     def _trade(self):
         eng = self.engine
