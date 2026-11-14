@@ -13,7 +13,8 @@ from datetime import datetime, timezone
 
 from . import Agent
 
-DEFAULTS = {"crypto": ("crypto.options", "1"), "weather": ("weather.ens", "2"), "sports": ("sports.books", "1")}
+DEFAULTS = {"crypto": ("crypto.options", "1"), "weather": ("weather.ens", "2"), "sports": ("sports.books", "1"),
+            "base": ("base.calib", "1")}   # „base“ = alle Märkte ohne eigenes Datenmodell
 HORIZONS = [(6, "<6h"), (24, "6-24h"), (72, "24-72h"), (float("inf"), ">72h")]
 MODEL_INFO = {
     "crypto.options": "Krypto: erwartete Schwankung aus Deribit-Optionen (inkl. Smile)",
@@ -23,6 +24,7 @@ MODEL_INFO = {
     "weather.wide": "Wetter: dasselbe Ensemble, doppelt so breite Verteilung",
     "weather.emp": "Wetter: Ensemble-Mittel + gelernte Stations-Korrektur und gemessene Streuung",
     "sports.books": "Sport: faire Quote aus Buchmachern (Marge herausgerechnet)",
+    "base.calib": "Alle übrigen Märkte: Basisraten – wie oft trat „Ja“ bei Märkten gleicher Art und gleichem Kurs wirklich ein",
     "crypto.v1": "Krypto: Prognosen aus der Zeit vor v2 (Modellstand nicht mitgespeichert)",
     "weather.v1": "Wetter: Prognosen aus der Zeit vor v2 (Modellstand nicht mitgespeichert)",
     "sports.v1": "Sport: Prognosen aus der Zeit vor v2 (Modellstand nicht mitgespeichert)",
@@ -161,7 +163,7 @@ class ProbabilityAgent(Agent):
     # ------------------------------------------------------------------ Auswahl des aktiven Modells
     def select(self, m, a, mkt_p):
         """Ergänzt gelernte Varianten und setzt a['p_yes'] auf die Variante des aktiven Modells."""
-        cat = m["category"]
+        cat = "base" if a.get("lane") == "base" else m["category"]
         clamp = lambda v: min(max(v, 0.001), 0.999)  # noqa: E731
         variants = a.setdefault("variants", {})
         if not variants:

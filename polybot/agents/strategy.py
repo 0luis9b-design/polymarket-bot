@@ -20,7 +20,7 @@ import statistics
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 
-from .. import config, events, polymarket
+from .. import config, events, polymarket, taxonomy
 from . import Agent
 from .scanner import CATEGORY_NAMES, CATEGORY_TAGS
 
@@ -187,7 +187,7 @@ def evaluate_strategy(key, name, desc, fn_or_factory, rows, baseline=False, lear
     return {"strategy": key, "name": name, "desc": desc, "baseline": baseline, "is": i, "oos": o, "warnungen": warn, "bestanden": passed}
 
 
-HISTORY_MAX_PAGES = 6
+HISTORY_MAX_PAGES = 10
 
 
 class StrategyAgent(Agent):
@@ -224,7 +224,7 @@ class StrategyAgent(Agent):
         for page in range(HISTORY_MAX_PAGES):
             if added >= limit or self.time_left(deadline) < 8:
                 break
-            raws = self.fetch_markets({"tag_id": tag_id, "related_tags": "true", "closed": "true", "order": "endDate",
+            raws = self.fetch_markets({"tag_id": tag_id, "related_tags": "true", "closed": "true", "order": "endDate", "include_tag": "true",
                                        "ascending": "false", "end_date_max": end_max, "volume_num_min": config.HISTORY_MIN_VOLUME,
                                        "limit": 100, "offset": page * 100})
             seen += len(raws)
@@ -256,9 +256,16 @@ class StrategyAgent(Agent):
                 if all(v is None for v in ps.values()):
                     gaps += 1
                 early = 1 if (closed and closed < end - timedelta(hours=1)) else 0
-                self.store.x("INSERT OR IGNORE INTO resolved(market_id, question, category, end_date, closed_at, outcome, volume, early, "
-                             "p_1h, p_6h, p_24h, p_72h, p_7d, n_points, fetched_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-                             (mid, q[:300], cat, end.isoformat(timespec="seconds"), closed.isoformat(timespec="seconds") if closed else None,
+                # Einordnung nach den Schlagwörtern des Marktes (wie im Handel), sonst nach der Abfrage
+                ev = raw["events"][0] if isinstance(raw.get("events"), list) and raw.get("events") else None
+                nm = polymarket.normalize_market(raw, ev, "other") or {"question": q, "tags": []}
+                c = taxonomy.classify(nm)
+                if c["category"] == "other":
+                    c = taxonomy.classify(nm, cat)
+                self.store.x("INSERT OR IGNORE INTO resolved(market_id, question, category, sub, detail, end_date, closed_at, outcome, volume, "
+                             "early, p_1h, p_6h, p_24h, p_72h, p_7d, n_points, fetched_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                             (mid, q[:300], c["category"], c["sub"], c["detail"], end.isoformat(timespec="seconds"),
+                              closed.isoformat(timespec="seconds") if closed else None,
                               1.0 if res == 0 else 0.0, polymarket._num(raw.get("volumeNum"), 0.0), early,
                               ps["p_1h"], ps["p_6h"], ps["p_24h"], ps["p_72h"], ps["p_7d"], len(hist), now.isoformat(timespec="seconds")))
                 added += 1

@@ -78,7 +78,9 @@ def normalize_market(raw, event=None, category="other"):
     bid = _num(raw.get("bestBid"))
     ask = _num(raw.get("bestAsk"))
     ev = event or {}
-    tags = [t.get("slug") for t in (ev.get("tags") or raw.get("tags") or []) if isinstance(t, dict) and t.get("slug")]
+    raw_tags = [t for t in (ev.get("tags") or raw.get("tags") or []) if isinstance(t, dict) and t.get("slug")]
+    tags = [str(t["slug"]).lower() for t in raw_tags]
+    tag_labels = {str(t["slug"]).lower(): str(t.get("label") or "")[:60] for t in raw_tags}
     return {
         "id": str(raw.get("id")),
         "question": raw.get("question") or "",
@@ -102,6 +104,7 @@ def normalize_market(raw, event=None, category="other"):
         "event_title": ev.get("title") or "",
         "event_slug": ev.get("slug") or "",
         "tags": tags,
+        "tag_labels": tag_labels,
         "category": category,
         "fee_rate": fee_rate_for(raw, category),
         "volume24h": _num(raw.get("volume24hr"), 0.0),

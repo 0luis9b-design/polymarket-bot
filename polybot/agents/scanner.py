@@ -10,7 +10,7 @@ die meisten ohne Handel. Im Katalog landen je Kategorie die mit dem meisten 24-h
 import math
 from datetime import datetime, timedelta, timezone
 
-from .. import config, events, polymarket
+from .. import config, events, polymarket, taxonomy
 from . import Agent
 
 # (Kategorie im System, Tag-ID bei Polymarket) – IDs am 14.11.2026 live geprüft. Reihenfolge = Vorrang bei Mehrfach-Tags.
@@ -78,21 +78,28 @@ class ScannerAgent(Agent):
         for m in markets:
             flags = quality_flags(m, now)
             cat = category or m["category"]
+            if not m.get("sub"):
+                c = taxonomy.classify(m, None if cat in (None, "other") else cat)
+                cat = c["category"] if cat in (None, "other") else cat
+                m["sub"], m["detail"] = c["sub"], c["detail"]
             price = polymarket.mid_yes(m)
-            rows.append((m["id"], m["question"][:400], cat, ",".join((m.get("tags") or [])[:8]), m.get("event_id"),
+            rows.append((m["id"], m["question"][:400], cat, m.get("sub"), m.get("detail"), ",".join((m.get("tags") or [])[:12]), m.get("event_id"),
                          (m.get("event_title") or "")[:200], m.get("event_slug") or m.get("slug"),
                          m["end_date"].isoformat() if m.get("end_date") else None, stamp, stamp, round(price, 4),
                          m.get("best_bid"), m.get("best_ask"), m.get("liquidity"), m.get("volume"), m.get("volume24h"),
                          ",".join(flags), priority(m, flags, now, modeled, news.get(m["id"], 0)), 1 if modeled else 0))
             snaps.append((m["id"], hour, round(price, 4), m.get("best_bid"), m.get("best_ask"), m.get("volume24h"), m.get("liquidity")))
         self.store.xmany(
-            "INSERT INTO markets(id, question, category, tags, event_id, event_title, slug, end_date, first_seen, last_seen, price, bid, ask, "
-            "liquidity, volume, volume24h, quality, priority, modeled) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) "
+            "INSERT INTO markets(id, question, category, sub, detail, tags, event_id, event_title, slug, end_date, first_seen, last_seen, "
+            "price, bid, ask, liquidity, volume, volume24h, quality, priority, modeled) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) "
             "ON CONFLICT(id) DO UPDATE SET last_seen=excluded.last_seen, price=excluded.price, bid=excluded.bid, ask=excluded.ask, "
             "liquidity=excluded.liquidity, volume=excluded.volume, volume24h=excluded.volume24h, quality=excluded.quality, "
             "priority=excluded.priority, end_date=excluded.end_date, status='open', "
             "modeled=MAX(markets.modeled, excluded.modeled), "
-            "category=CASE WHEN excluded.modeled=1 OR markets.modeled=0 AND markets.category IS NULL THEN excluded.category ELSE markets.category END", rows)
+            "tags=CASE WHEN excluded.tags != '' THEN excluded.tags ELSE markets.tags END, "
+            "category=CASE WHEN excluded.modeled=1 OR markets.modeled=0 THEN excluded.category ELSE markets.category END, "
+            "sub=CASE WHEN excluded.modeled=1 OR markets.modeled=0 OR markets.sub IS NULL THEN excluded.sub ELSE markets.sub END, "
+            "detail=CASE WHEN excluded.modeled=1 OR markets.modeled=0 OR markets.detail IS NULL THEN excluded.detail ELSE markets.detail END", rows)
         key = (hour, modeled, category)
         if not modeled or self._snap_hour != key:
             self.store.xmany("INSERT OR IGNORE INTO snapshots(market_id, ts, price, bid, ask, volume24h, liquidity) VALUES(?,?,?,?,?,?,?)", snaps)
@@ -113,7 +120,7 @@ class ScannerAgent(Agent):
                 break
             for page in range(pages):
                 try:
-                    raws = self.fetch_markets({"tag_id": tag_id, "related_tags": "true", "closed": "false", "active": "true",
+                    raws = self.fetch_markets({"tag_id": tag_id, "related_tags": "true", "closed": "false", "active": "true", "include_tag": "true",
                                                "order": "volume24hr", "ascending": "false", "limit": 100, "offset": page * 100})
                 except Exception:  # noqa: BLE001 – eine Kategorie darf ausfallen
                     errors += 1
@@ -121,13 +128,19 @@ class ScannerAgent(Agent):
                 ms = []
                 for raw in raws:
                     ev = (raw.get("events") or [{}])[0] if isinstance(raw.get("events"), list) and raw.get("events") else {}
-                    m = polymarket.normalize_market(raw, ev, cat)
+                    m = polymarket.normalize_market(raw, ev, "other")
                     if m and not m["closed"] and m["id"] not in seen and "up or down" not in m["question"].lower():
                         seen.add(m["id"])
+                        c = taxonomy.classify(m)          # Einordnung nach den Schlagwörtern des Marktes, nicht nach der Abfrage
+                        if c["category"] == "other":
+                            c = taxonomy.classify(m, cat)
+                        m.update(c)
+                        m["fee_rate"] = polymarket.fee_rate_for(raw, c["category"])
                         ms.append(m)
                 # Modell-Kategorien kommen vollständig über den Handels-Lauf; hier nur ergänzen, nicht umhängen
-                self.ingest(ms, now, modeled=False, category=cat)
-                per_cat[cat] = per_cat.get(cat, 0) + len(ms)
+                self.ingest(ms, now, modeled=False)
+                for m in ms:
+                    per_cat[m["category"]] = per_cat.get(m["category"], 0) + 1
                 if len(raws) < 100:
                     break
         moves = self.update_moves(now)

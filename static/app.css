@@ -182,3 +182,55 @@ html { background:var(--bg); }
 .toast.bad { border-color:var(--neg); }
 .loading { opacity:.55; transition:opacity .15s; }
 @media (prefers-reduced-motion:reduce) { .app * { transition:none !important; } }
+
+/* Paper-Trading */
+.stack { display:grid; gap:8px; }
+.crumbs { display:flex; gap:8px 12px; align-items:center; flex-wrap:wrap; color:var(--ink2); font-size:13px; }
+.crumbs b { color:var(--ink); font-weight:600; }
+.subnav { display:flex; gap:2px; border-bottom:1px solid var(--line); overflow-x:auto; -webkit-overflow-scrolling:touch; }
+.app .main .subnav a { padding:8px 12px; color:var(--ink2); border-bottom:2px solid transparent; white-space:nowrap; text-decoration:none; }
+.app .main .subnav a:hover { color:var(--ink); }
+.app .main .subnav a.on { color:var(--ink); border-bottom-color:var(--acc); font-weight:600; }
+.side { display:inline-block; padding:1px 8px; border-radius:6px; font-size:12.5px; font-weight:600; white-space:nowrap; max-width:22ch;
+  overflow:hidden; text-overflow:ellipsis; vertical-align:middle; }
+.side.yes { color:var(--pos); background:rgba(47,208,127,.13); } .side.no { color:var(--neg); background:rgba(255,93,108,.13); }
+.side.other { color:var(--ink); background:var(--accbg); }
+.sumline { display:flex; gap:6px 18px; flex-wrap:wrap; align-items:baseline; color:var(--ink2); font-size:13.5px; }
+.sumline b { color:var(--ink); font-weight:620; }
+.filters input[type=date] { background:var(--panel); border:1px solid var(--line2); border-radius:8px; padding:6px 8px; color-scheme:dark; }
+.calnav { display:flex; align-items:center; gap:10px; margin-bottom:4px; }
+.calnav h2 { min-width:150px; text-align:center; }
+.cal { display:grid; grid-template-columns:repeat(7, minmax(0,1fr)); gap:4px; }
+.cal .wd { text-align:center; color:var(--ink3); font-size:12px; padding:2px 0 4px; }
+.app .main .cal .d { display:flex; flex-direction:column; align-items:flex-start; gap:1px; min-height:66px; padding:6px 7px; border-radius:8px;
+  border:1px solid var(--line); background:var(--panel); color:var(--ink); cursor:pointer; text-align:left; min-width:0; }
+.cal .d:hover { border-color:var(--line2); }
+.cal .d.blank { border:0; background:none; cursor:default; }
+.cal .d.sel { box-shadow:0 0 0 2px var(--acc); }
+.cal .d .n { color:var(--ink3); font-size:12px; line-height:1.2; }
+.cal .d.today .n { color:var(--acc); font-weight:700; }
+.cal .d .v { font-weight:650; font-size:13.5px; line-height:1.25; overflow-wrap:anywhere; }
+.cal .d .c { color:var(--ink2); font-size:11.5px; line-height:1.2; }
+.cal .d.flat .v { color:var(--ink2); }
+@media (max-width:640px) {
+  .app .main .cal .d { min-height:54px; padding:4px 4px; }
+  .cal .d .v { font-size:11.5px; } .cal .d .c { font-size:10.5px; } .cal .d .c .o { display:none; }
+  .cal { gap:3px; }
+}
+.show-s { display:none; }
+.betcards { display:none; }
+.app .main .betcard { display:block; padding:11px 14px; border-bottom:1px solid var(--line); color:var(--ink); text-decoration:none; }
+.app .main .betcard:last-child { border-bottom:0; }
+.app .main .betcard .bc-line .btn { margin-left:auto; }
+.app .main a.betcard:hover { background:var(--panel2); text-decoration:none; }
+.betcard .bc-top { display:flex; justify-content:space-between; gap:10px; align-items:baseline; }
+.betcard .bc-q { font-weight:500; overflow-wrap:anywhere; }
+.betcard .bc-top > span:last-child { white-space:nowrap; font-weight:600; }
+.betcard .bc-meta { color:var(--ink3); font-size:12px; margin-top:1px; overflow-wrap:anywhere; }
+.betcard .bc-line { display:flex; flex-wrap:wrap; gap:4px 10px; align-items:center; margin-top:6px; font-size:12.5px; color:var(--ink2); }
+.betcard .bc-line b { color:var(--ink); font-weight:600; }
+@media (max-width:640px) {
+  .show-s { display:inline; }
+  .bets-tw { display:none; }
+  .betcards { display:block; }
+}

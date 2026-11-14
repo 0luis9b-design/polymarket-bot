@@ -75,8 +75,13 @@ class Coordinator:
 
     # ------------------------------------------------------------------ Teilschritte im Handels-Lauf
     def on_markets(self, markets, now):
-        self.registry.run("scanner", now, task="Modell-Märkte in den Katalog übernehmen",
-                          fn=lambda n, d: self.scanner.ingest(markets, now), persist=False)
+        def ingest(n, d):
+            out = self.scanner.ingest([m for m in markets if m.get("lane") != "base"], now)
+            others = [m for m in markets if m.get("lane") == "base"]
+            if others:
+                out["weitere"] = self.scanner.ingest(others, now, modeled=False)["märkte"]
+            return out
+        self.registry.run("scanner", now, task="Märkte des Handels-Laufs in den Katalog übernehmen", fn=ingest, persist=False)
 
     def select(self, m, a, mkt_p):
         try:

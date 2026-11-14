@@ -18,7 +18,7 @@ from collections import Counter
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
-from . import config, crypto_model, events, notify, polymarket, sports_model, weather_model
+from . import base_model, config, crypto_model, events, notify, polymarket, sports_model, taxonomy, weather_model
 from .agents.coordinator import Coordinator
 from .prices import hourly_closes, source_status
 from .sources import redact
@@ -30,13 +30,17 @@ MAIN = config.ACCOUNTS[0]["id"]
 CATS = ("crypto", "sports", "weather")
 # Hauptkonto je Bereich (für den Status in der Analyse)
 MAIN_BY_CAT = {c: next((a["id"] for a in config.ACCOUNTS if a.get("cats") == [c]), MAIN) for c in CATS}
+MAIN_BASE = next((a["id"] for a in config.ACCOUNTS if "base" in (a.get("lanes") or [])), MAIN)
+LANE_NAMES = {"model": "eigenes Datenmodell", "base": "Basisraten", "rule": "feste Regel", "arb": "Arbitrage", "maker": "Limit-Order"}
 
 
 def acc_cats(acc):
     return acc.get("cats") or list(CATS)
 
 
-def edge_for(acc, cat):
+def edge_for(acc, cat, lane="model"):
+    if lane == "base":
+        return acc.get("edge_b", config.MIN_EDGE_BASE)
     return {"crypto": acc["edge_c"], "weather": acc.get("edge_w", config.MIN_EDGE_WEATHER)}.get(cat, acc["edge_s"])
 
 
@@ -108,8 +112,13 @@ def _usd(v):
 
 class Engine:
     def __init__(self, store, fetch_events=polymarket.fetch_events, fetch_by_ids=polymarket.fetch_markets_by_ids,
-                 closes_fn=hourly_closes, odds_client=None, chain_fn=None, book_fn=polymarket.fetch_book, intel=None):
+                 closes_fn=hourly_closes, odds_client=None, chain_fn=None, book_fn=polymarket.fetch_book, intel=None,
+                 fetch_markets=None):
         self.store = store
+        # Weitere Märkte (ohne eigenes Modell): im Betrieb von Polymarket; in Tests nur, wenn ausdrücklich übergeben
+        self.fetch_markets = fetch_markets if fetch_markets is not None else (
+            polymarket.fetch_markets if fetch_events is polymarket.fetch_events else (lambda params: []))
+        self.base = base_model.BaseRates(store)
         self.intel = intel or Coordinator(store)   # Agenten: Katalog, Modell-Auswahl, Prüfung, Prognose-Historie
         self.intel.engine = self
         self.fetch_events = fetch_events
@@ -126,6 +135,7 @@ class Engine:
                       "opportunities": [], "skips": {}, "markets_seen": {}, "duration": None, "arbs": [],
                       "weights": {}, "paused": {}}
         self.migrate_split()
+        self.migrate_taxonomy()
         self.state["paused"] = self.store.kv_json("paused_state", {}) or {}
         self.migrate_mix()
         saved = store.kv_json("last_state", {})  # letzte Analyse nach Neustart weiter anzeigen
@@ -165,6 +175,30 @@ class Engine:
             st.kv_set("split_v1", datetime.now(timezone.utc).isoformat(timespec="seconds"))
         if rows:
             st.log(f"Hauptkonto aufgeteilt: {len(rows)} Wetten auf Haupt·Krypto/Sport/Wetter verteilt (je 1.000 $ Start)")
+
+    def migrate_taxonomy(self):
+        """Einmalig: bestehende Wetten, Gebote und Katalog-Märkte in Bereich/Unterbereich/Detail einordnen."""
+        if self.store.kv_get("taxonomy_v1"):
+            return
+        try:
+            tags = {r["id"]: (r["tags"] or "").split(",") for r in self.store.q("SELECT id, tags FROM markets WHERE tags IS NOT NULL AND tags != ''")}
+            for table in ("positions", "orders"):
+                rows = self.store.q(f"SELECT id, market_id, category, question, slug, event_slug FROM {table} WHERE sub IS NULL")
+                upd = []
+                for r in rows:
+                    c = taxonomy.classify({**r, "tags": tags.get(r["market_id"], [])}, r["category"])
+                    upd.append((c["sub"], c["detail"], r["id"]))
+                self.store.xmany(f"UPDATE {table} SET sub=?, detail=? WHERE id=?", upd)
+            self.store.x("UPDATE positions SET lane = CASE WHEN kind='arb' THEN 'arb' WHEN account='aussenseiter' THEN 'rule' "
+                         "WHEN account='limit' THEN 'maker' ELSE 'model' END WHERE lane IS NULL")
+            rows = self.store.q("SELECT id, category, question, tags, slug FROM markets WHERE sub IS NULL")
+            self.store.xmany("UPDATE markets SET sub=?, detail=? WHERE id=?",
+                             [(c["sub"], c["detail"], r["id"]) for r in rows
+                              for c in [taxonomy.classify({**r, "tags": (r["tags"] or "").split(","), "event_slug": r["slug"]}, r["category"])]])
+        except Exception:  # noqa: BLE001 – die Einordnung ist Komfort; ohne sie läuft alles weiter
+            log.exception("Einordnung alter Wetten fehlgeschlagen")
+            return
+        self.store.kv_set("taxonomy_v1", datetime.now(timezone.utc).isoformat(timespec="seconds"))
 
     def migrate_mix(self):
         """14.11.: Bis v1.3 wurde die Mischung mit dem Marktpreis automatisch angewendet. Was zum Zeitpunkt des Updates
@@ -219,6 +253,7 @@ class Engine:
             self.update_weights()
             t = time.time()
             markets = self.collect_markets(now)
+            modeled = [m for m in markets if m.get("lane") != "base"]
             tm["märkte"] = time.time() - t
             self.intel.on_markets(markets, now)
             self.refresh_closing_odds(markets, now)
@@ -228,6 +263,7 @@ class Engine:
             t = time.time()
             by_market = {o["market"]["id"]: o for o in results}
             self.check_risk(now)
+            model_results = [o for o in results if o["analysis"].get("lane", "model") == "model"]
             for a in config.ACCOUNTS:
                 if a["exit"]:
                     self.do_exits(a, by_market, now)
@@ -236,13 +272,13 @@ class Engine:
                         o["status"][a["id"]] = "Risikobremse aktiv"
                     continue
                 if a.get("maker"):
-                    self.do_maker(a, results, markets, by_market, now)
+                    self.do_maker(a, model_results, modeled, by_market, now)
                 elif a.get("longshot"):
                     self.do_longshots(a, markets, now)
                 elif a["model"]:
                     self.do_entries(a, results)
             tm["konten"] = time.time() - t
-            self.do_arbitrage(markets, now)
+            self.do_arbitrage(modeled, now)   # nur vollständige Ereignisse (weitere Märkte kommen einzeln, ohne Geschwister)
             self.update_closing(by_market)
             self.mark_positions(markets)
             for a in config.ACCOUNTS:
@@ -331,10 +367,46 @@ class Engine:
                 markets += ms
             except Exception as e:  # noqa: BLE001
                 self.store.log(f"Wetter-Märkte nicht abrufbar: {e}", "error")
+        for m in markets:
+            m["lane"] = "model"
+            m.update({k: v for k, v in taxonomy.classify(m, m["category"]).items() if k != "category"})
+        if config.TRADE_BASE:
+            try:
+                others = self.collect_others(now, {m["id"] for m in markets})
+                seen["weitere"] = len(others)
+                markets += others
+            except Exception as e:  # noqa: BLE001
+                self.store.log(f"Weitere Märkte nicht abrufbar: {e}", "error")
         self.state["markets_seen"] = seen
         return markets
 
+    def collect_others(self, now, known):
+        """Die aktivsten Märkte aller übrigen Bereiche, die in den nächsten 8 Tagen enden (dafür gibt es Basisraten)."""
+        out = []
+        params = {"closed": "false", "active": "true", "order": "volume24hr", "ascending": "false", "limit": 100,
+                  "include_tag": "true", "liquidity_num_min": config.MIN_LIQUIDITY,
+                  "end_date_min": (now + timedelta(minutes=30)).strftime("%Y-%m-%dT%H:%M:%SZ"),
+                  "end_date_max": (now + timedelta(hours=base_model.MAX_HOURS)).strftime("%Y-%m-%dT%H:%M:%SZ")}
+        for page in range(config.OTHER_PAGES):
+            raws = self.fetch_markets({**params, "offset": page * 100})
+            for raw in raws:
+                ev = raw["events"][0] if isinstance(raw.get("events"), list) and raw.get("events") else None
+                m = polymarket.normalize_market(raw, ev, "other")
+                if not m or m["id"] in known or m["closed"] or "up or down" in m["question"].lower():
+                    continue
+                known.add(m["id"])
+                c = taxonomy.classify(m)
+                m.update(c)
+                m["fee_rate"] = polymarket.fee_rate_for(raw, c["category"])
+                m["lane"] = "base"
+                out.append(m)
+            if len(raws) < 100:
+                break
+        return out
+
     def model(self, m, now):
+        if m.get("lane") == "base":
+            return self.base.analyze(m, now)
         if m["category"] == "crypto":
             return crypto_model.analyze(m, now=now, closes_fn=self.closes_fn, chain_fn=self.chain_fn)
         if m["category"] == "sports":
@@ -357,15 +429,25 @@ class Engine:
                 skips[f"Modellfehler: {type(e).__name__}"] += 1
                 log.debug("Modellfehler %s: %s", m["question"], e)
                 continue
+            if "skip" in a and m.get("lane") != "base" and config.TRADE_BASE and \
+                    not (m["category"] == "sports" and m.get("game_start") and m["game_start"] <= now):
+                # Eigenes Modell hat für diesen Markt nichts (z. B. Spiel in 3 Tagen, unbekannte Station):
+                # dann die Basisraten – gehandelt nur vom Konto „Haupt · Weitere“
+                b = self.base.analyze(m, now)
+                if "skip" not in b:
+                    skips[f"{a['skip'].split(' (')[0]} → Basisraten"] += 1
+                    a = b
             if "skip" in a:
                 skips[a["skip"].split(" (")[0]] += 1
                 continue
+            lane = a.get("lane", "model")
             mkt_p = polymarket.mid_yes(m)
             # Aktives Modell laut Register wählen (Wechsel und Mischung mit dem Markt nur nach Freigabe im Lernzentrum –
             # früher wurde das Mischgewicht automatisch angewendet; das ist jetzt nur noch eine Messgröße).
             a = self.intel.select(m, a, mkt_p)
-            self.store.add_prediction(m["id"], m["category"], m["question"], a["p_yes"], mkt_p,
-                                      m["end_date"].isoformat() if m["end_date"] else None)
+            if lane == "model":  # alte Treffsicherheits-Tabelle nur für die eigenen Datenmodelle
+                self.store.add_prediction(m["id"], m["category"], m["question"], a["p_yes"], mkt_p,
+                                          m["end_date"].isoformat() if m["end_date"] else None)
             ev = evaluate(m, a["p_yes"])
             spread = (m["best_ask"] - m["best_bid"]) if (m["best_ask"] and m["best_bid"]) else None
             base = []
@@ -375,9 +457,12 @@ class Engine:
                 base.append("Spanne zu groß")
             if m["liquidity"] < config.MIN_LIQUIDITY:
                 base.append("zu wenig Liquidität")
-            if not getattr(config, f"TRADE_{m['category'].upper()}", True):
+            if not getattr(config, f"TRADE_{m['category'].upper()}", True) or (lane == "base" and not config.TRADE_BASE):
                 base.append("Bereich im Paper-Trading ausgeschaltet")
-            grp = a.get("group") if m["category"] in ("crypto", "weather") else f"spiel:{m['event_id'] or m['id']}"
+            if lane == "base" or m["category"] in ("crypto", "weather"):
+                grp = a.get("group") or f"{m['category']}:{m['event_id'] or m['id']}"
+            else:
+                grp = f"spiel:{m['event_id'] or m['id']}"
             out.append({"market": m, "analysis": a, "eval": ev, "market_p": mkt_p, "base": base,
                         "group": grp, "status": {}})
         self.intel.on_results(out, now)   # Prüfung (sperrt Unplausibles über o["base"]) + Prognose-Historie
@@ -386,11 +471,20 @@ class Engine:
         return out
 
     @staticmethod
+    def main_for(o):
+        """Hauptkonto, dessen Entscheidung zu dieser Analyse angezeigt wird."""
+        if o["analysis"].get("lane") == "base":
+            return MAIN_BASE
+        return MAIN_BY_CAT.get(o["market"]["category"], MAIN)
+
+    @staticmethod
     def _shown(results):
-        sports = [o for o in results if o["market"]["category"] == "sports"]
-        crypto = [o for o in results if o["market"]["category"] == "crypto"][:100]
-        weather = [o for o in results if o["market"]["category"] == "weather"][:100]
-        return sorted(sports + crypto + weather, key=lambda o: o["eval"]["edge"], reverse=True)
+        model = [o for o in results if o["analysis"].get("lane", "model") == "model"]
+        sports = [o for o in model if o["market"]["category"] == "sports"]
+        crypto = [o for o in model if o["market"]["category"] == "crypto"][:100]
+        weather = [o for o in model if o["market"]["category"] == "weather"][:100]
+        others = [o for o in results if o["analysis"].get("lane") == "base"][:150]
+        return sorted(sports + crypto + weather + others, key=lambda o: o["eval"]["edge"], reverse=True)
 
     def _opp_view(self, o):
         m, ev = o["market"], o["eval"]
@@ -399,9 +493,9 @@ class Engine:
             "id": m["id"], "question": m["question"], "category": m["category"], "slug": m["event_slug"],
             "side_name": m["outcomes"][ev["side"]], "own_p": round(o["analysis"]["p_yes"], 4),
             "market_p": round(o["market_p"], 4), "price": round(ev["price"], 4), "edge": round(ev["edge"], 4),
-            "info": o["analysis"].get("info", ""), "status": o["status"].get(MAIN_BY_CAT.get(m["category"], MAIN), "–"),
-            "bought": bought,
-            "model": o["analysis"].get("model", ""),
+            "info": o["analysis"].get("info", ""), "status": o["status"].get(self.main_for(o), "–"),
+            "bought": bought, "sub": m.get("sub"), "detail": m.get("detail"), "lane": o["analysis"].get("lane", "model"),
+            "model": o["analysis"].get("model", ""), "valid": o["analysis"].get("valid", True),
             "end": m["end_date"].isoformat() if m["end_date"] else None,
         }
 
@@ -424,17 +518,22 @@ class Engine:
 
     # ------------------------------------------------------------------ Einstieg
     def do_entries(self, acc, results):
-        cats = acc_cats(acc)
+        lanes = acc.get("lanes") or ["model"]
+        cats = acc.get("cats")
+        aid = acc["id"]
         for o in results:
             m, ev = o["market"], o["eval"]
-            aid = acc["id"]
-            if m["category"] not in cats:
+            lane = o["analysis"].get("lane", "model")
+            if lane not in lanes or (cats and m["category"] not in cats) or \
+                    (lane == "model" and not cats and m["category"] not in CATS):
                 continue
-            min_edge = edge_for(acc, m["category"])
+            min_edge = edge_for(acc, m["category"], lane)
             if ev["edge"] < min_edge:
                 o["status"][aid] = "Vorsprung zu klein"
             elif o["base"]:
                 o["status"][aid] = ", ".join(o["base"])
+            elif lane == "base" and abs(o["analysis"].get("z") or 0) < config.BASE_MIN_Z:
+                o["status"][aid] = "Abweichung statistisch nicht gesichert"
             elif self.store.has_position(m["id"], aid):
                 o["status"][aid] = "schon gehandelt"
             else:
@@ -451,6 +550,42 @@ class Engine:
             return acc.get("fixed", 10.0), min(acc.get("fixed", 10.0), max(config.MIN_STAKE, 5.0)), conf
         pct = config.STAKE_MIN_PCT + (config.STAKE_MAX_PCT - config.STAKE_MIN_PCT) * conf
         return equity * pct, max(config.MIN_STAKE, equity * config.STAKE_MIN_PCT * 0.999), conf
+
+    @staticmethod
+    def entry_snapshot(acc, o, min_edge, now=None):
+        """Alles, was beim Kauf bekannt war – für die Detailansicht und spätere Auswertungen.
+
+        Gibt (Spalten, JSON-Text) zurück. Spalten sind zum Filtern/Sortieren gedacht, das JSON für die Detailseite."""
+        m, a, ev = o["market"], o["analysis"], o["eval"]
+        now = now or datetime.now(timezone.utc)
+        side = ev["side"]
+        ask, bid = polymarket.quote(m, side)
+        yes_mid = polymarket.mid_yes(m)
+        side_mid = yes_mid if side == 0 else 1 - yes_mid
+        spread = (m["best_ask"] - m["best_bid"]) if (m.get("best_ask") and m.get("best_bid")) else None
+        hours = a.get("hours")
+        if hours is None and m.get("end_date"):
+            hours = (m["end_date"] - now).total_seconds() / 3600
+        lane = a.get("lane", "model")
+        data_ts = a.get("data_ts")
+        rnd = lambda v, d=4: None if v is None else round(v, d)  # noqa: E731
+        cols = {"sub": m.get("sub"), "detail": m.get("detail"), "model": a.get("model_id") or a.get("model"), "lane": lane,
+                "p_mid": rnd(side_mid), "uncertainty": rnd(a.get("uncertainty")), "hours_left": rnd(hours, 2),
+                "spread": rnd(spread), "liquidity": rnd(m.get("liquidity"), 0), "volume24h": rnd(m.get("volume24h"), 0)}
+        entry = {
+            "konto": acc["name"], "spur": LANE_NAMES.get(lane, lane), "modell": a.get("model"), "modell_id": a.get("model_id"),
+            "p_unser_ausgang": rnd(ev["q"]), "p_ja_modell": rnd(a.get("p_yes")), "p_ja_modell_roh": rnd(a.get("p_model")),
+            "p_ja_markt": rnd(yes_mid), "p_unser_ausgang_markt": rnd(side_mid), "kaufkurs": rnd(ask), "verkaufskurs": rnd(bid),
+            "gebuehr_je_anteil": rnd(ev.get("fee_ps")), "vorsprung": rnd(ev["edge"]), "mindest_vorsprung": rnd(min_edge),
+            "unsicherheit": rnd(a.get("uncertainty")), "z": rnd(a.get("z"), 2), "restlaufzeit_h": rnd(hours, 2),
+            "spanne": rnd(spread), "liquiditaet": rnd(m.get("liquidity"), 0), "volumen_24h": rnd(m.get("volume24h"), 0),
+            "datenalter_s": round(now.timestamp() - data_ts) if data_ts else None, "quellen": a.get("sources"),
+            "pruefung": [[n, bool(ok)] for n, ok in (a.get("checks") or [])], "gueltig": a.get("valid", True),
+            "begruendung": a.get("info"), "merkmale": a.get("features"), "varianten": {k: rnd(v) for k, v in (a.get("variants") or {}).items()},
+            "ereignis": m.get("event_title"), "gruppe": o.get("group"), "spielbeginn": m["game_start"].isoformat() if m.get("game_start") else None,
+            "einordnung": taxonomy.path({"category": m["category"], "sub": m.get("sub"), "detail": m.get("detail")}),
+        }
+        return cols, json.dumps({k: v for k, v in entry.items() if v not in (None, [], {})}, ensure_ascii=False, default=str)
 
     def open_position(self, acc, o, min_edge):
         """Gibt den Status zurück ('eröffnet' oder Grund)."""
@@ -486,7 +621,11 @@ class Engine:
         q = ev["q"]
         edge = q - (cost / shares)
         side_name = m["outcomes"][ev["side"]]
-        self.store.insert_position({
+        cols, entry = self.entry_snapshot(acc, o, min_edge)
+        e = json.loads(entry)
+        e.update({"sicherheit": round(conf, 3), "einsatz_anteil": round(cost / equity, 4) if equity else None,
+                  "kontowert": round(equity, 2), "fuellung": note})
+        self.store.insert_position({**cols, "entry": json.dumps(e, ensure_ascii=False, default=str),
             "account": aid, "kind": "model", "grp": o["group"], "token_id": token,
             "market_id": m["id"], "event_id": m["event_id"], "category": m["category"], "question": m["question"],
             "slug": m["slug"], "event_slug": m["event_slug"], "side": ev["side"], "side_name": side_name,
@@ -531,7 +670,9 @@ class Engine:
             ev = {"side": 1, "price": ask_no, "fee_ps": fee, "eff": ask_no + fee, "q": 1 - mid, "edge": (1 - mid) - ask_no - fee}
             grp = (f"{m['category']}:{m['event_id'] or m['id']}")
             o = {"market": m, "eval": ev, "group": grp, "status": {}, "max_price": min(0.985, ask_no + 0.01),
-                 "analysis": {"p_yes": mid, "info": f"Außenseiter-Regel: Ja steht bei {mid * 100:.1f} % → Nein gekauft"}}
+                 "analysis": {"p_yes": mid, "lane": "rule", "model": "Außenseiter-Regel", "model_id": "rule.longshot@1",
+                              "info": f"Außenseiter-Regel: Ja steht bei {mid * 100:.1f} % → Nein gekauft (ohne eigenes Modell: "
+                                      "unsere Wahrscheinlichkeit ist hier der Marktpreis)"}}
             res = self.open_position(acc, o, min_edge=-1.0)
             if res == "Limit erreicht" and self.exposure(self.store.open_positions(aid)) > \
                     self.equity(aid) * config.MAX_EXPOSURE_PCT * 0.98:
@@ -605,7 +746,10 @@ class Engine:
             if shares < (m.get("min_size") or 5):
                 o["status"][aid] = "zu klein"
                 continue
+            ev_ = {"side": side, "q": q, "edge": edge, "fee_ps": 0.0}
+            cols, entry = self.entry_snapshot(acc, {**o, "eval": ev_}, config.MAKER_EDGE, now)
             self.store.insert_order({
+                "sub": cols["sub"], "detail": cols["detail"], "model": cols["model"], "entry": entry,
                 "account": aid, "market_id": m["id"], "event_id": m["event_id"], "category": m["category"],
                 "question": m["question"], "slug": m["slug"], "event_slug": m["event_slug"], "side": side,
                 "side_name": m["outcomes"][side], "token_id": self._token(m, side), "price": limit,
@@ -631,6 +775,7 @@ class Engine:
             "slug": od["slug"], "event_slug": od["event_slug"], "side": od["side"], "side_name": od["side_name"],
             "shares": od["shares"], "price": od["price"], "fee": 0.0, "cost": cost, "own_p": od["q"],
             "market_p": od["price"], "edge": round(od["q"] - od["price"], 4), "info": od["info"],
+            "sub": od.get("sub"), "detail": od.get("detail"), "model": od.get("model"), "lane": "maker", "entry": od.get("entry"),
             "fill_note": f"Limit-Order zu {_cent(od['price'])} gefüllt (ohne Gebühr)",
             "opened_at": now.isoformat(timespec="seconds"), "end_date": od["end_date"], "game_start": od["game_start"],
             "mark": od["price"],
@@ -726,11 +871,12 @@ class Engine:
                 proceeds = p["shares"] * bid - fee
             proceeds = round(proceeds, 4)
             pnl = proceeds - p["cost"]
-            self.store.update_position(p["id"], status="sold", payout=round(proceeds, 4), pnl=round(pnl, 4),
-                                       exit_price=round(avg, 4), mark=round(avg, 4),
-                                       closed_at=now.isoformat(timespec="seconds"))
-            self.store.add_cash(proceeds, config.START_BALANCE, acc["id"])
             why = "Gewinn mitgenommen" if pnl >= 0 else "Modell sieht keinen Vorsprung mehr"
+            self.store.update_position(p["id"], status="sold", payout=round(proceeds, 4), pnl=round(pnl, 4),
+                                       exit_price=round(avg, 4), mark=round(avg, 4), closed_at=now.isoformat(timespec="seconds"),
+                                       exit_reason=f"Früher Ausstieg: {why} – Verkaufserlös {_cent(bid)} je Anteil erreichte die "
+                                                   f"eigene Wahrscheinlichkeit von {q_now * 100:.1f} %")
+            self.store.add_cash(proceeds, config.START_BALANCE, acc["id"])
             self.store.log(f"[{acc['name']}] VERKAUF {p['side_name']} @ {_cent(avg)} ({why}) {pnl:+.2f} $ · {p['question']}")
             notify.send(f"🔵 <b>Verkauf</b> ({acc['name']}) – {why}\n{p['question']}\n{p['side_name']}: {_cent(p['price'])} → "
                         f"{_cent(avg)} · <b>{pnl:+.2f} $</b>", acc["id"])
@@ -837,7 +983,8 @@ class Engine:
             cost = round(n_sets * px + fee, 4)
             total += cost
             self.store.insert_position({
-                "account": aid, "kind": "arb", "grp": f"arb:{a['id']}", "token_id": self._token(m, side),
+                "account": aid, "kind": "arb", "lane": "arb", "model": "arbitrage", "sub": m.get("sub"), "detail": m.get("detail"),
+                "grp": f"arb:{a['id']}", "token_id": self._token(m, side),
                 "market_id": m["id"], "event_id": m["event_id"], "category": m["category"], "question": m["question"],
                 "slug": m["slug"], "event_slug": m["event_slug"], "side": side, "side_name": m["outcomes"][side],
                 "shares": round(n_sets, 4), "price": round(px, 4), "fee": round(fee, 4), "cost": round(cost, 4),
@@ -921,9 +1068,14 @@ class Engine:
             payout = round(payout, 4)
             pnl = payout - p["cost"]
             acc = p.get("account") or MAIN
+            raw = raws.get(p["market_id"]) or {}
+            outs = polymarket._loads(raw.get("outcomes"), [])
+            winner = outs[res] if res in (0, 1) and len(outs) == 2 else None
             self.store.update_position(p["id"], status=status, payout=round(payout, 4), pnl=round(pnl, 4),
                                        mark=1.0 if status == "won" else (0.5 if status == "void" else 0.0),
-                                       closed_at=now.isoformat(timespec="seconds"))
+                                       closed_at=now.isoformat(timespec="seconds"),
+                                       exit_reason=("Markt storniert (50/50)" if status == "void" else
+                                                    f"Markt entschieden: „{winner or ('Ja' if res == 0 else 'Nein')}“"))
             self.store.add_cash(payout, config.START_BALANCE, acc)
             word = {"won": "GEWONNEN", "lost": "VERLOREN", "void": "STORNIERT"}[status]
             name = ACC.get(acc, {}).get("name", acc)

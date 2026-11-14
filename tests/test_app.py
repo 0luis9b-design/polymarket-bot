@@ -8,6 +8,8 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
+from polybot import migrations
+
 HDR = {"X-Requested-With": "polybot"}
 
 
@@ -51,10 +53,10 @@ def test_pages_render_and_static_files(mod):
     html = r.get_data(as_text=True)
     assert r.status_code == 200 and 'id="main"' in html and "/static/app.js" in html and "Claude-Berichte" in html
     assert "<script>" not in html                                            # kein eingebettetes Skript (strenge CSP)
-    r = c.get("/paper")
-    html = r.get_data(as_text=True)
-    assert r.status_code == 200 and "Treffsicherheit" in html and 'id="data"' in html and "/static/paper.js" in html
-    for f in ("app.js", "pages1.js", "pages2.js", "paper.js", "shell.js", "app.css", "shell.css"):
+    assert "/static/pages3.js" in html and "#/wetten" in html and "#/kalender" in html
+    r = c.get("/paper")                                                      # alte Adresse führt in die Zentrale
+    assert r.status_code == 302 and r.headers["Location"].endswith("/#/paper")
+    for f in ("app.js", "pages1.js", "pages2.js", "pages3.js", "shell.js", "app.css", "shell.css"):
         assert c.get("/static/" + f).status_code == 200, f
     assert os.path.exists(os.path.join(mod.config.DATA_DIR, "polybot.sqlite"))
 
@@ -189,7 +191,7 @@ def test_report_generate_read_and_recommendations(mod):
 def test_health_page_data(mod):
     _seed(mod)
     h = mod.app.test_client().get("/api/health").get_json()
-    assert h["db"]["schema"] == 8 and h["db"]["wal"] == "wal" and h["db"]["tabellen"]["forecasts"] == 3
+    assert h["db"]["schema"] == migrations.LATEST and h["db"]["wal"] == "wal" and h["db"]["tabellen"]["forecasts"] == 3
     assert h["guardian"]["aktuell"]["rss_mb"] > 5 and h["guardian"]["kette"]["bis"] >= 1 and h["system"]["loop_alive"] is None
     from polybot import sources
     assert h["telegram"]["aktiv"] is False and sources.redact(json.dumps(h)) == json.dumps(h)   # nichts Geheimnis-Ähnliches in der Antwort
@@ -204,3 +206,27 @@ def test_loop_runs_cycle_and_stops(mod, monkeypatch):
     mod._loop()
     assert calls == [1] and mod._beat["cycles"] == 1 and mod._beat["start"] is None and mod._beat["end"] <= time.time()
     mod._stop.clear()
+
+
+def test_paper_endpoints_history_detail_calendar(mod):
+    c = mod.app.test_client()
+    st = mod.store
+    pid = st.insert_position({"account": "haupt_sport", "market_id": "s1", "category": "sports", "sub": "Fußball", "detail": "Champions League",
+                              "question": "Will Bayern win?", "side": 0, "side_name": "Yes", "price": 0.5, "shares": 20, "cost": 10, "fee": 0,
+                              "own_p": 0.62, "market_p": 0.5, "p_mid": 0.49, "edge": 0.12, "status": "won", "pnl": 10, "payout": 20,
+                              "opened_at": "2026-11-10T10:00:00+00:00", "closed_at": "2026-11-11T21:00:00+00:00", "kind": "model", "lane": "model",
+                              "entry": json.dumps({"p_unser_ausgang": 0.62, "begruendung": "Buchmacher 62 %"}),
+                              "exit_reason": "Markt entschieden: „Yes“"})
+    d = c.get("/api/bets?cat=sports&sub=Fu%C3%9Fball&detail=Champions%20League").get_json()
+    assert d["total"] == 1 and d["rows"][0]["id"] == pid and d["tree"]["sports"]["subs"]["Fußball"]["n"] == 1
+    assert c.get("/api/bets?cat=politics").get_json()["total"] == 0
+    b = c.get(f"/api/bet/{pid}").get_json()
+    assert b["bet"]["entry"]["begruendung"] == "Buchmacher 62 %" and b["bet"]["pfad"] == "Sport › Fußball › Champions League"
+    assert c.get("/api/bet/999999").status_code == 404 and c.get("/api/bet/abc").status_code == 404
+    k = c.get("/api/calendar?monat=2026-11&tag=2026-11-11").get_json()
+    assert [t["gv"] for t in k["tage"] if t["n"]] == [10] and k["geschlossen"][0]["id"] == pid
+    p = c.get("/api/paper?account=haupt_sport").get_json()
+    assert p["kennzahlen"]["kontowert"] is not None and p["kurve"]["art"] == "kontowert" and len(p["konten"]) == len(mod.config.ACCOUNTS)
+    p = c.get("/api/paper?cat=sports").get_json()
+    assert p["kennzahlen"]["gv"] == 10 and p["kennzahlen"]["trefferquote"] == 1.0 and p["aufteilung"]["stufe"] == "sub"
+    assert c.get("/api/paper?account=x%27%20OR%201%3D1--").status_code == 200                # Eingaben gehen nur als Parameter in SQL

@@ -355,8 +355,9 @@
   function status() {
     PB.api("/api/overview").then(function (d) {
       var sy = d.system, word = { ok: "Läuft", warnung: "Läuft mit Warnung", fehler: "Störung", startet: "Startet" }[sy.status] || sy.status;
-      pill.replaceChildren(h("span", { class: "led " + (sy.running ? "läuft" : sy.status) }),
-                           sy.running ? "Lauf aktiv" : word, !sy.running && sy.last_cycle ? h("span", { class: "hide-s" }, "· letzter Lauf " + F.ago(sy.last_cycle)) : null);
+      pill.replaceChildren.apply(pill, [h("span", { class: "led " + (sy.running ? "läuft" : sy.status) }),
+                           sy.running ? "Lauf aktiv" : word, !sy.running && sy.last_cycle ? h("span", { class: "hide-s" }, "· letzter Lauf " + F.ago(sy.last_cycle)) : null]
+                           .filter(function (x) { return x != null; }));   // replaceChildren schreibt null sonst als Text „null“
       pill.title = sy.last_error || "";
       var b = document.getElementById("nav-vorschlag"), n = (d.learning || {}).offene_vorschläge || 0;
       if (b) { b.hidden = !n; b.textContent = n; }

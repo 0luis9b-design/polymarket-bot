@@ -123,7 +123,7 @@ def test_failed_migration_rolls_back(tmp_path, monkeypatch):
         Store(path)
     db = sqlite3.connect(path)
     assert db.execute("SELECT COUNT(*) FROM sqlite_master WHERE name='neu_a'").fetchone()[0] == 0
-    assert db.execute("SELECT MAX(version) FROM schema_version").fetchone()[0] == 8
+    assert db.execute("SELECT MAX(version) FROM schema_version").fetchone()[0] == migrations.LATEST
 
 
 def test_forecast_history_is_immutable(tmp_path):
@@ -146,7 +146,7 @@ def test_backup_keeps_only_last_n(tmp_path):
     name, size = st.backup(keep=3)
     files = sorted(f for f in os.listdir(folder) if f.startswith("polybot-"))
     assert len(files) == 3 and os.path.basename(name) in files and size > 0
-    assert sqlite3.connect(name).execute("SELECT COUNT(*) FROM schema_version").fetchone()[0] == 8  # lesbare Kopie
+    assert sqlite3.connect(name).execute("SELECT COUNT(*) FROM schema_version").fetchone()[0] == migrations.LATEST  # lesbare Kopie
 
 
 # ================================================================ Einstellungen
@@ -261,7 +261,7 @@ def test_probability_select_registry_mix_and_rollback(tmp_path):
     st = _store(tmp_path)
     pa = ProbabilityAgent(st)
     assert {r["category"]: r["model"] for r in st.q("SELECT * FROM model_registry")} == {
-        "crypto": "crypto.options", "weather": "weather.ens", "sports": "sports.books"}
+        "crypto": "crypto.options", "weather": "weather.ens", "sports": "sports.books", "base": "base.calib"}
     m = _m(cat="weather")
     a = pa.select(m, {"p_yes": 0.30, "model_id": "weather.ens@2", "variants": {"weather.ens@2": 0.30, "weather.wide@1": 0.22}}, 0.10)
     assert a["p_yes"] == 0.30 and a["model_id"] == "weather.ens@2"
@@ -673,7 +673,7 @@ def test_guardian_measures_backs_up_prunes_and_checks(tmp_path, monkeypatch):
     assert st.scalar("SELECT COUNT(*) FROM events WHERE title='alt'") == 0
     assert st.scalar("SELECT COUNT(*) FROM forecasts") == 1                                     # Historie wird nie aufgeräumt
     v = g.view()
-    assert v["sicherungen"] and v["schema"] == 8 and v["integrität"]["ergebnis"] == "ok"
+    assert v["sicherungen"] and v["schema"] == migrations.LATEST and v["integrität"]["ergebnis"] == "ok"
     assert reg.run("guardian", NOW).get("sicherung") is None                                    # nur einmal am Tag
 
 

@@ -98,7 +98,7 @@
         { label: "seit Start", num: true, get: function (a) { return h("span", { class: a.pnl_total >= 0 ? "pos" : "neg" }, F.susd(a.pnl_total)); } },
         { label: "offen", num: true, cls: "hide-s", get: function (a) { return F.num(a.open_count); } },
         { label: "Status", get: function (a) { return a.paused ? PB.chip("pausiert", "warn") : PB.chip("aktiv", "ok"); } }
-      ], d.accounts), h("div", { style: { padding: "8px 14px 6px" } }, h("a", { href: "/paper" }, "Alle Wetten, Kalender und Testkonten"))], true));
+      ], d.accounts), h("div", { style: { padding: "8px 14px 6px" } }, h("a", { href: "#/paper" }, "Alle Konten"), " · ", h("a", { href: "#/wetten" }, "Alle Wetten"), " · ", h("a", { href: "#/kalender" }, "Kalender"))], true));
       return out;
     }
   };

@@ -84,6 +84,32 @@ MIGRATIONS = [
         """CREATE TABLE recommendations (id INTEGER PRIMARY KEY AUTOINCREMENT, report_id INTEGER, text TEXT,
             status TEXT DEFAULT 'offen', note TEXT, updated_at TEXT)""",
     ]),
+    (9, "Einordnung in Bereich/Unterbereich/Detail; Einstiegs-Daten je Wette", [
+        "ALTER TABLE positions ADD COLUMN sub TEXT",
+        "ALTER TABLE positions ADD COLUMN detail TEXT",
+        "ALTER TABLE positions ADD COLUMN model TEXT",          # Modell@Version bzw. Regel, nach der gekauft wurde
+        "ALTER TABLE positions ADD COLUMN lane TEXT",           # model = eigenes Datenmodell, base = Basisraten, rule = Regel, arb
+        "ALTER TABLE positions ADD COLUMN p_mid REAL",          # Markt-Wahrscheinlichkeit für unsere Seite (Mitte) beim Kauf
+        "ALTER TABLE positions ADD COLUMN uncertainty REAL",
+        "ALTER TABLE positions ADD COLUMN hours_left REAL",
+        "ALTER TABLE positions ADD COLUMN spread REAL",
+        "ALTER TABLE positions ADD COLUMN liquidity REAL",
+        "ALTER TABLE positions ADD COLUMN volume24h REAL",
+        "ALTER TABLE positions ADD COLUMN entry TEXT",          # alles Weitere zum Zeitpunkt des Kaufs (JSON)
+        "ALTER TABLE positions ADD COLUMN exit_reason TEXT",
+        "ALTER TABLE orders ADD COLUMN sub TEXT",
+        "ALTER TABLE orders ADD COLUMN detail TEXT",
+        "ALTER TABLE orders ADD COLUMN model TEXT",
+        "ALTER TABLE orders ADD COLUMN entry TEXT",
+        "ALTER TABLE markets ADD COLUMN sub TEXT",
+        "ALTER TABLE markets ADD COLUMN detail TEXT",
+        "CREATE INDEX idx_pos_opened ON positions(opened_at)",
+        "CREATE INDEX idx_pos_closed ON positions(closed_at)",
+        "CREATE INDEX idx_pos_tax ON positions(category, sub, detail)",
+        "CREATE INDEX idx_markets_tax ON markets(category, sub, detail)",
+        "ALTER TABLE resolved ADD COLUMN sub TEXT",
+        "ALTER TABLE resolved ADD COLUMN detail TEXT",
+    ]),
 ]
 LATEST = MIGRATIONS[-1][0]
 

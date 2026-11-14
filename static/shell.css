@@ -1,4 +1,4 @@
-/* Gemeinsame Hülle: Farben und Navigation für Zentrale (/) und Paper-Trading (/paper).
+/* Gemeinsame Hülle: Farben und Navigation der Zentrale.
    Alle Regeln hier beginnen mit .sh- oder .has-shell, damit sie die Paper-Trading-Seite nicht verändern. */
 :root {
   --bg:#0a0e16; --panel:#111826; --panel2:#182235; --line:#222d42; --line2:#2c3a54;

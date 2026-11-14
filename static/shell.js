@@ -3,9 +3,8 @@
   "use strict";
   var side = document.querySelector(".sh-side"), more = document.getElementById("sh-more");
   function current() {
-    if (location.pathname === "/paper") return "paper";
     var seg = (location.hash || "#/").replace(/^#\/?/, "").split(/[/?]/)[0];
-    return seg === "markt" ? "maerkte" : seg;
+    return seg === "markt" ? "maerkte" : seg === "wette" ? "wetten" : seg;
   }
   function mark() {
     var cur = current();
@@ -14,7 +13,7 @@
       a.classList.toggle("on", on);
       if (on) a.setAttribute("aria-current", "page"); else a.removeAttribute("aria-current");
     });
-    var inTabs = ["", "maerkte", "prognosen", "paper"].indexOf(cur) >= 0;
+    var inTabs = ["", "maerkte", "prognosen", "paper", "wetten", "kalender"].indexOf(cur) >= 0;
     if (more) more.classList.toggle("on", !inTabs);
   }
   function close() { document.body.classList.remove("sh-open"); if (more) more.setAttribute("aria-expanded", "false"); }

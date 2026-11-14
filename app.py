@@ -19,9 +19,9 @@ import binascii
 import hashlib
 import secrets
 
-from flask import Flask, Response, jsonify, render_template, request
+from flask import Flask, Response, jsonify, redirect, render_template, request
 
-from polybot import config, events, notify, reports, settings, sources, version, weather_model
+from polybot import config, events, notify, paperview, reports, settings, sources, version, weather_model
 from polybot.agents.coordinator import Coordinator
 from polybot.agents.scanner import CATEGORY_NAMES
 from polybot.engine import Engine
@@ -320,7 +320,8 @@ def index():
 
 @app.route("/paper")
 def paper():
-    return render_template("paper.html", data=_paper_data(), version=version.VERSION)
+    # Die alte Einzelseite ist in der Zentrale aufgegangen (Paper-Trading, Wetten, Kalender)
+    return redirect("/#/paper", code=302)
 
 
 @app.route("/favicon.ico")
@@ -645,6 +646,37 @@ def api_settings():
     return jsonify(spec=spec, fixed=fixed, models=coordinator.probability.view()["aktiv"],
                    sources=[{"id": s["id"], "name": s["name"], "use": s["use"], "limit": s["limit"], "day_budget": s["day_budget"]} for s in sources.snapshot()],
                    secrets={"Telegram": notify.enabled(), "Dashboard-Anmeldung": AUTH_AKTIV, "Buchmacher-Quoten (The Odds API)": bool(engine.odds.enabled)})
+
+
+# ---------------------------------------------------------------- API: Paper-Trading
+_PAPER_ARGS = ("account", "cat", "sub", "detail", "status", "q", "von", "bis", "spur", "sort", "dir", "page", "per", "monat", "tag")
+
+
+def _paper_args():
+    return {k: (request.args.get(k) or "")[:100] or None for k in _PAPER_ARGS}
+
+
+@app.route("/api/paper")
+def api_paper():
+    return jsonify(paperview.overview(store, engine, _paper_args()))
+
+
+@app.route("/api/bets")
+def api_bets():
+    return jsonify(paperview.bets(store, _paper_args()))
+
+
+@app.route("/api/bet/<int:pid>")
+def api_bet(pid):
+    d = paperview.bet_detail(store, pid, engine.state.get("opportunities"))
+    if not d:
+        return jsonify(error="Wette nicht gefunden"), 404
+    return jsonify(d)
+
+
+@app.route("/api/calendar")
+def api_calendar():
+    return jsonify(paperview.calendar(store, _paper_args()))
 
 
 @app.route("/api/account/<aid>/resume", methods=["POST"])

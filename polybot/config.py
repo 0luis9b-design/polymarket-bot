@@ -67,7 +67,11 @@ FEE_RATE_WEATHER = _f("FEE_RATE_WEATHER", 0.05)
 
 # --- Wetter ---
 WEATHER_ENABLED = os.environ.get("WEATHER_ENABLED", "1") == "1"
-MIN_EDGE_WEATHER = _f("MIN_EDGE_WEATHER", 0.10)  # Wetter-Modell ist neu -> vorsichtigere Schwelle
+MIN_EDGE_WEATHER = _f("MIN_EDGE_WEATHER", 0.10)
+MIN_EDGE_BASE = _f("MIN_EDGE_BASE", 0.03)        # Basisraten: 3 Punkte Vorsprung nach Gebühren …
+BASE_MIN_Z = _f("BASE_MIN_Z", 1.64)               # … und die Abweichung muss statistisch gesichert sein
+TRADE_BASE = os.environ.get("TRADE_BASE", "1") == "1"   # Märkte ohne eigenes Modell ins Paper-Trading
+OTHER_PAGES = _i("OTHER_PAGES", 6)                # je 100 der aktivsten Märkte, die in den nächsten 8 Tagen enden  # Wetter-Modell ist neu -> vorsichtigere Schwelle
 WEATHER_MAX_DAYS = _f("WEATHER_MAX_DAYS", 4)
 WEATHER_SPREAD_C = _f("WEATHER_SPREAD_C", 0.6)  # Grund-Unschärfe je Szenario in °C (°F: × 1,8)
 
@@ -108,6 +112,11 @@ ACCOUNTS = [
     {"id": "haupt_wetter", "name": "Haupt · Wetter", "cats": ["weather"],
      "desc": "nur Wetter · Schwelle 10 Pkt · Einsatz 2–6 % nach Sicherheit · früher Ausstieg · Arbitrage",
      "edge_c": MIN_EDGE_CRYPTO, "edge_s": MIN_EDGE_SPORTS, "edge_w": MIN_EDGE_WEATHER, "stake": "sicherheit", "exit": True, "arb": True, "model": True},
+    # 14.11.: alle übrigen Märkte (Politik, Wirtschaft, Kultur, E-Sport, weitere Sportarten …) mit dem Basisraten-Modell
+    {"id": "haupt_weitere", "name": "Haupt · Weitere", "lanes": ["base"],
+     "desc": "alle Märkte ohne eigenes Modell (Politik, Wirtschaft, Kultur, E-Sport, weitere Sportarten …) · Basisraten · "
+             "ab 3 Pkt und statistisch gesichert · Einsatz 2–6 % nach Sicherheit · früher Ausstieg",
+     "edge_c": 1.0, "edge_s": 1.0, "edge_w": 1.0, "edge_b": MIN_EDGE_BASE, "stake": "sicherheit", "exit": True, "arb": False, "model": True},
     {"id": "schwelle4", "name": "Schwelle 4/2/7", "desc": "alle Bereiche, Regeln wie Haupt, aber schon ab 4 Pkt (Krypto) / 2 Pkt (Sport) / 7 Pkt (Wetter)",
      "edge_c": 0.04, "edge_s": 0.02, "edge_w": 0.07, "stake": "sicherheit", "exit": True, "arb": False, "model": True},
     {"id": "schwelle8", "name": "Schwelle 8/4/14", "desc": "wie Hauptkonto, aber erst ab 8 Pkt (Krypto) / 4 Pkt (Sport) / 14 Pkt (Wetter)",
@@ -129,7 +138,7 @@ ACCOUNTS = [
 # --- Benachrichtigungen (Telegram) ---
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "").strip()
 TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID", "").strip()
-NOTIFY_ACCOUNTS = [x.strip() for x in os.environ.get("NOTIFY_ACCOUNTS", "haupt_krypto,haupt_sport,haupt_wetter").split(",")
+NOTIFY_ACCOUNTS = [x.strip() for x in os.environ.get("NOTIFY_ACCOUNTS", "haupt_krypto,haupt_sport,haupt_wetter,haupt_weitere").split(",")
                    if x.strip()]
 DAILY_SUMMARY_HOUR = _i("DAILY_SUMMARY_HOUR", 22)   # Tageszusammenfassung um 22 Uhr (deutsche Zeit)
 WEEKLY_REPORT_HOUR = _i("WEEKLY_REPORT_HOUR", 18)   # Wochenbericht sonntags um 18 Uhr (vor der Besprechung um 19 Uhr)
@@ -151,7 +160,7 @@ NEWS_FEEDS = [  # (Name, Adresse) – alle am 14.11.2026 als Standard-RSS geprü
     ("BBC Sport", "https://feeds.bbci.co.uk/sport/rss.xml"),
 ]
 BACKTEST_ENABLED = os.environ.get("BACKTEST_ENABLED", "1") == "1"
-HISTORY_PER_RUN = _i("HISTORY_PER_RUN", 25)           # entschiedene Märkte pro Lauf nachladen (je 1 Abruf Preisverlauf)
+HISTORY_PER_RUN = _i("HISTORY_PER_RUN", 60)           # entschiedene Märkte pro Lauf nachladen (je 1 Abruf Preisverlauf)
 HISTORY_MIN_VOLUME = _f("HISTORY_MIN_VOLUME", 2000)
 MOVE_ALERT_PTS = _f("MOVE_ALERT_PTS", 0.10)
 NOTIFY_MIN_LEVEL = os.environ.get("NOTIFY_MIN_LEVEL", "normal")
