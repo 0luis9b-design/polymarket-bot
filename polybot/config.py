@@ -101,45 +101,87 @@ ARB_MIN_PROFIT = _f("ARB_MIN_PROFIT", 0.01)  # Arbitrage erst ab 1 Cent sicherem
 ARB_MAX_PCT = _f("ARB_MAX_PCT", 0.10)        # max. 10 % des Kontos pro Arbitrage-Paket
 
 # --- Testkonten: alle sehen dieselben Märkte, entscheiden aber mit eigenen Regeln ---
-ACCOUNTS = [
-    # Hauptkonto, aufgeteilt nach Bereich (13.11.): jedes mit eigenen 1.000 $, damit sich die Bereiche nicht vermischen
-    {"id": "haupt_krypto", "name": "Haupt · Krypto", "cats": ["crypto"],
-     "desc": "nur Krypto · Schwelle 6 Pkt · Einsatz 2–6 % nach Sicherheit · früher Ausstieg · Arbitrage",
-     "edge_c": MIN_EDGE_CRYPTO, "edge_s": MIN_EDGE_SPORTS, "edge_w": MIN_EDGE_WEATHER, "stake": "sicherheit", "exit": True, "arb": True, "model": True},
-    {"id": "haupt_sport", "name": "Haupt · Sport", "cats": ["sports"],
-     "desc": "nur Sport · Schwelle 3 Pkt · Einsatz 2–6 % nach Sicherheit · früher Ausstieg · Arbitrage",
-     "edge_c": MIN_EDGE_CRYPTO, "edge_s": MIN_EDGE_SPORTS, "edge_w": MIN_EDGE_WEATHER, "stake": "sicherheit", "exit": True, "arb": True, "model": True},
-    {"id": "haupt_wetter", "name": "Haupt · Wetter", "cats": ["weather"],
-     "desc": "nur Wetter · Schwelle 10 Pkt · Einsatz 2–6 % nach Sicherheit · früher Ausstieg · Arbitrage",
-     "edge_c": MIN_EDGE_CRYPTO, "edge_s": MIN_EDGE_SPORTS, "edge_w": MIN_EDGE_WEATHER, "stake": "sicherheit", "exit": True, "arb": True, "model": True},
-    # 14.11.: alle übrigen Märkte (Politik, Wirtschaft, Kultur, E-Sport, weitere Sportarten …) mit dem Basisraten-Modell
-    {"id": "haupt_weitere", "name": "Haupt · Weitere", "lanes": ["base"],
-     "desc": "alle Märkte ohne eigenes Modell (Politik, Wirtschaft, Kultur, E-Sport, weitere Sportarten …) · Basisraten · "
-             "ab 3 Pkt und statistisch gesichert · Einsatz 2–6 % nach Sicherheit · früher Ausstieg",
-     "edge_c": 1.0, "edge_s": 1.0, "edge_w": 1.0, "edge_b": MIN_EDGE_BASE, "stake": "sicherheit", "exit": True, "arb": False, "model": True},
-    {"id": "schwelle4", "name": "Schwelle 4/2/7", "desc": "alle Bereiche, Regeln wie Haupt, aber schon ab 4 Pkt (Krypto) / 2 Pkt (Sport) / 7 Pkt (Wetter)",
-     "edge_c": 0.04, "edge_s": 0.02, "edge_w": 0.07, "stake": "sicherheit", "exit": True, "arb": False, "model": True},
-    {"id": "schwelle8", "name": "Schwelle 8/4/14", "desc": "wie Hauptkonto, aber erst ab 8 Pkt (Krypto) / 4 Pkt (Sport) / 14 Pkt (Wetter)",
-     "edge_c": 0.08, "edge_s": 0.04, "edge_w": 0.14, "stake": "sicherheit", "exit": True, "arb": False, "model": True},
-    {"id": "fest10", "name": "Fest 10 $", "desc": "wie Hauptkonto, aber immer 10 $ Einsatz",
-     "edge_c": MIN_EDGE_CRYPTO, "edge_s": MIN_EDGE_SPORTS, "edge_w": MIN_EDGE_WEATHER, "stake": "fest", "fixed": 10.0, "exit": True, "arb": False, "model": True},
-    {"id": "halten", "name": "Ohne Ausstieg", "desc": "wie Hauptkonto, hält aber jede Wette bis zur Entscheidung",
-     "edge_c": MIN_EDGE_CRYPTO, "edge_s": MIN_EDGE_SPORTS, "edge_w": MIN_EDGE_WEATHER, "stake": "sicherheit", "exit": False, "arb": False, "model": True},
-    {"id": "kelly", "name": "Viertel-Kelly", "desc": "wie Hauptkonto, Einsatz aber nach Viertel-Kelly (meist 1–3 %)",
-     "edge_c": MIN_EDGE_CRYPTO, "edge_s": MIN_EDGE_SPORTS, "edge_w": MIN_EDGE_WEATHER, "stake": "kelly", "exit": True, "arb": False, "model": True},
-    {"id": "limit", "name": "Limit-Orders", "desc": "stellt Kaufgebote unter den fairen Wert (keine Gebühr) statt sofort zu kaufen – Füllung nur angenähert simuliert",
-     "edge_c": MAKER_EDGE, "edge_s": MAKER_EDGE, "edge_w": MAKER_EDGE, "stake": "sicherheit", "exit": True, "arb": False, "model": False, "maker": True},
-    {"id": "aussenseiter", "name": "Außenseiter verkaufen", "desc": "ohne Modell: kauft „Nein“, wenn ein Markt nur 2–5 % für „Ja“ gibt (fester Einsatz 2 %)",
-     "edge_c": 1.0, "edge_s": 1.0, "edge_w": 1.0, "stake": "longshot", "exit": False, "arb": False, "model": False, "longshot": True},
-    {"id": "arbitrage", "name": "Nur Arbitrage", "desc": "kauft nur Widersprüche in Polymarket (sicherer Gewinn), kein Modell",
-     "edge_c": 1.0, "edge_s": 1.0, "edge_w": 1.0, "stake": "sicherheit", "exit": False, "arb": True, "model": False},
+# --- Konten: jede Strategie × jedes Thema (14.11.) ---
+# Jede Strategie hat je Thema ein eigenes Konto mit 1.000 $ Spielgeld. So zeigt sich, welche Regel in welchem
+# Bereich funktioniert, ohne dass sich Gewinne und Verluste der Bereiche vermischen.
+TOPICS = [  # (Bereich, Kürzel im Konto, Name)
+    ("crypto", "krypto", "Krypto"), ("sports", "sport", "Sport"), ("weather", "wetter", "Wetter"), ("esports", "esport", "E-Sport"),
+    ("politics", "politik", "Politik"), ("world", "welt", "Welt"), ("economy", "wirtschaft", "Wirtschaft"),
+    ("tech", "technik", "Technik"), ("science", "wissenschaft", "Wissenschaft"), ("culture", "kultur", "Kultur"),
+    ("other", "sonstiges", "Sonstiges"),
 ]
+TOPIC_CODE = {cat: code for cat, code, _ in TOPICS}
+TOPIC_NAME = {cat: name for cat, _, name in TOPICS}
+MODEL_TOPICS = ("crypto", "sports", "weather")      # Themen mit eigenem Datenmodell; alle anderen nur Basisraten
+STRATEGIES = [
+    {"id": "haupt", "name": "Haupt", "rules": "Einsatz 2–6 % nach Sicherheit · früher Ausstieg",
+     "desc": "Schwelle 6 Pkt (Krypto) / 3 (Sport) / 10 (Wetter) / 3 (Basisraten) · Einsatz 2–6 % nach Sicherheit · früher Ausstieg · Arbitrage",
+     "edge_c": MIN_EDGE_CRYPTO, "edge_s": MIN_EDGE_SPORTS, "edge_w": MIN_EDGE_WEATHER, "edge_b": MIN_EDGE_BASE,
+     "stake": "sicherheit", "exit": True, "arb": True, "model": True},
+    {"id": "schwelle4", "name": "Schwelle 4/2/7", "rules": "niedrige Schwelle, sonst wie Haupt",
+     "desc": "wie Haupt, aber schon ab 4 Pkt (Krypto) / 2 (Sport) / 7 (Wetter) / 2 (Basisraten)",
+     "edge_c": 0.04, "edge_s": 0.02, "edge_w": 0.07, "edge_b": 0.02, "stake": "sicherheit", "exit": True, "arb": False, "model": True},
+    {"id": "schwelle8", "name": "Schwelle 8/4/14", "rules": "hohe Schwelle, sonst wie Haupt",
+     "desc": "wie Haupt, aber erst ab 8 Pkt (Krypto) / 4 (Sport) / 14 (Wetter) / 5 (Basisraten)",
+     "edge_c": 0.08, "edge_s": 0.04, "edge_w": 0.14, "edge_b": 0.05, "stake": "sicherheit", "exit": True, "arb": False, "model": True},
+    {"id": "fest10", "name": "Fest 10 $", "rules": "immer 10 $ Einsatz, sonst wie Haupt", "desc": "wie Haupt, aber immer 10 $ Einsatz",
+     "edge_c": MIN_EDGE_CRYPTO, "edge_s": MIN_EDGE_SPORTS, "edge_w": MIN_EDGE_WEATHER, "edge_b": MIN_EDGE_BASE,
+     "stake": "fest", "fixed": 10.0, "exit": True, "arb": False, "model": True},
+    {"id": "halten", "name": "Ohne Ausstieg", "rules": "hält jede Wette bis zur Entscheidung, sonst wie Haupt", "desc": "wie Haupt, hält aber jede Wette bis zur Entscheidung",
+     "edge_c": MIN_EDGE_CRYPTO, "edge_s": MIN_EDGE_SPORTS, "edge_w": MIN_EDGE_WEATHER, "edge_b": MIN_EDGE_BASE,
+     "stake": "sicherheit", "exit": False, "arb": False, "model": True},
+    {"id": "kelly", "name": "Viertel-Kelly", "rules": "Einsatz nach Viertel-Kelly (meist 1–3 %), sonst wie Haupt", "desc": "wie Haupt, Einsatz aber nach Viertel-Kelly (meist 1–3 %)",
+     "edge_c": MIN_EDGE_CRYPTO, "edge_s": MIN_EDGE_SPORTS, "edge_w": MIN_EDGE_WEATHER, "edge_b": MIN_EDGE_BASE,
+     "stake": "kelly", "exit": True, "arb": False, "model": True},
+    {"id": "limit", "name": "Limit-Orders", "rules": "Kaufgebote unter dem fairen Wert (keine Gebühr) statt Sofortkauf – Füllung nur angenähert simuliert",
+     "desc": "stellt Kaufgebote unter den fairen Wert (keine Gebühr) statt sofort zu kaufen – Füllung nur angenähert simuliert",
+     "edge_c": MAKER_EDGE, "edge_s": MAKER_EDGE, "edge_w": MAKER_EDGE, "edge_b": MAKER_EDGE,
+     "stake": "sicherheit", "exit": True, "arb": False, "model": False, "maker": True},
+    {"id": "aussenseiter", "name": "Außenseiter verkaufen", "rules": "ohne Modell: kauft „Nein“, wenn „Ja“ nur 2–5 % kostet (fester Einsatz 2 %)",
+     "desc": "ohne Modell: kauft „Nein“, wenn ein Markt nur 2–5 % für „Ja“ gibt (fester Einsatz 2 %)",
+     "edge_c": 1.0, "edge_s": 1.0, "edge_w": 1.0, "edge_b": 1.0, "stake": "longshot", "exit": False, "arb": False, "model": False,
+     "longshot": True},
+    # Arbitrage braucht alle Antworten eines Ereignisses – die holt der Bot nur für Krypto, Sport und Wetter
+    {"id": "arbitrage", "name": "Nur Arbitrage", "rules": "kauft nur Widersprüche in Polymarket (sicherer Gewinn), kein Modell", "desc": "kauft nur Widersprüche in Polymarket (sicherer Gewinn), kein Modell",
+     "edge_c": 1.0, "edge_s": 1.0, "edge_w": 1.0, "edge_b": 1.0, "stake": "sicherheit", "exit": False, "arb": True, "model": False,
+     "topics": MODEL_TOPICS},
+]
+STRATEGY_NAME = {s["id"]: s["name"] for s in STRATEGIES}
+
+
+def _account_desc(s, cat, name):
+    """Beschreibung je Konto: nur die Schwelle, die in diesem Thema gilt."""
+    if not (s.get("model") or s.get("maker")):
+        return f"nur {name} · {s['rules']}"
+    pts = lambda v: f"{v * 100:.0f} Pkt"  # noqa: E731
+    model = {"crypto": s["edge_c"], "weather": s["edge_w"]}.get(cat, s["edge_s"])
+    thr = (f"ab {pts(model)} (eigenes Modell) bzw. {pts(s['edge_b'])} (Basisraten)" if cat in MODEL_TOPICS
+           else f"ab {pts(s['edge_b'])} (Basisraten, statistisch gesichert)")
+    return f"nur {name} · {thr} · {s['rules']}{' · Arbitrage' if s.get('arb') and cat in MODEL_TOPICS else ''}"
+
+
+ACCOUNTS = [
+    {**{k: v for k, v in s.items() if k not in ("id", "name", "desc", "rules", "topics")},
+     "id": f"{s['id']}_{code}", "name": f"{s['name']} · {name}", "strategy": s["id"], "topic": cat, "cats": [cat],
+     "lanes": ["model", "base"], "desc": _account_desc(s, cat, name),
+     "arb": bool(s.get("arb")) and cat in MODEL_TOPICS}   # Arbitrage gibt es nur, wo der Bot ganze Ereignisse kennt
+    for s in STRATEGIES for cat, code, name in TOPICS if cat in s.get("topics", [t[0] for t in TOPICS])
+]
+# Konten von vor der Aufteilung -> Strategie (ihre Wetten wandern einmalig in die Konten je Thema)
+LEGACY_ACCOUNTS = {"schwelle4": "schwelle4", "schwelle8": "schwelle8", "fest10": "fest10", "halten": "halten", "kelly": "kelly",
+                   "limit": "limit", "aussenseiter": "aussenseiter", "arbitrage": "arbitrage", "haupt_weitere": "haupt"}
 
 # --- Benachrichtigungen (Telegram) ---
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "").strip()
 TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID", "").strip()
-NOTIFY_ACCOUNTS = [x.strip() for x in os.environ.get("NOTIFY_ACCOUNTS", "haupt_krypto,haupt_sport,haupt_wetter,haupt_weitere").split(",")
-                   if x.strip()]
+# Telegram meldet Käufe/Verkäufe nur dieser Konten (Muster erlaubt, z. B. „haupt_*“ = alle Hauptkonten)
+NOTIFY_ACCOUNTS = [x.strip() for x in os.environ.get("NOTIFY_ACCOUNTS", "haupt_*").split(",") if x.strip()]
+
+
+def notify_account(aid):
+    """Soll Telegram Käufe/Verkäufe dieses Kontos melden? (NOTIFY_ACCOUNTS, Muster mit * erlaubt)"""
+    import fnmatch
+    return any(fnmatch.fnmatchcase(aid or "", pat) for pat in NOTIFY_ACCOUNTS)
 DAILY_SUMMARY_HOUR = _i("DAILY_SUMMARY_HOUR", 22)   # Tageszusammenfassung um 22 Uhr (deutsche Zeit)
 WEEKLY_REPORT_HOUR = _i("WEEKLY_REPORT_HOUR", 18)   # Wochenbericht sonntags um 18 Uhr (vor der Besprechung um 19 Uhr)
 

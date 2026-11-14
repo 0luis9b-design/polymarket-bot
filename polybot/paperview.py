@@ -13,6 +13,9 @@ from . import config, taxonomy
 
 BERLIN = ZoneInfo("Europe/Berlin")
 ACC_NAMES = {a["id"]: a["name"] for a in config.ACCOUNTS}
+STRAT_ACCOUNTS = {}
+for _a in config.ACCOUNTS:
+    STRAT_ACCOUNTS.setdefault(_a.get("strategy") or _a["id"], []).append(_a["id"])
 STATUS = {
     "offen": "status='open'",
     "entschieden": "status!='open'",
@@ -25,6 +28,26 @@ SORT = {"eroeffnet": "opened_at", "geschlossen": "closed_at", "ende": "end_date"
         "chance": "own_p", "vorsprung": "edge"}
 LIST_COLS = ("id, account, market_id, category, sub, detail, question, side, side_name, price, own_p, market_p, p_mid, edge, cost, shares, "
              "status, pnl, mark, opened_at, closed_at, end_date, kind, lane, model, event_slug, uncertainty, hours_left")
+
+
+def choices():
+    """Auswahllisten für die Filter: Strategien, Themen und alle Konten."""
+    return {"strategies": [{"id": x["id"], "name": x["name"], "desc": x.get("rules", "")} for x in config.STRATEGIES],
+            "topics": [{"id": cat, "name": name} for cat, _, name in config.TOPICS],
+            "accounts": [{"id": a["id"], "name": a["name"], "strategy": a.get("strategy"), "topic": a.get("topic")} for a in config.ACCOUNTS]}
+
+
+def single_account(args):
+    """Ein einzelnes Konto ist gemeint: direkt gewählt oder Strategie + Thema (ohne feinere Filter)."""
+    acc = args.get("account")
+    if acc and acc != "alle":
+        return acc if acc in ACC_NAMES else None
+    strat, cat = args.get("strat"), args.get("cat")
+    if strat and cat and not args.get("sub") and not args.get("detail"):
+        code = config.TOPIC_CODE.get(cat)
+        aid = f"{strat}_{code}" if code else None
+        return aid if aid in ACC_NAMES else None
+    return None
 
 
 def day_of(iso):
@@ -54,12 +77,17 @@ def _valid_day(v):
 
 
 def where(args, status=True, search=True):
-    """Gemeinsamer Filter. args: dict mit account, cat, sub, detail, status, q, von, bis, spur."""
+    """Gemeinsamer Filter. args: dict mit account, strat (Strategie), cat, sub, detail, status, q, von, bis, spur."""
     cond, params = [], []
     acc = args.get("account")
     if acc and acc != "alle":
         cond.append("account=?")
         params.append(acc[:40])
+    strat = args.get("strat")
+    if strat and strat != "alle":
+        ids = STRAT_ACCOUNTS.get(strat) or ["–"]
+        cond.append(f"account IN ({','.join('?' * len(ids))})")
+        params += ids
     for key, col in (("cat", "category"), ("sub", "sub"), ("detail", "detail")):
         v = args.get(key)
         if v:
@@ -84,9 +112,13 @@ def where(args, status=True, search=True):
     return (" WHERE " + " AND ".join(cond)) if cond else "", params
 
 
-def tree(store, account=None):
-    """Bereich › Unterbereich › Detail mit Anzahl Wetten – nur was es wirklich gibt (für die Filter)."""
-    w, p = ("WHERE account=?", [account]) if account and account != "alle" else ("", [])
+def tree(store, args=None):
+    """Bereich › Unterbereich › Detail mit Anzahl Wetten – nur was es wirklich gibt (für die Filter).
+    Berücksichtigt nur Konto/Strategie, nicht den Bereich selbst (sonst gäbe es nichts mehr zu wählen)."""
+    if isinstance(args, str):
+        args = {"account": args}
+    args = args or {}
+    w, p = where({"account": args.get("account"), "strat": args.get("strat")}, status=False, search=False)
     rows = store.q(f"SELECT category, COALESCE(sub, ?) sub, COALESCE(detail, ?) detail, COUNT(*) n FROM positions {w} "
                    "GROUP BY 1, 2, 3", [taxonomy.OTHER, taxonomy.OTHER] + p)
     out = {}
@@ -127,8 +159,8 @@ def bets(store, args):
                  f"SUM(CASE WHEN status='open' THEN shares*COALESCE(mark, price)-cost END) gv_offen, "
                  f"SUM(CASE WHEN status='won' THEN 1 ELSE 0 END) gewonnen, SUM(CASE WHEN status='lost' THEN 1 ELSE 0 END) verloren, "
                  f"SUM(CASE WHEN status='open' THEN 1 ELSE 0 END) offen FROM positions{w}", p)
-    return {"rows": rows, "total": total, "page": page, "per": per, "summe": s, "tree": tree(store, args.get("account")),
-            "accounts": [{"id": a["id"], "name": a["name"]} for a in config.ACCOUNTS]}
+    return {"rows": rows, "total": total, "page": page, "per": per, "summe": s, "tree": tree(store, args),
+            **choices()}
 
 
 def bet_detail(store, pid, opportunities=None):
@@ -194,8 +226,8 @@ def calendar(store, args):
              "plus_tage": sum(1 for x in out_days if x["n"] and x["gv"] > 0.004), "minus_tage": sum(1 for x in out_days if x["n"] and x["gv"] < -0.004)}
     span = store.q1(f"SELECT MIN(opened_at) a, MAX(COALESCE(closed_at, opened_at)) b FROM positions{w}", p)
     res = {"monat": month, "tage": out_days, "summe": total, "erster": day_of(span["a"]) if span and span["a"] else None,
-           "letzter": day_of(span["b"]) if span and span["b"] else None, "tree": tree(store, args.get("account")),
-           "accounts": [{"id": x["id"], "name": x["name"]} for x in config.ACCOUNTS]}
+           "letzter": day_of(span["b"]) if span and span["b"] else None, "tree": tree(store, args),
+           **choices()}
     day = _valid_day(args.get("tag"))
     if day:
         da, db = _utc_bounds(day, day)
@@ -210,8 +242,8 @@ def calendar(store, args):
 def overview(store, engine, args):
     """Kennzahlen für die gewählten Wetten, Konten-Vergleich, offene Wetten und aktuelle Chancen."""
     w, p = where({**args, "status": None})
-    acc = args.get("account") if args.get("account") not in (None, "", "alle") else None
-    filtered = any(args.get(k) for k in ("cat", "sub", "detail", "spur"))
+    acc = single_account(args)
+    filtered = any(args.get(k) for k in ("sub", "detail", "spur")) or (bool(args.get("cat")) and not (args.get("strat") and acc))
     joiner = " AND " if w else " WHERE "
     k = store.q1(f"SELECT SUM(CASE WHEN status='open' THEN 1 ELSE 0 END) offen, SUM(CASE WHEN status='open' THEN cost ELSE 0 END) gebunden, "
                  f"SUM(CASE WHEN status='open' THEN shares*COALESCE(mark, price)-cost ELSE 0 END) gv_offen, "
@@ -251,8 +283,7 @@ def overview(store, engine, args):
     for o in orders:
         o["account_name"] = ACC_NAMES.get(o["account"], o["account"])
     accounts = engine.accounts_overview() if engine else []
-    for a in accounts:
-        a["lanes"] = next((x.get("lanes") for x in config.ACCOUNTS if x["id"] == a["id"]), None) or ["model"]
+    strategies = engine.strategy_summary(accounts) if engine else []
     chances = []
     for o in (engine.state.get("opportunities") if engine else None) or []:
         if args.get("cat") and o.get("category") != args["cat"]:
@@ -263,6 +294,6 @@ def overview(store, engine, args):
             continue
         chances.append(o)
     return {"kennzahlen": k, "kurve": curve, "aufteilung": {"stufe": level, "rows": split}, "offen": open_rows, "gebote": orders,
-            "konten": accounts, "chancen": chances[:25], "tree": tree(store, args.get("account")),
-            "accounts": [{"id": x["id"], "name": x["name"]} for x in config.ACCOUNTS], "start": config.START_BALANCE,
+            "konten": accounts, "strategien": strategies, "konto": next((a for a in accounts if a["id"] == acc), None) if acc else None,
+            "chancen": chances[:25], "tree": tree(store, args), **choices(), "start": config.START_BALANCE,
             "letzter_lauf": engine.state.get("last_scan") if engine else None}

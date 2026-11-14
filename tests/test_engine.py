@@ -66,9 +66,11 @@ def test_full_cycle_all_accounts(tmp_path):
     assert abs(store.cash(config.START_BALANCE, "haupt_krypto") - (config.START_BALANCE - sum(p["cost"] for p in pos))) < 1e-6
     # Testkonten: jedes Modell-Konto kauft für sich, das Arbitrage-Konto nicht
     accs = {p["account"] for p in store.open_positions()}
-    assert {"haupt_krypto", "schwelle4", "schwelle8", "fest10", "halten", "kelly"} <= accs
-    assert "arbitrage" not in accs
-    fest = store.open_positions("fest10")[0]
+    assert {"haupt_krypto", "schwelle4_krypto", "schwelle8_krypto", "fest10_krypto", "halten_krypto", "kelly_krypto"} <= accs
+    assert "arbitrage_krypto" not in accs
+    # Jede Strategie wettet nur in ihrem Thema: kein Sport-/Wetter-Konto hat einen Krypto-Markt
+    assert all(a.endswith("_krypto") for a in accs), accs
+    fest = store.open_positions("fest10_krypto")[0]
     assert abs(fest["cost"] - 10.0) < 1e-6
 
     # Zweiter Lauf eröffnet nichts doppelt
@@ -138,7 +140,7 @@ def test_early_exit_takes_profit(tmp_path):
     sold = [c for c in store.closed_positions(account="haupt_krypto") if c["status"] == "sold"]
     assert sold and sold[0]["pnl"] > 0
     # Konto "Ohne Ausstieg" hält weiter
-    assert store.open_positions("halten")
+    assert store.open_positions("halten_krypto")
 
 
 def test_arbitrage_bucket_sum(tmp_path):
@@ -156,11 +158,11 @@ def test_arbitrage_bucket_sum(tmp_path):
     events = [{"id": "ev", "title": "Bitcoin price?", "negRisk": True, "markets": ms}]
     store, eng = _engine(tmp_path, events, books=books)
     eng.run_cycle()
-    arb = [p for p in store.open_positions("arbitrage") if p["kind"] == "arb"]
+    arb = [p for p in store.open_positions("arbitrage_krypto") if p["kind"] == "arb"]
     assert len(arb) == 3 and len({p["shares"] for p in arb}) == 1
     cost = sum(p["cost"] for p in arb)
     assert arb[0]["shares"] > cost  # sichere Auszahlung (1 $ pro Paket) > Einsatz
-    assert eng.state["arbs"][0]["status"]["arbitrage"] == "eröffnet"
+    assert eng.state["arbs"][0]["status"]["arbitrage_krypto"] == "eröffnet"
 
 
 def test_arbitrage_ladder():

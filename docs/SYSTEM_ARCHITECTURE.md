@@ -55,7 +55,7 @@
 | Strategy Research | `agents/strategy.py` | baut den Datensatz entschiedener Märkte (Preis vor Schluss + Ergebnis), testet Strategien mit zeitlicher Trennung | alle 30 min eine Portion Datensatz, Tests wenn der Datensatz gewachsen ist |
 | News Research | `agents/news.py` | RSS-Schlagzeilen sammeln, entdoppeln, Märkten zuordnen | 30 min |
 | System Guardian | `agents/guardian.py` | Ressourcen, Quellen-Ausfälle, tägliches Backup, Integrität (Datenbank + Prüfsummen-Kette der Prognosen), Aufräumen. Der Neustart einer hängenden Schleife liegt im Wachhund (`app.py`) | jeder Lauf |
-| Paper Trading | `engine.py` | virtuelle Wetten auf 11 Spielgeld-Konten, Risikobremse, Abrechnung | jeder Lauf |
+| Paper Trading | `engine.py` | virtuelle Wetten auf 91 Spielgeld-Konten (Strategie × Thema), Risikobremse, Abrechnung | jeder Lauf |
 | Berichte | `reports.py` | Claude-Review-Bericht Mi + So (13 Abschnitte, nur gemessene Werte) | Zeitplan |
 
 ## Alle Märkte im Paper-Trading (ab 2.1)
@@ -65,8 +65,11 @@
 - **Zwei Spuren** je Markt: `model` (eigenes Datenmodell: Krypto, Sport, Wetter) und `base` (Basisraten, `base_model.py`).
   Hat das eigene Modell für einen Markt nichts (z. B. Spiel in 3 Tagen), bekommt er Basisraten. Jede Wette merkt sich
   ihre Spur (`lane`), dazu `rule` (Außenseiter-Regel), `arb`, `maker`.
-- **Konten**: Die drei Hauptkonten und die Testkonten handeln nur die Spur `model`; „Haupt · Weitere“ nur `base`;
-  „Außenseiter verkaufen“ alle Märkte (Regel ohne Modell); Arbitrage nur vollständige Ereignisse.
+- **Konten** (seit 2.2): `config.STRATEGIES` × `config.TOPICS` → je Strategie und Thema ein Konto `<strategie>_<thema>`.
+  Jedes Konto handelt nur Märkte seines Themas, mit beiden Spuren (`model`, falls es eins gibt, sonst `base` mit z ≥ 1,64);
+  „Außenseiter verkaufen“ nach fester Regel, „Limit-Orders“ als Gebote, Arbitrage nur vollständige Ereignisse (Krypto,
+  Sport, Wetter). Der einmalige Umzug der alten Konten steht in `Engine.migrate_strategies` (kv `split_v2`, Sicherung
+  `backups/vor-kontoaufteilung.sqlite`). Kennzahlen aller Konten kommen aus wenigen gruppierten Abfragen (`accounts_overview`).
 - **Einstiegs-Daten**: Spalten zum Filtern (`sub`, `detail`, `model`, `lane`, `p_mid`, `uncertainty`, `hours_left`, `spread`,
   `liquidity`, `volume24h`) plus `entry` (JSON mit allem für die Detailseite) und `exit_reason`.
 - **Seiten-Daten**: `paperview.py` (eine Filterlogik für Übersicht, Historie, Detail und Kalender; Tage in deutscher Zeit).

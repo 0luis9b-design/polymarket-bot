@@ -1,8 +1,10 @@
 """Versionsstand des Systems. CHANGES wird im Claude-Bericht unter „Neue Funktionen“ gezeigt."""
-VERSION = "2.1.0"
+VERSION = "2.2.0"
 
 # (Datum, Version, Text) – neueste zuerst
 CHANGES = [
+    ("2026-11-14", "2.2.0", "Jede Strategie hat je Thema ein eigenes Konto (9 Strategien × 11 Themen, Arbitrage nur Krypto/Sport/Wetter = 91 Konten); bisherige Wetten nach Thema übernommen"),
+    ("2026-11-14", "2.2.0", "Paper-Trading: Tabelle Strategie × Thema, Filter nach Strategie, Liste pausierter Konten; Telegram-Bilanzen je Strategie zusammengefasst"),
     ("2026-11-14", "2.1.0", "Alle Märkte im Paper-Trading: Konto „Haupt · Weitere“ mit Basisraten für Märkte ohne eigenes Modell"),
     ("2026-11-14", "2.1.0", "Einordnung jedes Marktes in Bereich › Unterbereich › Detail (z. B. Sport › Fußball › Champions League), überall filterbar"),
     ("2026-11-14", "2.1.0", "Wetten-Historie mit Detailseite (alles, was beim Einstieg bekannt war) und filterbarer Kalender mit G/V je Tag"),

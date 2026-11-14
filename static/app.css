@@ -234,3 +234,17 @@ html { background:var(--bg); }
   .bets-tw { display:none; }
   .betcards { display:block; }
 }
+/* Strategie × Thema: jede Zelle ein Konto */
+.app table.matrix { font-size:13px; }
+.app .matrix th, .app .matrix td { padding:7px 10px; white-space:nowrap; }
+.app .matrix td a { text-decoration:none; display:inline-block; min-width:44px; padding:2px 0; }
+.app .main .matrix td a.pos { color:var(--pos); } .app .main .matrix td a.neg { color:var(--neg); }
+.app .main .matrix td a.dim { color:var(--ink2); } .app .main .matrix td a.dim2 { color:var(--ink3); }
+.app .main .matrix th.sticky a, .app .main .matrix thead th a { color:inherit; }
+.app .matrix td a:hover, .app .matrix td a:focus-visible { text-decoration:underline; }
+.app .matrix th.sticky { position:sticky; left:0; background:var(--panel, var(--bg)); z-index:1; color:var(--ink); }
+.app .matrix th.sticky a { color:inherit; }
+.app .matrix thead th a { color:inherit; }
+.app .matrix tr.sum th, .app .matrix tr.sum td { border-top:2px solid var(--line); font-weight:500; }
+.app .main .matrix .pz { font-size:10px; color:var(--warn); vertical-align:1px; }
+@media (max-width:640px) { .app .matrix th, .app .matrix td { padding:6px 7px; } }

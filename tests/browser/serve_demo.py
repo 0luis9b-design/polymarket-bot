@@ -21,7 +21,7 @@ for h in (3, 2, 1, 0):
 co.on_results([_o(ms[0], 0.45, {"weather.ens@2": 0.45}, model_id="weather.ens@2"), _o(ms[1], 0.30, {"crypto.options@1": 0.30}, model_id="crypto.options@1")], now)
 st.add_outcome("w1", 1.0)
 KINDS = [("sports", "Fußball", "Champions League", "Will Bayern win?", "haupt_sport", "model"),
-         ("politics", "USA", "Allgemein", "Will the bill pass by Friday?", "haupt_weitere", "base"),
+         ("politics", "USA", "Allgemein", "Will the bill pass by Friday?", "schwelle4_politik", "base"),
          ("weather", "Europa", "London", "Will the highest temperature in London be 12°C on November 15?", "haupt_wetter", "model"),
          ("crypto", "Bitcoin", "Kurs am Stichtag", "Will the price of Bitcoin be above $100,000 on November 20?", "haupt_krypto", "model")]
 for i in range(24):
@@ -35,4 +35,5 @@ for i in range(24):
                         "opened_at": opened.isoformat(timespec="seconds"), "closed_at": (opened + timedelta(hours=20)).isoformat(timespec="seconds") if done else None,
                         "end_date": (opened + timedelta(hours=24)).isoformat(timespec="seconds"), "kind": "model", "lane": lane, "mark": 0.45,
                         "entry": json.dumps({"p_unser_ausgang": 0.55, "begruendung": "Beispiel", "pruefung": [["wert", True]]})})
+A.engine.state["paused"]["kelly_sport"] = "−8 % heute – pausiert bis morgen"   # damit die Liste „Pausierte Konten“ sichtbar ist
 A.app.run(host="127.0.0.1", port=int(sys.argv[2]), use_reloader=False)

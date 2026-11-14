@@ -282,6 +282,14 @@ class Store:
                             "DO UPDATE SET equity=excluded.equity, cash=excluded.cash", (account, ts, equity, cash))
             self.db.commit()
 
+    def add_equity_many(self, rows):
+        """Kontowert vieler Konten auf einmal (account, equity, cash) – ein Schreibvorgang statt einer je Konto."""
+        ts = now_iso()[:13] + ":00"
+        with self.lock:
+            self.db.executemany("INSERT INTO equity_acc(account,ts,equity,cash) VALUES(?,?,?,?) ON CONFLICT(account,ts) "
+                                "DO UPDATE SET equity=excluded.equity, cash=excluded.cash", [(a, ts, e, c) for a, e, c in rows])
+            self.db.commit()
+
     def equity_history(self, account=MAIN):
         with self.lock:
             return [dict(r) for r in self.db.execute(

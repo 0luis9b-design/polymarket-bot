@@ -10,11 +10,12 @@ Ablauf pro Lauf:
 import json
 import logging
 import math
+import os
 import statistics
 import threading
 import time
 import traceback
-from collections import Counter
+from collections import Counter, defaultdict
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
@@ -27,10 +28,9 @@ log = logging.getLogger("polybot.engine")
 BERLIN = ZoneInfo("Europe/Berlin")
 ACC = {a["id"]: a for a in config.ACCOUNTS}
 MAIN = config.ACCOUNTS[0]["id"]
-CATS = ("crypto", "sports", "weather")
-# Hauptkonto je Bereich (für den Status in der Analyse)
-MAIN_BY_CAT = {c: next((a["id"] for a in config.ACCOUNTS if a.get("cats") == [c]), MAIN) for c in CATS}
-MAIN_BASE = next((a["id"] for a in config.ACCOUNTS if "base" in (a.get("lanes") or [])), MAIN)
+CATS = tuple(config.MODEL_TOPICS)   # Bereiche mit eigenem Datenmodell
+# Hauptkonto je Thema (für den Status in der Analyse und den Umzug alter Konten)
+MAIN_BY_CAT = {a["topic"]: a["id"] for a in config.ACCOUNTS if a.get("strategy") == "haupt" and a.get("topic")}
 LANE_NAMES = {"model": "eigenes Datenmodell", "base": "Basisraten", "rule": "feste Regel", "arb": "Arbitrage", "maker": "Limit-Order"}
 
 
@@ -136,6 +136,7 @@ class Engine:
                       "weights": {}, "paused": {}}
         self.migrate_split()
         self.migrate_taxonomy()
+        self.migrate_strategies()
         self.state["paused"] = self.store.kv_json("paused_state", {}) or {}
         self.migrate_mix()
         saved = store.kv_json("last_state", {})  # letzte Analyse nach Neustart weiter anzeigen
@@ -175,6 +176,77 @@ class Engine:
             st.kv_set("split_v1", datetime.now(timezone.utc).isoformat(timespec="seconds"))
         if rows:
             st.log(f"Hauptkonto aufgeteilt: {len(rows)} Wetten auf Haupt·Krypto/Sport/Wetter verteilt (je 1.000 $ Start)")
+
+    def migrate_strategies(self):
+        """14.11.: Jede Strategie bekommt je Thema ein eigenes Konto (einmalig).
+
+        Die Wetten der bisherigen Konten, die über alle Bereiche gewettet haben (Schwelle 4, Fest 10 $, …, Haupt·Weitere),
+        wandern in das Konto ihrer Strategie und ihres Themas – auch die abgeschlossenen, damit die Geschichte erhalten
+        bleibt. Jedes Zielkonto startet mit 1.000 $ (oder seinem bisherigen Bargeld, falls es das Konto schon gab),
+        plus Gewinn/Verlust der übernommenen abgerechneten Wetten, minus Einsatz der übernommenen offenen.
+        Die Verlustgrenze („−25 % seit Start“) zählt bei neuen Konten ab dem übernommenen Kontowert.
+        """
+        st = self.store
+        if st.kv_get("split_v2"):
+            return
+        legacy = [k for k in config.LEGACY_ACCOUNTS if k not in ACC]
+        by_strategy = {}
+        for a in config.ACCOUNTS:
+            by_strategy.setdefault(a.get("strategy"), []).append(a["id"])
+
+        def target(old, cat):
+            strat = config.LEGACY_ACCOUNTS[old]
+            for aid in (f"{strat}_{config.TOPIC_CODE.get(cat, 'sonstiges')}", f"{strat}_sonstiges"):
+                if aid in ACC:
+                    return aid
+            return (by_strategy.get(strat) or [MAIN])[0]
+
+        ph = ",".join("?" * len(legacy))
+        n_pos = st.scalar(f"SELECT COUNT(*) FROM positions WHERE account IN ({ph})", legacy) if legacy else 0
+        n_ord = st.scalar(f"SELECT COUNT(*) FROM orders WHERE account IN ({ph})", legacy) if legacy else 0
+        if n_pos or n_ord:
+            try:  # Sicherung vor dem Umzug – falls etwas schiefgeht, lässt sich der alte Stand zurückholen
+                if st.path and st.path != ":memory:":
+                    from . import migrations
+                    migrations.backup_file(st.db, os.path.join(os.path.dirname(st.path), "backups", "vor-kontoaufteilung.sqlite"))
+            except Exception:  # noqa: BLE001
+                log.exception("Sicherung vor der Kontoaufteilung fehlgeschlagen")
+        delta, src, new = defaultdict(float), defaultdict(set), set()
+        with st.lock:
+            if n_pos or n_ord:
+                rows = [dict(r) for r in st.db.execute(f"SELECT id, account, category, status, cost, pnl FROM positions "
+                                                       f"WHERE account IN ({ph})", legacy)]
+                for r in rows:
+                    tgt = target(r["account"], r["category"])
+                    st.db.execute("UPDATE positions SET account=? WHERE id=?", (tgt, r["id"]))
+                    delta[tgt] += (r["pnl"] or 0) if r["status"] != "open" else -(r["cost"] or 0)
+                    src[tgt].add(r["account"])
+                for r in [dict(x) for x in st.db.execute(f"SELECT id, account, category FROM orders WHERE account IN ({ph})", legacy)]:
+                    tgt = target(r["account"], r["category"])
+                    st.db.execute("UPDATE orders SET account=? WHERE id=?", (tgt, r["id"]))
+                    src[tgt].add(r["account"])
+                st.db.commit()
+            for tgt in src:
+                cur = st.kv_get(f"cash:{tgt}")
+                if cur is None:
+                    new.add(tgt)
+                    starts = [st.kv_get(f"started_at:{o}") for o in src[tgt]]
+                    starts = [x for x in starts if x] or [st.kv_get("started_at")]
+                    if starts[0]:
+                        st.kv_set(f"started_at:{tgt}", min(x for x in starts if x))
+                st.kv_set(f"cash:{tgt}", round((float(cur) if cur is not None else config.START_BALANCE) + delta[tgt], 6))
+            # alte Konten aus der Pausen-Liste nehmen (es gibt sie nicht mehr)
+            paused = st.kv_json("paused_state", {}) or {}
+            if any(k in paused for k in legacy):
+                st.kv_set("paused_state", json.dumps({k: v for k, v in paused.items() if k not in legacy}))
+            st.kv_set("split_v2", datetime.now(timezone.utc).isoformat(timespec="seconds"))
+        for tgt in new:   # Verlustgrenze ab dem übernommenen Wert, sonst stünde ein geerbtes Minus sofort auf „pausiert“
+            st.kv_set(f"risk_base:{tgt}", round(self.equity(tgt), 2))
+        if n_pos or n_ord:
+            msg = (f"Konten aufgeteilt: {n_pos} Wetten und {n_ord} Gebote aus {len({o for x in src.values() for o in x})} "
+                   f"bisherigen Konten auf {len(src)} Konten (Strategie × Thema) verteilt")
+            st.log(msg)
+            log.info(msg)
 
     def migrate_taxonomy(self):
         """Einmalig: bestehende Wetten, Gebote und Katalog-Märkte in Bereich/Unterbereich/Detail einordnen."""
@@ -263,16 +335,17 @@ class Engine:
             t = time.time()
             by_market = {o["market"]["id"]: o for o in results}
             self.check_risk(now)
-            model_results = [o for o in results if o["analysis"].get("lane", "model") == "model"]
             for a in config.ACCOUNTS:
                 if a["exit"]:
                     self.do_exits(a, by_market, now)
                 if self.paused(a["id"]):
+                    cats = acc_cats(a)
                     for o in results:
-                        o["status"][a["id"]] = "Risikobremse aktiv"
+                        if o["market"]["category"] in cats:
+                            o["status"][a["id"]] = "Risikobremse aktiv"
                     continue
                 if a.get("maker"):
-                    self.do_maker(a, model_results, modeled, by_market, now)
+                    self.do_maker(a, results, markets, by_market, now)
                 elif a.get("longshot"):
                     self.do_longshots(a, markets, now)
                 elif a["model"]:
@@ -281,9 +354,7 @@ class Engine:
             self.do_arbitrage(modeled, now)   # nur vollständige Ereignisse (weitere Märkte kommen einzeln, ohne Geschwister)
             self.update_closing(by_market)
             self.mark_positions(markets)
-            for a in config.ACCOUNTS:
-                pos = self.store.open_positions(a["id"])
-                self.store.add_equity(round(self.equity(a["id"], pos), 2), round(self.cash(a["id"]), 2), a["id"])
+            self.store.add_equity_many([(a["id"], round(self.equity(a["id"]), 2), round(self.cash(a["id"]), 2)) for a in config.ACCOUNTS])
             self.state["opportunities"] = [self._opp_view(o) for o in self._shown(results)]
             self.daily_summary(now)
             self.weekly_report(now)
@@ -446,7 +517,7 @@ class Engine:
             if "skip" in a and m.get("lane") != "base" and config.TRADE_BASE and \
                     not (m["category"] == "sports" and m.get("game_start") and m["game_start"] <= now):
                 # Eigenes Modell hat für diesen Markt nichts (z. B. Spiel in 3 Tagen, unbekannte Station):
-                # dann die Basisraten – gehandelt nur vom Konto „Haupt · Weitere“
+                # dann die Basisraten – gehandelt von den Konten des jeweiligen Themas
                 b = self.base.analyze(m, now)
                 if "skip" not in b:
                     skips[f"{a['skip'].split(' (')[0]} → Basisraten"] += 1
@@ -486,10 +557,8 @@ class Engine:
 
     @staticmethod
     def main_for(o):
-        """Hauptkonto, dessen Entscheidung zu dieser Analyse angezeigt wird."""
-        if o["analysis"].get("lane") == "base":
-            return MAIN_BASE
-        return MAIN_BY_CAT.get(o["market"]["category"], MAIN)
+        """Hauptkonto, dessen Entscheidung zu dieser Analyse angezeigt wird (das Hauptkonto des Themas)."""
+        return MAIN_BY_CAT.get(o["market"]["category"], MAIN_BY_CAT.get("other", MAIN))
 
     @staticmethod
     def _shown(results):
@@ -662,7 +731,10 @@ class Engine:
     def do_longshots(self, acc, markets, now):
         """Ohne Modell: "Nein" kaufen, wenn "Ja" nur 2–5 % kostet (Märkte überschätzen oft Außenseiter)."""
         aid = acc["id"]
+        cats = acc_cats(acc)
         for m in markets:
+            if m["category"] not in cats:
+                continue
             if not m["accepting_orders"] or not m["end_date"] or m["outcomes"][0].lower() not in ("yes", "ja"):
                 continue
             days = (m["end_date"] - now).total_seconds() / 86400
@@ -727,8 +799,15 @@ class Engine:
         orders = self.store.open_orders(aid)
         equity = self.equity(aid, pos)
         committed = self.exposure(pos) + sum(o_["stake"] for o_ in orders)
+        cats, lanes = acc_cats(acc), acc.get("lanes") or ["model"]
         for o in results:
             m = o["market"]
+            lane = o["analysis"].get("lane", "model")
+            if m["category"] not in cats or lane not in lanes:
+                continue
+            if lane == "base" and abs(o["analysis"].get("z") or 0) < config.BASE_MIN_Z:
+                o["status"][aid] = "Abweichung statistisch nicht gesichert"
+                continue
             if o["base"] or self.store.has_position(m["id"], aid) or self.store.has_order(m["id"], aid):
                 o["status"][aid] = "schon gehandelt" if not o["base"] else ", ".join(o["base"])
                 continue
@@ -831,7 +910,7 @@ class Engine:
             if reason and reason != was:
                 self.store.log(f"[{a['name']}] RISIKOBREMSE: {reason}", "error")
                 events.emit(self.store, "hoch", "risikobremse", f"Risikobremse: {a['name']}", f"{reason} · Kontowert {_usd(eq)}",
-                            key=f"bremse:{aid}:{reason[:12]}", agent="trader", telegram=aid in config.NOTIFY_ACCOUNTS, dedupe_h=20)
+                            key=f"bremse:{aid}:{reason[:12]}", agent="trader", telegram=config.notify_account(aid), dedupe_h=20)
 
     def resume(self, aid):
         # neue Bezugsgröße: −25 % zählen ab jetzt, sonst würde die Bremse sofort wieder greifen
@@ -1115,6 +1194,32 @@ class Engine:
                  self.state["markets_seen"], len(results), dict(models), dict(bought) or "keine", arbs or "keine",
                  dict(options.status), self.odds.status, wfail, timing)
 
+    def _pnl_by_account(self, since_iso, until_iso=None):
+        """Abgerechneter G/V und Anzahl je Konto seit einem Zeitpunkt (eine Abfrage für alle Konten)."""
+        q = ("SELECT account, SUM(pnl) gv, COUNT(*) n, SUM(CASE WHEN status='won' AND COALESCE(kind,'')!='arb' THEN 1 ELSE 0 END) w, "
+             "SUM(CASE WHEN status IN ('won','lost') AND COALESCE(kind,'')!='arb' THEN 1 ELSE 0 END) s "
+             "FROM positions WHERE status!='open' AND closed_at>=?")
+        args = [since_iso]
+        if until_iso:
+            q += " AND closed_at<?"
+            args.append(until_iso)
+        return {r["account"]: r for r in self.store.q(q + " GROUP BY account", args)}
+
+    def strategy_rows(self, per_acc=None):
+        """Je Strategie zusammengefasst: Kontowert, G/V seit Start und im Zeitraum (per_acc), über alle Themen."""
+        rows = self.strategy_summary(self.accounts_overview())
+        for r in rows:
+            r.update({"wert": r["equity"], "seit_start": r["pnl_total"], "pausiert": r["paused"], "gv_zeitraum": 0.0, "n": 0, "w": 0, "s": 0})
+        by = {r["id"]: r for r in rows}
+        for aid, x in (per_acc or {}).items():
+            r = by.get((ACC.get(aid) or {}).get("strategy"))
+            if r:
+                r["gv_zeitraum"] += x["gv"] or 0
+                r["n"] += x["n"] or 0
+                r["w"] += x["w"] or 0
+                r["s"] += x["s"] or 0
+        return rows
+
     def daily_summary(self, now):
         if not notify.enabled():
             return
@@ -1123,14 +1228,23 @@ class Engine:
         if local.hour < config.DAILY_SUMMARY_HOUR or self.store.kv_get("last_daily") == key:
             return
         self.store.kv_set("last_daily", key)
+        start = local.replace(hour=0, minute=0, second=0, microsecond=0).astimezone(timezone.utc).isoformat(timespec="seconds")
+        per = self._pnl_by_account(start)
         lines = [f"📊 <b>Tagesbilanz {local:%d.%m.}</b>"]
         for a in config.ACCOUNTS:
-            if a["id"] not in config.NOTIFY_ACCOUNTS:
+            if not config.notify_account(a["id"]):
                 continue
-            closed = [c for c in self.store.closed_positions(500, a["id"])
-                      if c["closed_at"] and polymarket.parse_dt(c["closed_at"]).astimezone(BERLIN).strftime("%Y-%m-%d") == key]
-            pnl = sum(c["pnl"] or 0 for c in closed)
-            lines.append(f"{a['name']}: heute {pnl:+.2f} $ ({len(closed)} abgerechnet) · Konto {_usd(self.equity(a['id']))}")
+            x = per.get(a["id"]) or {}
+            eq = self.equity(a["id"])
+            if not x and abs(eq - config.START_BALANCE) < 0.005 and not self.store.open_positions(a["id"]):
+                continue   # noch unberührtes Konto – nicht jeden Tag eine leere Zeile
+            lines.append(f"{a['name']}: heute {(x.get('gv') or 0):+.2f} $ ({x.get('n') or 0} abgerechnet) · Konto {_usd(eq)}")
+        rows = [r for r in self.strategy_rows(per) if r["n"]]
+        if rows:
+            lines.append("")
+            lines.append("<b>Alle Strategien heute</b> (alle Themen zusammen):")
+            for r in sorted(rows, key=lambda r: -r["gv_zeitraum"]):
+                lines.append(f"{r['name']}: {r['gv_zeitraum']:+.2f} $ ({r['n']} abgerechnet)")
         notify.send("\n".join(lines))
 
     def weekly_report(self, now):
@@ -1142,20 +1256,23 @@ class Engine:
             return
         self.store.kv_set("last_weekly", key)
         since = now - timedelta(days=7)
-        lines = [f"🗓 <b>Wochenbericht bis {local:%d.%m.}</b>"]
-        rows = []
-        for a in config.ACCOUNTS:
-            closed = [c for c in self.store.closed_positions(5000, a["id"])
-                      if c["closed_at"] and polymarket.parse_dt(c["closed_at"]) >= since]
-            pnl = sum(c["pnl"] or 0 for c in closed)
-            st = [c for c in closed if c["status"] in ("won", "lost") and c.get("kind") != "arb"]
-            wr = (sum(1 for c in st if c["status"] == "won") / len(st)) if st else None
-            eq = self.equity(a["id"])
-            rows.append((eq, f"{a['name']}: {pnl:+.2f} $ diese Woche · {len(closed)} abgerechnet"
-                             f"{f' · Treffer {wr * 100:.0f} %' if wr is not None else ''} · Konto {_usd(eq)}"
-                             f"{' · ⛔ pausiert' if self.paused(a['id']) else ''}"))
-        rows.sort(key=lambda r: -r[0])
-        lines += [r[1] for r in rows]
+        per = self._pnl_by_account(since.isoformat(timespec="seconds"))
+        lines = [f"🗓 <b>Wochenbericht bis {local:%d.%m.}</b>", "<b>Strategien</b> (je Strategie alle Themen zusammen):"]
+        for r in sorted(self.strategy_rows(per), key=lambda r: -r["seit_start"]):
+            wr = f" · Treffer {r['w'] / r['s'] * 100:.0f} %" if r["s"] else ""
+            stop = f" · ⛔ {r['pausiert']} von {r['konten']} pausiert" if r["pausiert"] else ""
+            lines.append(f"{r['name']}: {r['gv_zeitraum']:+.2f} $ diese Woche · {r['n']} abgerechnet{wr} · "
+                         f"seit Start {r['seit_start']:+.2f} $ ({r['konten']} Konten){stop}")
+        ranked = sorted(((x["gv"] or 0, ACC.get(aid, {}).get("name", aid)) for aid, x in per.items() if aid in ACC), reverse=True)
+        best = [f"{n} {v:+.2f} $" for v, n in ranked[:3] if v > 0]
+        worst = [f"{n} {v:+.2f} $" for v, n in ranked[::-1][:3] if v < 0]
+        if best:
+            lines.append("<b>Beste Konten der Woche:</b> " + " · ".join(best))
+        if worst:
+            lines.append("<b>Schwächste Konten:</b> " + " · ".join(worst))
+        paused = [a["name"] for a in config.ACCOUNTS if self.paused(a["id"])]
+        if paused:
+            lines.append(f"⛔ Pausiert ({len(paused)}): " + ", ".join(paused[:8]) + (" …" if len(paused) > 8 else ""))
         cal = self.calibration()
         for cat, name in (("crypto", "Krypto"), ("sports", "Sport"), ("weather", "Wetter")):
             c = cal.get(cat, {})
@@ -1210,14 +1327,56 @@ class Engine:
         return out
 
     def accounts_overview(self):
+        """Alle Konten mit Kennzahlen – in wenigen Abfragen statt mehrerer je Konto (es gibt rund 90 Konten)."""
+        st = self.store
+        kv = {r["k"]: r["v"] for r in st.q("SELECT k, v FROM kv WHERE k='cash' OR k LIKE 'cash:%'")}
+        openv = {r["account"]: r for r in st.q(
+            "SELECT account, COUNT(*) n, SUM(shares*COALESCE(mark, price)) wert, SUM(cost) gebunden FROM positions "
+            "WHERE status='open' GROUP BY account")}
+        closed = {r["account"]: r for r in st.q(
+            "SELECT account, COUNT(*) n, SUM(pnl) gv, SUM(cost) einsatz, "
+            "SUM(CASE WHEN status='won' AND COALESCE(kind,'')!='arb' THEN 1 ELSE 0 END) w, "
+            "SUM(CASE WHEN status IN ('won','lost') AND COALESCE(kind,'')!='arb' THEN 1 ELSE 0 END) s, "
+            "SUM(CASE WHEN status IN ('won','lost') AND COALESCE(kind,'')!='arb' THEN own_p END) erwartet "
+            "FROM positions WHERE status!='open' GROUP BY account")}
+        orders = {r["account"]: r["n"] for r in st.q("SELECT account, COUNT(*) n FROM orders WHERE status='open' GROUP BY account")}
         rows = []
         for a in config.ACCOUNTS:
-            s = self.stats(a["id"])
-            s.pop("calibration", None)
-            s.pop("calibration_buckets", None)
-            rows.append({**{k: a[k] for k in ("id", "name", "desc")}, **s,
-                         "paused": self.state["paused"].get(a["id"]), "orders": len(self.store.open_orders(a["id"]))})
+            aid = a["id"]
+            v = kv.get(st._ck(aid))
+            cash = float(v) if v is not None else config.START_BALANCE
+            o, x = openv.get(aid) or {}, closed.get(aid) or {}
+            eq = cash + (o.get("wert") or 0)
+            settled = x.get("s") or 0
+            rows.append({"id": aid, "name": a["name"], "desc": a.get("desc", ""), "strategy": a.get("strategy"), "topic": a.get("topic"),
+                         "start": config.START_BALANCE, "cash": cash, "equity": eq, "pnl_total": eq - config.START_BALANCE,
+                         "exposure": o.get("gebunden") or 0, "open_count": o.get("n") or 0, "closed_count": x.get("n") or 0,
+                         "pnl_realized": x.get("gv") or 0, "staked": x.get("einsatz") or 0, "wins": x.get("w") or 0, "settled": settled,
+                         "winrate": (x.get("w") or 0) / settled if settled else None,
+                         "expected_winrate": (x.get("erwartet") or 0) / settled if settled else None,
+                         "roi": (x.get("gv") or 0) / x["einsatz"] if x.get("einsatz") else None,
+                         "paused": self.state["paused"].get(aid), "orders": orders.get(aid, 0)})
         return rows
+
+    @staticmethod
+    def strategy_summary(accounts):
+        """Konten je Strategie zusammengefasst (alle Themen)."""
+        out = {}
+        for a in accounts:
+            sid = a.get("strategy") or a["id"]
+            r = out.setdefault(sid, {"id": sid, "name": config.STRATEGY_NAME.get(sid, a["name"]), "konten": 0, "equity": 0.0, "pnl_total": 0.0,
+                                     "open_count": 0, "wins": 0, "settled": 0, "pnl_realized": 0.0, "staked": 0.0, "paused": 0, "aktiv": 0})
+            r["konten"] += 1
+            for k in ("equity", "pnl_total", "open_count", "wins", "settled", "pnl_realized", "staked"):
+                r[k] += a.get(k) or 0
+            r["paused"] += 1 if a.get("paused") else 0
+            r["aktiv"] += 1 if (a.get("open_count") or a.get("closed_count")) else 0
+        for r in out.values():
+            r["winrate"] = r["wins"] / r["settled"] if r["settled"] else None
+            r["roi"] = r["pnl_realized"] / r["staked"] if r["staked"] else None
+            r["desc"] = next((x.get("rules") for x in config.STRATEGIES if x["id"] == r["id"]), "")
+        return [out[k] for k in [x["id"] for x in config.STRATEGIES] if k in out] + [v for k, v in out.items()
+                                                                                  if k not in {x["id"] for x in config.STRATEGIES}]
 
     @staticmethod
     def buckets(preds):

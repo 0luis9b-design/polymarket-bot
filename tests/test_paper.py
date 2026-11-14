@@ -1,4 +1,4 @@
-"""Alle Märkte im Paper-Trading: Einordnung in Stufen, Basisraten-Modell, Konto „Haupt · Weitere“,
+"""Alle Märkte im Paper-Trading: Einordnung in Stufen, Basisraten-Modell, Konten je Thema,
 Einstiegs-Daten je Wette, Historie, Detail und Kalender."""
 import json
 import os
@@ -124,19 +124,19 @@ def test_other_markets_are_collected_classified_and_deduplicated(tmp_path):
     m = out[0]
     assert (m["category"], m["sub"], m["lane"]) == ("politics", "USA", "base")
     # offene Basisraten-Wette auf einem Markt, der nicht mehr unter den aktivsten ist: wird einzeln nachgeladen
-    st.insert_position({"account": "haupt_weitere", "market_id": "old1", "category": "politics", "question": "q", "side": 0, "side_name": "Yes",
+    st.insert_position({"account": "haupt_politik", "market_id": "old1", "category": "politics", "question": "q", "side": 0, "side_name": "Yes",
                         "price": 0.5, "shares": 2, "cost": 1, "fee": 0, "status": "open", "opened_at": "2026-11-14T10:00:00+00:00", "lane": "base"})
     eng.fetch_by_ids = lambda ids: {i: _raw(i, ["politics"]) for i in ids}
     assert [m["id"] for m in eng.collect_others(NOW, {"s1"})] == ["p1", "old1"]
 
 
-def test_haupt_weitere_trades_base_rates_and_stores_entry(tmp_path):
+def test_topic_accounts_trade_base_rates_and_store_entry(tmp_path):
     raws = [_raw("p1", ["politics", "elections", "united-states"]), _raw("c1", ["pop-culture", "movies"], bid=0.49, ask=0.51)]
     st, eng = _eng(tmp_path, raws)
     _resolved(st, 400, "politics", 0.10, 8)
     eng.base.refresh(force=True)
     assert eng.run_cycle()
-    pos = st.open_positions("haupt_weitere")
+    pos = st.open_positions("haupt_politik")
     assert [p["market_id"] for p in pos] == ["p1"]                                # Kultur-Markt: keine Vergleichsmärkte für 50 %
     p = pos[0]
     assert p["side"] == 1 and p["lane"] == "base" and p["model"] == "base.calib@1"
@@ -145,9 +145,12 @@ def test_haupt_weitere_trades_base_rates_and_stores_entry(tmp_path):
     e = json.loads(p["entry"])
     assert e["spur"] == "Basisraten" and abs(e["p_unser_ausgang"] - p["own_p"]) < 1e-3 and e["z"] < -5
     assert e["einordnung"] == "Politik › USA" and "Eigener Datensatz" in e["quellen"][0] and e["kontowert"] == config.START_BALANCE
-    # Die Konten mit eigenen Datenmodellen fassen Basisraten-Märkte nicht an
-    for acc in ("haupt_sport", "schwelle4", "fest10", "kelly", "halten"):
-        assert not st.open_positions(acc), acc
+    # Nur Konten des Themas Politik wetten auf den Politik-Markt – jede Strategie mit ihrem eigenen Politik-Konto
+    holders = {p["account"] for p in st.open_positions() if p["market_id"] == "p1"}
+    assert holders and all(a.endswith("_politik") for a in holders), holders
+    assert {"haupt_politik", "schwelle4_politik", "fest10_politik", "kelly_politik", "halten_politik"} <= holders
+    assert abs(st.open_positions("fest10_politik")[0]["cost"] - 10.0) < 1e-6
+    assert not [p for p in st.open_positions() if p["market_id"] == "c1"]
     # Prognose-Historie und Katalog kennen den Markt mit Einordnung, aber ohne „eigenes Modell“
     assert st.q1("SELECT model, champion FROM forecasts WHERE market_id='p1'") == {"model": "base.calib", "champion": 1}
     assert st.q1("SELECT category, sub, modeled FROM markets WHERE id='p1'") == {"category": "politics", "sub": "USA", "modeled": 0}
@@ -160,7 +163,7 @@ def test_base_lane_needs_statistical_support_and_can_be_switched_off(tmp_path, m
     _resolved(st, 60, "politics", 0.10, 3)               # Abweichung da, aber unsicher
     eng.base.refresh(force=True)
     eng.run_cycle()
-    assert not st.open_positions("haupt_weitere")
+    assert not st.open_positions("haupt_politik")
     o = next(x for x in eng.state["opportunities"] if x["id"] == "p1")
     assert o["status"] in ("Abweichung statistisch nicht gesichert", "Vorsprung zu klein") and o["lane"] == "base"
     monkeypatch.setattr(config, "TRADE_BASE", False)
@@ -169,7 +172,7 @@ def test_base_lane_needs_statistical_support_and_can_be_switched_off(tmp_path, m
 
 # ---------------------------------------------------------------- Historie, Detail, Kalender
 def _pos(st, **kw):
-    base = {"account": "haupt_weitere", "market_id": "m", "event_id": "e", "category": "sports", "sub": "Fußball", "detail": "Champions League",
+    base = {"account": "haupt_sport", "market_id": "m", "event_id": "e", "category": "sports", "sub": "Fußball", "detail": "Champions League",
             "question": "Will Bayern win?", "side": 0, "side_name": "Yes", "price": 0.5, "shares": 20, "cost": 10, "fee": 0, "own_p": 0.6,
             "market_p": 0.5, "edge": 0.1, "status": "open", "opened_at": "2026-11-14T10:00:00+00:00", "end_date": "2026-11-20T10:00:00+00:00",
             "kind": "model", "mark": 0.55}
@@ -183,18 +186,23 @@ def test_bets_filter_by_levels_status_and_tree(tmp_path):
     _pos(st, market_id="b", detail="Bundesliga", status="won", pnl=10, closed_at="2026-11-14T20:00:00+00:00")
     _pos(st, market_id="c", sub="Basketball", detail="NBA", status="lost", pnl=-10, closed_at="2026-11-14T21:00:00+00:00")
     _pos(st, market_id="d", category="politics", sub="USA", detail="Allgemein", status="sold", pnl=-2, closed_at="2026-11-14T22:00:00+00:00",
-         account="schwelle4")
+         account="schwelle4_politik")
     r = paperview.bets(st, {"cat": "sports", "sub": "Fußball"})
     assert r["total"] == 2 and {x["market_id"] for x in r["rows"]} == {"a", "b"}
     assert paperview.bets(st, {"cat": "sports", "sub": "Fußball", "detail": "Champions League"})["total"] == 1
     assert [x["market_id"] for x in paperview.bets(st, {"status": "verloren"})["rows"]] == ["d", "c"]     # verkauft mit Verlust zählt mit
     assert paperview.bets(st, {"status": "gewonnen"})["summe"]["gv"] == 10
-    assert paperview.bets(st, {"account": "schwelle4"})["total"] == 1
+    assert paperview.bets(st, {"account": "schwelle4_politik"})["total"] == 1
+    assert paperview.bets(st, {"strat": "schwelle4"})["total"] == 1 and paperview.bets(st, {"strat": "haupt"})["total"] == 3
+    assert paperview.tree(st, {"strat": "schwelle4"}) == {"politics": {"n": 1, "subs": {"USA": {"n": 1, "details": {"Allgemein": 1}}}}}
+    assert paperview.single_account({"strat": "schwelle4", "cat": "politics"}) == "schwelle4_politik"
+    assert paperview.single_account({"strat": "arbitrage", "cat": "politics"}) is None          # gibt es nicht
+    assert paperview.single_account({"strat": "haupt", "cat": "sports", "sub": "Fußball"}) is None
     assert paperview.bets(st, {"q": "bayern"})["total"] == 4 and paperview.bets(st, {"q": "100%"})["total"] == 0
     t = paperview.tree(st)
     assert t["sports"]["n"] == 3 and t["sports"]["subs"]["Fußball"]["details"] == {"Champions League": 1, "Bundesliga": 1}
     row = paperview.bets(st, {"cat": "sports", "status": "offen"})["rows"][0]
-    assert row["pfad"] == "Sport › Fußball › Champions League" and abs(row["gv_offen"] - 1.0) < 1e-9 and row["account_name"] == "Haupt · Weitere"
+    assert row["pfad"] == "Sport › Fußball › Champions League" and abs(row["gv_offen"] - 1.0) < 1e-9 and row["account_name"] == "Haupt · Sport"
 
 
 def test_calendar_counts_days_in_german_time(tmp_path):

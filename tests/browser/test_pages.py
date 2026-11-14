@@ -17,8 +17,8 @@ if os.environ.get("BROWSER_TESTS") != "1":
 sync_api = pytest.importorskip("playwright.sync_api")
 
 PAGES = ["", "maerkte", "markt/w1", "prognosen", "agenten", "lernen", "strategie", "performance", "daten", "system", "berichte",
-         "einstellungen", "paper", "paper?cat=sports", "paper?account=haupt_sport", "wetten", "wetten?cat=sports&sub=Fu%C3%9Fball",
-         "wetten?status=verloren&sort=gv&dir=asc", "wette/1", "wette/2", "kalender", "kalender?tag=" + time.strftime("%Y-%m-%d")]
+         "einstellungen", "paper", "paper?cat=sports", "paper?account=haupt_sport", "paper?strat=haupt", "paper?strat=schwelle4&cat=politics", "paper?strat=kelly&cat=sports", "wetten", "wetten?cat=sports&sub=Fu%C3%9Fball",
+         "wetten?status=verloren&sort=gv&dir=asc", "wetten?strat=schwelle4", "kalender?strat=haupt&cat=sports", "wette/1", "wette/2", "kalender", "kalender?tag=" + time.strftime("%Y-%m-%d")]
 
 
 @pytest.fixture(scope="module")
@@ -28,8 +28,10 @@ def server(tmp_path_factory):
         s.bind(("127.0.0.1", 0))
         port = s.getsockname()[1]
     root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    # Ausgabe in eine Datei, nicht in eine Pipe: eine volle Pipe (64 KB Server-Log) würde den Server anhalten
+    logf = open(d / "server.log", "wb")
     proc = subprocess.Popen([sys.executable, os.path.join(root, "tests", "browser", "serve_demo.py"), str(d), str(port)],
-                            cwd=root, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+                            cwd=root, stdout=logf, stderr=subprocess.STDOUT)
     url = f"http://127.0.0.1:{port}"
     for _ in range(80):
         try:
@@ -39,10 +41,12 @@ def server(tmp_path_factory):
             time.sleep(0.25)
     else:
         proc.kill()
-        raise RuntimeError("Demo-Server startet nicht: " + proc.stdout.read().decode(errors="replace")[-2000:])
+        logf.close()
+        raise RuntimeError("Demo-Server startet nicht: " + (d / "server.log").read_text(errors="replace")[-2000:])
     yield url
     proc.terminate()
     proc.wait(timeout=10)
+    logf.close()
 
 
 @pytest.mark.parametrize("size", [(1360, 900), (390, 844)], ids=["desktop", "handy"])

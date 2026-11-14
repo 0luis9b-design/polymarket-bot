@@ -27,8 +27,8 @@ Die „Agenten“ sind Programm-Module, keine Sprachmodelle – das Budget für 
 Übersicht · Märkte (Suche, Filter, Detail mit Preisverlauf) · Prognosen · KI-Zentrale · Lernen (Vorschläge freigeben/ablehnen,
 Modell zurückholen) · Strategie-Labor · Performance · Daten · System · Claude-Berichte · Einstellungen.
 
-**Paper-Trading:** „Konten und Lage“ (Kennzahlen, Kurve, Konten, offene Wetten, was der Bot gerade sieht) · „Wetten“ (alle Wetten,
-filterbar nach Konto und Bereich › Unterbereich › Detail, z. B. Sport › Fußball › Champions League, nach Ergebnis, Art, Zeitraum)
+**Paper-Trading:** „Konten und Lage“ (Kennzahlen, Kurve, Tabelle Strategie × Thema, pausierte Konten, offene Wetten, was der Bot
+gerade sieht) · „Wetten“ (alle Wetten, filterbar nach Strategie und Bereich › Unterbereich › Detail, z. B. Sport › Fußball › Champions League, nach Ergebnis, Art, Zeitraum)
 · Detailseite je Wette (Wahrscheinlichkeit für den eigenen Tipp beim Einstieg, Markt, Modell, Begründung, Prüfung, Verlauf, Ausgang)
 · „Kalender“ (Gewinn/Verlust je Tag, gleicher Filter).
 Angezeigt werden nur gemessene Werte; fehlt etwas, steht dort „Keine Daten verfügbar“.
@@ -62,9 +62,12 @@ Angezeigt werden nur gemessene Werte; fehlt etwas, steht dort „Keine Daten ver
 - Einsatz 2–6 % des Kontos je nach Sicherheit, höchstens 10 % pro Ereignis/Gruppe, 60 % insgesamt.
 - Kauf und Verkauf über das echte Orderbuch inkl. Gebühr. Früher Ausstieg, wenn der Verkaufserlös die eigene Wahrscheinlichkeit erreicht.
 - Risikobremse: −8 % an einem Tag → Pause bis zum nächsten Tag; −25 % gesamt → Pause bis „Fortsetzen“ im Dashboard.
-- Konten (je 1.000 $ Spielgeld): Haupt·Krypto, Haupt·Sport, Haupt·Wetter, Haupt·Weitere (Basisraten, ab 3 Pkt und statistisch
-  gesichert), Schwelle 4/2/7, Schwelle 8/4/14, Fest 10 $,
-  Ohne Ausstieg, Viertel-Kelly, Limit-Orders, Außenseiter verkaufen, Nur Arbitrage.
+- Konten (je 1.000 $ Spielgeld): **jede Strategie hat je Thema ein eigenes Konto** – 9 Strategien (Haupt, Schwelle 4/2/7,
+  Schwelle 8/4/14, Fest 10 $, Ohne Ausstieg, Viertel-Kelly, Limit-Orders, Außenseiter verkaufen, Nur Arbitrage) × 11 Themen
+  (Krypto, Sport, Wetter, E-Sport, Politik, Welt, Wirtschaft, Technik, Wissenschaft, Kultur, Sonstiges); Arbitrage nur in
+  Krypto, Sport und Wetter → 91 Konten. In Krypto, Sport und Wetter zählt das eigene Modell (sonst Basisraten), in allen
+  anderen Themen nur Basisraten mit statistisch gesicherter Abweichung (z ≥ 1,64). Kennungen: `<strategie>_<thema>`, z. B.
+  `haupt_krypto`, `schwelle4_politik`. Telegram meldet Käufe/Verkäufe der Hauptkonten (`NOTIFY_ACCOUNTS=haupt_*`).
 
 **Wetter-Märkte:** Höchst-/Tiefsttemperatur an ~60 Flughäfen mit dem Open-Meteo-Ensemble (ECMWF, GFS, ICON, ~120 Szenarien).
 Ein gelerntes Modell (Stations-Korrektur + gemessene Streuung) läuft als Herausforderer mit. Am Messtag selbst nimmt der Bot die

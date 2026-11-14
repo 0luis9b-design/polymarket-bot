@@ -826,7 +826,7 @@ def test_report_has_all_sections_only_measured_values(tmp_path, monkeypatch, cap
                               "Ressourcenverbrauch", "Offene technische Probleme", "Verbesserungsvorschläge",
                               "Empfehlungen für die nächsten Entwicklungsschritte"), 1):
         assert f"## {i}. {name}" in md
-    assert "Prognosen mit bekanntem Ergebnis: 0" in md and "Keine Daten." in md and "Haupt · Krypto" in md
+    assert "Prognosen mit bekanntem Ergebnis: 0" in md and "Keine Daten." in md and "Strategie × Thema" in md and "| Haupt |" in md
     lines = [x.message for x in caplog.records if x.message.startswith(f"CLAUDE-REVIEW#{rid}| ")]
     assert lines[0].endswith(r["title"]) and lines[-1].endswith("ENDE") and len(lines) == md.count("\n") + 3
     assert store.scalar("SELECT COUNT(*) FROM events WHERE type='bericht'") == 1

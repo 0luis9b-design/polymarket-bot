@@ -70,7 +70,7 @@ def test_longshot_account_buys_no(tmp_path):
     m = _market("ls", 130000, end, 0.03, 0.04)  # Ja steht bei ~3,5 %
     store, eng = _eng(tmp_path, {"crypto": [{"id": "e", "markets": [m]}]})
     eng.run_cycle()
-    pos = store.open_positions("aussenseiter")
+    pos = store.open_positions("aussenseiter_krypto")
     assert len(pos) == 1 and pos[0]["side"] == 1
     assert abs(pos[0]["cost"] - config.START_BALANCE * config.LONGSHOT_STAKE_PCT) < 0.01
 
@@ -81,17 +81,17 @@ def test_maker_order_placed_then_filled(tmp_path):
     ev = {"id": "e", "markets": [_market("mk", 100000, end, 0.20, 0.22)]}  # Bot ~49 %
     store, eng = _eng(tmp_path, {"crypto": [ev]})
     eng.run_cycle()
-    orders = store.open_orders("limit")
+    orders = store.open_orders("limit_krypto")
     assert len(orders) == 1 and orders[0]["side"] == 0
     assert orders[0]["price"] < 0.22  # unter dem Briefkurs
-    assert store.open_positions("limit") == []
+    assert store.open_positions("limit_krypto") == []
     # Kurs fällt bis auf das Gebot -> gefüllt, ohne Gebühr
     lim = orders[0]["price"]
     ev["markets"] = [_market("mk", 100000, end, round(lim - 0.01, 3), lim)]
     eng.run_cycle()
-    pos = store.open_positions("limit")
+    pos = store.open_positions("limit_krypto")
     assert len(pos) == 1 and pos[0]["fee"] == 0 and abs(pos[0]["price"] - lim) < 1e-9
-    assert store.open_orders("limit") == []
+    assert store.open_orders("limit_krypto") == []
 
 
 def test_risk_brake_day_loss(tmp_path):
@@ -189,25 +189,25 @@ def test_maker_cancels_order_when_market_no_longer_rated(tmp_path):
     ev = {"id": "e", "markets": [_market("mk", 100000, end, 0.20, 0.22)]}
     store, eng = _eng(tmp_path, {"crypto": [ev]})
     eng.run_cycle()
-    assert len(store.open_orders("limit")) == 1
+    assert len(store.open_orders("limit_krypto")) == 1
     # Markt läuft gleich ab -> wird nicht mehr bewertet -> Gebot weg
     # (Frage nennt den Vortag: sonst hinge der Test von der Uhrzeit ab, zu der er läuft)
     past = now - timedelta(days=1)
     q = f"Will the price of Bitcoin be above $100,000 on {past:%B} {past.day}?"
     ev["markets"] = [_market("mk", 100000, now + timedelta(minutes=30), 0.20, 0.22, q=q)]
     eng.run_cycle()
-    assert store.open_orders("limit") == []
+    assert store.open_orders("limit_krypto") == []
 
 
 def test_resume_after_total_loss_does_not_retrigger(tmp_path):
     now = datetime.now(timezone.utc).replace(microsecond=0)
     store, eng = _eng(tmp_path, {})
-    store.add_cash(-300, config.START_BALANCE, "kelly")  # −30 %
+    store.add_cash(-300, config.START_BALANCE, "kelly_sport")  # −30 %
     eng.check_risk(now)
-    assert eng.paused("kelly")
-    eng.resume("kelly")
+    assert eng.paused("kelly_sport")
+    eng.resume("kelly_sport")
     eng.check_risk(now)
-    assert not eng.paused("kelly")
+    assert not eng.paused("kelly_sport")
 
 
 def test_longshot_skips_wide_spread_and_caps_price(tmp_path):
@@ -216,7 +216,7 @@ def test_longshot_skips_wide_spread_and_caps_price(tmp_path):
     wide = _market("w", 130000, end, 0.001, 0.08)  # Mitte ~4 %, aber riesige Spanne
     store, eng = _eng(tmp_path, {"crypto": [{"id": "e", "markets": [wide]}]})
     eng.run_cycle()
-    assert store.open_positions("aussenseiter") == []
+    assert store.open_positions("aussenseiter_krypto") == []
     asks = [(0.97, 5.0), (0.999, 1000.0)]
     sh, cost, fee, avg = polymarket.fill_buy(asks, 100, 0.0, max_price=0.98)
     assert sh == 5.0 and avg == 0.97

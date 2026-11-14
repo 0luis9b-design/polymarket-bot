@@ -114,7 +114,7 @@ def push(level, text, key=None):
 
 def send(text, account=None, level="normal", key=None):
     """Bisherige Schnittstelle (Käufe, Verkäufe, Abrechnungen); `account` filtert auf die gemeldeten Konten."""
-    if account is not None and account not in config.NOTIFY_ACCOUNTS:
+    if account is not None and not config.notify_account(account):
         return False
     return push(level, text, key)
 

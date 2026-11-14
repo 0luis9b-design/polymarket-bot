@@ -92,13 +92,12 @@
       ], d.activity.movers, { href: function (m) { return "#/markt/" + m.id; },
            empty: "In der letzten Stunde hat sich kein liquider Markt um mehr als 2 Punkte bewegt – oder der Preisverlauf ist noch keine Stunde alt." }), true));
 
-      out.push(PB.panel("Paper-Trading", "Simulation mit Spielgeld", [PB.table([
-        { label: "Konto", get: function (a) { return a.name; } },
-        { label: "Wert", num: true, get: function (a) { return F.usd(a.equity); } },
-        { label: "seit Start", num: true, get: function (a) { return h("span", { class: a.pnl_total >= 0 ? "pos" : "neg" }, F.susd(a.pnl_total)); } },
+      out.push(PB.panel("Paper-Trading", "je Strategie, alle Themen zusammen (je Thema ein eigenes Konto mit 1.000 $)", [PB.table([
+        { label: "Strategie", get: function (a) { return h("div", { class: "q" }, a.name, h("small", null, F.num(a.konten) + " Konten" + (a.aktiv ? ", " + F.num(a.aktiv) + " mit Wetten" : ""))); } },
+        { label: "seit Start", num: true, get: function (a) { return h("span", { class: Math.abs(a.pnl_total) < 0.005 ? "dim" : a.pnl_total > 0 ? "pos" : "neg" }, F.susd(a.pnl_total)); } },
         { label: "offen", num: true, cls: "hide-s", get: function (a) { return F.num(a.open_count); } },
-        { label: "Status", get: function (a) { return a.paused ? PB.chip("pausiert", "warn") : PB.chip("aktiv", "ok"); } }
-      ], d.accounts), h("div", { style: { padding: "8px 14px 6px" } }, h("a", { href: "#/paper" }, "Alle Konten"), " · ", h("a", { href: "#/wetten" }, "Alle Wetten"), " · ", h("a", { href: "#/kalender" }, "Kalender"))], true));
+        { label: "Status", get: function (a) { return a.paused ? PB.chip(a.paused + " pausiert", "warn") : PB.chip("aktiv", "ok"); } }
+      ], d.strategies || [], { href: function (a) { return "#/paper?strat=" + encodeURIComponent(a.id); } }), h("div", { style: { padding: "8px 14px 6px" } }, h("a", { href: "#/paper" }, "Alle Konten"), " · ", h("a", { href: "#/wetten" }, "Alle Wetten"), " · ", h("a", { href: "#/kalender" }, "Kalender"))], true));
       return out;
     }
   };

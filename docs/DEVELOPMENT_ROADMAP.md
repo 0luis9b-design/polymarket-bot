@@ -1,7 +1,7 @@
 # Entwicklungs-Roadmap
 
 Priorität: **1** = verhindert Schaden oder ist Voraussetzung · **2** = Kern des Zielsystems · **3** = Ausbau.
-Status: ✅ erledigt (mit Tests belegt) · 🔧 in Arbeit · ⏳ geplant. Stand: 14.11.2026 (abends), Version 2.1.0.
+Status: ✅ erledigt (mit Tests belegt) · 🔧 in Arbeit · ⏳ geplant. Stand: 14.11.2026 (spätabends), Version 2.2.0.
 
 ## Phase 1–2 · Audit und Architektur — ✅
 Dokumente: `PROJECT_AUDIT.md`, `SYSTEM_ARCHITECTURE.md`, `TECHNICAL_DEBT.md`, `RISK_REGISTER.md`, diese Datei.
@@ -48,7 +48,7 @@ Prioritäten, Tageslimit, Ruhezeit · Claude-Review-Bericht Mi + So · geplante 
 ## Phase 10–11 · Qualität und Betrieb (Priorität 1) — ✅
 | Schritt | Status |
 |---|---|
-| Tests für jedes neue Modul (Stand 2.1: 144 Tests + Browser-Tests; Quellen, Migrationen, Prognose-Historie, Prüfung, Lernen, Backtests ohne Blick in die Zukunft, Nachrichten, Guardian, Berichte, alle API-Endpunkte) | ✅ |
+| Tests für jedes neue Modul (Stand 2.2: 150 Tests + Browser-Tests; Quellen, Migrationen, Prognose-Historie, Prüfung, Lernen, Backtests ohne Blick in die Zukunft, Nachrichten, Guardian, Berichte, alle API-Endpunkte) | ✅ |
 | CSRF-Schutz, Anmelde-Sperre, Sicherheits-Header (T12) | ✅ |
 | Abhängigkeits-Prüfung in der CI (T17) | ✅ |
 | Upgrade einer v1.3-Datenbank geprüft (Backup vor Migration, Wetten und Guthaben bleiben) | ✅ |
@@ -68,6 +68,18 @@ Prioritäten, Tageslimit, Ruhezeit · Claude-Review-Bericht Mi + So · geplante 
 
 Wichtig zum Verständnis: Das Konto „Haupt · Weitere“ wettet anfangs wenig oder gar nicht. Solange der Datensatz klein ist,
 liegen die Basisraten fast genau auf dem Marktpreis – dann gibt es keinen Vorsprung. Das ist gewollt: Ohne Belege kein Einsatz.
+
+## Version 2.2 · Jede Strategie je Thema ein Konto (Wunsch vom 14.11.) — ✅
+| Schritt | Status |
+|---|---|
+| 9 Strategien × 11 Themen als eigene Spielgeld-Konten (Arbitrage nur Krypto/Sport/Wetter) = 91 Konten; Hauptkonten behalten ihre Kennung | ✅ |
+| Einmaliger Umzug: Wetten und Gebote der bisherigen Testkonten und von „Haupt · Weitere“ wandern in das Konto ihrer Strategie und ihres Themas, Guthaben entsprechend; Sicherung vorher; Verlustgrenze neuer Konten ab dem übernommenen Wert | ✅ mit Test |
+| Jedes Konto handelt nur sein Thema – mit eigenem Modell (Krypto/Sport/Wetter) und Basisraten; Limit-Orders und Außenseiter-Regel je Thema | ✅ mit Test |
+| Dashboard: Tabelle Strategie × Thema (G/V je Konto, antippen öffnet das Konto), Strategie-Übersicht, pausierte Konten mit „Fortsetzen“, Filter nach Strategie auf allen Paper-Seiten | ✅ Browser-Test |
+| Telegram-Tages-/Wochenbilanz und Claude-Bericht je Strategie zusammengefasst statt 91 Zeilen | ✅ mit Test |
+
+Hinweis: Mit 91 Konten gibt es je Konto weniger Wetten – belastbare Vergleiche einzelner Felder brauchen Wochen. Für den Anfang
+sind die Zeilen (Strategie über alle Themen) und Spalten (Thema über alle Strategien) aussagekräftiger als einzelne Felder.
 
 ## Machbarkeit (geprüft)
 | Ressource | Heute | Mit Ausbau (geschätzt) | Grenze |

@@ -1,12 +1,13 @@
 /* Zentrale – Paper-Trading: Konten und Lage, Wetten (Historie), eine Wette im Detail, Kalender.
-   Alle drei Listen-Seiten teilen denselben Filter: Konto und Bereich › Unterbereich › Detail (z. B. Sport › Fußball › Champions League).
+   Alle drei Listen-Seiten teilen denselben Filter: Strategie und Bereich › Unterbereich › Detail (z. B. Sport › Fußball › Champions League).
+   Jede Strategie hat je Thema ein eigenes Konto – Strategie + Bereich zusammen ist also genau ein Konto.
    Der Filter steht in der Adresse (#/wetten?cat=sports&sub=Fußball…), damit er beim Wechsel zwischen den Seiten erhalten bleibt. */
 (function () {
   "use strict";
   var PB = window.PB, h = PB.h, F = PB.fmt, api = PB.api, UI = PB.ui;
   var OTHER = "Allgemein";
   PB.CAT.other = PB.CAT.other || "Sonstiges";
-  var FILTER_KEYS = ["account", "cat", "sub", "detail"];
+  var FILTER_KEYS = ["strat", "account", "cat", "sub", "detail"];
   var STATUS = [["", "Alle"], ["offen", "Offen"], ["gewonnen", "Gewonnen"], ["verloren", "Verloren"], ["verkauft", "Verkauft"], ["storniert", "Storniert"]];
   var LANE = { model: "eigenes Datenmodell", base: "Basisraten", rule: "feste Regel", arb: "Arbitrage", maker: "Limit-Order" };
 
@@ -43,11 +44,15 @@
   function filterBar(d, r, extra) {
     var q = r.q, tree = d.tree || {};
     var set = function (changes) { PB.setQuery(Object.assign({ page: "", tag: "" }, changes)); };
-    var cats = Object.keys(tree).sort(function (a, b) { return tree[b].n - tree[a].n; });
+    /* alle Themen anbieten (jedes ist ein eigenes Konto), auch ohne Wetten – sortiert nach Anzahl Wetten */
+    var cats = Object.keys(tree);
+    (d.topics || []).forEach(function (t) { if (cats.indexOf(t.id) < 0) cats.push(t.id); });
+    var nOf = function (c) { return tree[c] ? tree[c].n : 0; };
+    cats.sort(function (a, b) { return nOf(b) - nOf(a); });
     var parts = [
-      UI.select(q.account || "", [["", "Alle Konten"]].concat((d.accounts || []).map(function (a) { return [a.id, a.name]; })),
-                function (v) { set({ account: v }); }, "Konto"),
-      UI.select(q.cat || "", [["", "Alle Bereiche"]].concat(cats.map(function (c) { return [c, (PB.CAT[c] || c) + " (" + tree[c].n + ")"]; })),
+      UI.select(q.strat || "", [["", "Alle Strategien"]].concat((d.strategies || []).map(function (a) { return [a.id, a.name]; })),
+                function (v) { set({ strat: v, account: "" }); }, "Strategie"),
+      UI.select(q.cat || "", [["", "Alle Bereiche"]].concat(cats.map(function (c) { return [c, (PB.CAT[c] || c) + " (" + nOf(c) + ")"]; })),
                 function (v) { set({ cat: v, sub: "", detail: "" }); }, "Bereich")
     ];
     var c = q.cat && tree[q.cat];
@@ -62,14 +67,15 @@
                              function (v) { set({ detail: v }); }, "Detail"));
       }
     } else if (q.cat) {
-      parts.push(h("span", { class: "dim" }, "Zu diesem Bereich gibt es bei der gewählten Auswahl keine Wetten."));
+      parts.push(h("span", { class: "dim" }, "In diesem Bereich gibt es bei der gewählten Auswahl noch keine Wetten."));
     }
     var crumbs = null;
-    if (q.cat || q.account) {
-      var trail = [(d.accounts || []).filter(function (a) { return a.id === q.account; }).map(function (a) { return a.name; })[0],
+    if (q.cat || q.account || q.strat) {
+      var nameOf = function (list, id) { return (list || []).filter(function (a) { return a.id === id; }).map(function (a) { return a.name; })[0] || id; };
+      var trail = [q.account ? "Konto " + nameOf(d.accounts, q.account) : null, q.strat ? nameOf(d.strategies, q.strat) : null,
                    q.cat ? PB.CAT[q.cat] || q.cat : null, q.sub, q.detail].filter(Boolean);
       crumbs = h("div", { class: "crumbs" }, h("span", null, "Auswahl: ", h("b", null, trail.join(" › "))), " ",
-                 h("button", { class: "btn small", type: "button", on: { click: function () { set({ account: "", cat: "", sub: "", detail: "" }); } } }, "Filter zurücksetzen"));
+                 h("button", { class: "btn small", type: "button", on: { click: function () { set({ account: "", strat: "", cat: "", sub: "", detail: "" }); } } }, "Filter zurücksetzen"));
     }
     return h("div", { class: "stack" }, h("div", { class: "filters" }, parts, extra || null), crumbs);
   }
@@ -115,13 +121,75 @@
     return h("div", null, h("div", { class: "bets-tw" }, table), cards);
   }
 
+  // ================================================================ Strategie × Thema
+  /* Jede Zelle ist ein Konto (1.000 $ Start). Gezeigt wird der Gewinn/Verlust seit Start; Antippen öffnet das Konto. */
+  function accountPanels(d, q, resume) {
+    var out = [], konten = d.konten || [];
+    var byId = {};
+    konten.forEach(function (a) { byId[a.strategy + "|" + a.topic] = a; });
+    var strats = (d.strategien || []).filter(function (s) { return !q.strat || s.id === q.strat; });
+    var topics = (d.topics || []).filter(function (t) { return !q.cat || t.id === q.cat; });
+    var touched = function (a) { return a && (a.open_count || a.closed_count || Math.abs(a.pnl_total) >= 0.005); };
+    var link = function (sid, tid) { return "#/paper?" + qs({ strat: sid, cat: tid }); };
+    var cell = function (a, sid, tid) {
+      if (!a) return h("td", { class: "num dim2", title: "Diese Strategie gibt es in diesem Thema nicht" }, "–");
+      var v = a.pnl_total, cls = !touched(a) ? "dim2" : Math.abs(v) < 0.005 ? "dim" : v > 0 ? "pos" : "neg";
+      var title = a.name + ": Wert " + F.usd(a.equity) + " · " + F.num(a.open_count) + " offen" + (a.settled ? " · Treffer " + a.wins + "/" + a.settled : "") + (a.paused ? " · pausiert" : "");
+      return h("td", { class: "num" + (a.paused ? " paused" : "") },
+               h("a", { href: link(sid, tid), class: cls, title: title }, touched(a) ? F.susd(v) : "·", a.paused ? h("span", { class: "pz", "aria-label": "pausiert" }, " ●") : null));
+    };
+    if (strats.length && topics.length) {
+      var colSum = topics.map(function () { return 0; }), all = 0;
+      var head = h("tr", null, h("th", { class: "sticky" }, "Strategie"), topics.map(function (t) { return h("th", { class: "num" }, h("a", { href: "#/paper?" + qs({ strat: q.strat, cat: t.id }) }, t.name)); }),
+                   topics.length > 1 ? h("th", { class: "num" }, "Summe") : null);
+      var body = strats.map(function (s) {
+        var rowSum = 0;
+        var tds = topics.map(function (t, i) {
+          var a = byId[s.id + "|" + t.id];
+          if (a) { rowSum += a.pnl_total; colSum[i] += a.pnl_total; }
+          return cell(a, s.id, t.id);
+        });
+        all += rowSum;
+        return h("tr", null, h("th", { class: "sticky", scope: "row" }, h("a", { href: "#/paper?" + qs({ strat: s.id, cat: q.cat }) }, s.name)), tds,
+                 topics.length > 1 ? h("td", { class: "num" }, signed(rowSum)) : null);
+      });
+      if (strats.length > 1) {
+        body.push(h("tr", { class: "sum" }, h("th", { class: "sticky", scope: "row" }, "Summe"), colSum.map(function (v) { return h("td", { class: "num" }, signed(v)); }),
+                    topics.length > 1 ? h("td", { class: "num" }, signed(all)) : null));
+      }
+      out.push(PB.panel("Konten: Strategie × Thema", "Gewinn/Verlust seit Start je Konto (je 1.000 $ Spielgeld) – Feld antippen öffnet das Konto",
+        [h("div", { class: "tw" }, h("table", { class: "matrix" }, h("thead", null, head), h("tbody", null, body))),
+         h("p", { class: "note", style: { margin: "8px 0 0", padding: "0 14px 12px" } }, "„·“ = noch keine Wette, ", h("span", { class: "warn" }, "●"), " = Risikobremse aktiv (Konto pausiert). Krypto, Sport und Wetter haben ein eigenes Datenmodell; ",
+           "alle anderen Themen wetten nur, wenn eine Basisrate statistisch gesichert vom Marktpreis abweicht. Arbitrage gibt es nur in Krypto, Sport und Wetter.")], true));
+    }
+    if (!q.strat && strats.length > 1) {
+      out.push(PB.panel("Strategien", "alle Themen zusammen – Zeile antippen zeigt nur diese Strategie", PB.table([
+        { label: "Strategie", get: function (s) { return h("div", { class: "q" }, s.name, h("small", null, s.desc)); } },
+        { label: "seit Start", num: true, get: function (s) { return signed(s.pnl_total); } },
+        { label: "offen", num: true, cls: "hide-s", get: function (s) { return F.num(s.open_count); } },
+        { label: "Treffer", num: true, cls: "hide-s", get: function (s) { return s.settled ? F.num(s.wins) + "/" + F.num(s.settled) : "–"; } },
+        { label: "Konten", num: true, get: function (s) { return h("span", null, F.num(s.konten), s.paused ? h("small", { class: "dim2" }, " (" + s.paused + " pausiert)") : null); } }
+      ], strats, { href: function (s) { return "#/paper?" + qs({ strat: s.id, cat: q.cat }); } }), true));
+    }
+    var paused = konten.filter(function (a) { return a.paused && (!q.strat || a.strategy === q.strat) && (!q.cat || a.topic === q.cat); });
+    if (paused.length) {
+      out.push(PB.panel("Pausierte Konten", "Risikobremse: „−8 % heute“ endet von selbst am nächsten Tag, „−25 % seit Start“ nur mit „Fortsetzen“", PB.table([
+        { label: "Konto", get: function (a) { return h("div", { class: "q" }, h("a", { href: "#/paper?" + qs({ strat: a.strategy, cat: a.topic }) }, a.name), h("small", null, a.paused)); } },
+        { label: "Wert", num: true, cls: "hide-s", get: function (a) { return F.usd(a.equity); } },
+        { label: "seit Start", num: true, get: function (a) { return signed(a.pnl_total); } },
+        { label: "", get: function (a) { return resume(a); } }
+      ], paused), true));
+    }
+    return out;
+  }
+
   // ================================================================ Konten und Lage
   PB.pages.paper = {
     title: "Paper-Trading", sub: "Spielgeld: was der Bot gekauft hat, wie es steht und wo er gerade eine Chance sieht", live: true,
     load: function (r) { return api("/api/paper?" + qs(pick(r.q, FILTER_KEYS))); },
     render: function (d, r) {
       var q = r.q, k = d.kennzahlen || {}, out = [subnav("paper", q), filterBar(d, r)];
-      var single = q.account && !q.cat;
+      var acct = d.konto, single = !!acct;
       var facts = [];
       if (single && k.kontowert != null) {
         facts.push(["Kontowert", F.usd(k.kontowert), h("small", null, " " + F.susd(k.kontowert - d.start) + " seit Start")]);
@@ -133,8 +201,17 @@
       facts.push(["Trefferquote", k.trefferquote == null ? null : F.pct(k.trefferquote),
                   h("small", null, k.erwartet != null ? " erwartet " + F.pct(k.erwartet) : "")]);
       facts.push(["Rendite je Einsatz", k.rendite == null ? null : h("span", { class: k.rendite >= 0 ? "pos" : "neg" }, F.spct(k.rendite))]);
-      out.push(PB.panel(single ? "Konto" : "Gewählte Wetten", d.letzter_lauf ? "letzter Lauf " + F.ago(d.letzter_lauf) : null,
-        [h("div", { class: "facts" }, facts.map(function (f) { return h("div", null, h("div", { class: "l" }, f[0]), h("div", { class: "v" }, PB.val(f[1] == null ? null : f[1]), f[2] || null)); })),
+      var resume = function (a) {
+        return h("button", { class: "btn small", type: "button", on: { click: function (e) {
+          e.target.disabled = true;
+          api("/api/account/" + encodeURIComponent(a.id) + "/resume", {}).then(function () { PB.toast(a.name + " läuft wieder."); PB.reload(); })
+            .catch(function (err) { e.target.disabled = false; PB.toast(err.message, true); });
+        } } }, "Fortsetzen");
+      };
+      out.push(PB.panel(single ? "Konto " + acct.name : "Gewählte Wetten", d.letzter_lauf ? "letzter Lauf " + F.ago(d.letzter_lauf) : null,
+        [single ? h("p", { class: "note", style: { "margin-bottom": "10px" } }, acct.desc) : null,
+         single && acct.paused ? h("div", { class: "callout", style: { "margin-bottom": "10px" } }, PB.chip("pausiert", "warn"), " ", acct.paused, " ", resume(acct)) : null,
+         h("div", { class: "facts" }, facts.map(function (f) { return h("div", null, h("div", { class: "l" }, f[0]), h("div", { class: "v" }, PB.val(f[1] == null ? null : f[1]), f[2] || null)); })),
          h("p", { class: "note", style: { "margin-top": "10px" } }, "Trefferquote zählt nur entschiedene Wetten. „Erwartet“ ist der Durchschnitt der Wahrscheinlichkeit, die der Bot beim Einstieg für den eigenen Tipp berechnet hatte – liegt die echte Quote darunter, war er zu optimistisch.")]));
 
       var pts = (d.kurve.punkte || []).map(function (p) { return [new Date(p[0]).getTime(), p[1]]; });
@@ -156,35 +233,7 @@
       ], d.aufteilung.rows, { href: nextKey ? function (x) { var o = {}; o[nextKey] = x.name; return "#/paper?" + qs(Object.assign(pick(q, FILTER_KEYS), o)); } : null,
                               empty: "Für diese Auswahl gibt es noch keine Wetten." }), true));
 
-      if (!q.account) {
-        var resume = function (a) {
-          return h("button", { class: "btn small", type: "button", on: { click: function (e) {
-            e.target.disabled = true;
-            api("/api/account/" + encodeURIComponent(a.id) + "/resume", {}).then(function () { PB.toast(a.name + " läuft wieder."); PB.reload(); })
-              .catch(function (err) { e.target.disabled = false; PB.toast(err.message, true); });
-          } } }, "Fortsetzen");
-        };
-        var accCards = h("div", { class: "betcards" }, d.konten.map(function (a) {
-          return h("div", { class: "betcard" },
-            h("div", { class: "bc-top" }, h("a", { class: "bc-q", href: "#/paper?account=" + encodeURIComponent(a.id) }, a.name), signed(a.pnl_total)),
-            h("div", { class: "bc-meta" }, a.desc),
-            h("div", { class: "bc-line" }, h("span", null, "Wert ", h("b", null, F.usd(a.equity))), h("span", null, F.num(a.open_count) + " offen"),
-              a.settled ? h("span", null, "Treffer " + F.num(a.wins) + "/" + F.num(a.settled)) : null,
-              a.paused ? PB.chip("pausiert", "warn") : PB.chip("aktiv", "ok"), a.paused ? resume(a) : null),
-            a.paused ? h("div", { class: "bc-meta" }, a.paused) : null);
-        }));
-        out.push(PB.panel("Konten", "je 1.000 $ Spielgeld, unabhängig voneinander", [h("div", { class: "bets-tw" }, PB.table([
-          { label: "Konto", get: function (a) { return h("div", { class: "q" }, h("a", { href: "#/paper?account=" + encodeURIComponent(a.id) }, a.name), h("small", null, a.desc)); } },
-          { label: "Wert", num: true, get: function (a) { return F.usd(a.equity); } },
-          { label: "seit Start", num: true, get: function (a) { return signed(a.pnl_total); } },
-          { label: "offen", num: true, cls: "hide-s", get: function (a) { return F.num(a.open_count); } },
-          { label: "Treffer", num: true, cls: "hide-s", get: function (a) { return a.settled ? F.num(a.wins) + "/" + F.num(a.settled) : "–"; } },
-          { label: "Status", get: function (a) {
-            if (!a.paused) return PB.chip("aktiv", "ok");
-            return h("div", null, PB.chip("pausiert", "warn"), h("div", { class: "dim2", style: { "font-size": "12px", margin: "3px 0" } }, a.paused), resume(a));
-          } }
-        ], d.konten)), accCards], true));
-      }
+      if (!single) out = out.concat(accountPanels(d, q, resume));
 
       out.push(PB.panel("Offene Wetten", d.offen.length ? "nach Enddatum, die nächsten zuerst" : null,
         betsTable(d.offen, { empty: "Keine offenen Wetten in dieser Auswahl." }), true));

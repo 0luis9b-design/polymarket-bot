@@ -298,7 +298,7 @@ def _paper_data():
         "open": store.open_positions(),
         "closed": store.closed_positions(8000),
         "orders": store.recent_orders(300),
-        "equity": {a["id"]: store.equity_history(a["id"]) for a in config.ACCOUNTS},
+        "equity": {a["id"]: store.equity_history(a["id"]) for a in config.ACCOUNTS if a.get("strategy") == "haupt"},
         "logs": store.recent_log(200),
         "registry": {r["category"]: {"model": r["model"], "version": r["version"], "mix_w": r["mix_w"]} for r in coordinator.probability.reg.values()},
         "cfg": {
@@ -373,7 +373,8 @@ def api_overview():
         "warnings": events.recent(store, 8, min_level="hoch", hours=48),
         "resources": coordinator.guardian.latest or None,
         "agents": [{k: a[k] for k in ("id", "name", "state", "last_end", "task")} for a in coordinator.registry.view()],
-        "accounts": [{k: a[k] for k in ("id", "name", "equity", "pnl_total", "open_count", "paused")} for a in engine.accounts_overview()],
+        "strategies": [{k: a[k] for k in ("id", "name", "konten", "equity", "pnl_total", "open_count", "paused", "aktiv")}
+                       for a in engine.strategy_summary(engine.accounts_overview())],
         "tick": coordinator.last_tick or None,
         "refresh": config.DASH_REFRESH_SEC,
     })
@@ -649,7 +650,7 @@ def api_settings():
 
 
 # ---------------------------------------------------------------- API: Paper-Trading
-_PAPER_ARGS = ("account", "cat", "sub", "detail", "status", "q", "von", "bis", "spur", "sort", "dir", "page", "per", "monat", "tag")
+_PAPER_ARGS = ("account", "strat", "cat", "sub", "detail", "status", "q", "von", "bis", "spur", "sort", "dir", "page", "per", "monat", "tag")
 
 
 def _paper_args():

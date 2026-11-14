@@ -202,16 +202,38 @@ def build(coord, now, since):
 
     # 9 ---------------------------------------------------------------- Strategien
     add("## 9. Strategievergleich")
-    add("Paper-Trading-Konten (je 1.000 $ Spielgeld):")
+    add("Paper-Trading: jede Strategie hat je Thema ein eigenes Konto (je 1.000 $ Spielgeld). Zuerst je Strategie zusammengefasst:")
     add("")
-    rows = []
+    rows, accs = [], []
     if eng:
-        for a in sorted(eng.accounts_overview(), key=lambda a: -a["equity"]):
-            per = [c for c in st.closed_positions(5000, a["id"]) if (c["closed_at"] or "") >= since_iso]
-            rows.append([a["name"], f"{a['equity']:.2f} $", f"{a['pnl_total']:+.2f} $", f"{sum(c['pnl'] or 0 for c in per):+.2f} $",
-                         a["settled"], _f(a["winrate"], 0, pct=True), a["open_count"], "pausiert" if a["paused"] else "aktiv"])
-    L += _table(["Konto", "Wert", "seit Start", "im Zeitraum", "entschieden", "Treffer", "offen", "Status"], rows)
+        accs = eng.accounts_overview()
+        per = {r["account"]: r["gv"] or 0 for r in st.q("SELECT account, SUM(pnl) gv FROM positions WHERE status!='open' AND closed_at>=? "
+                                                         "GROUP BY account", (since_iso,))}
+        for sr in sorted(eng.strategy_summary(accs), key=lambda r: -r["pnl_total"]):
+            ids = [a["id"] for a in accs if a.get("strategy") == sr["id"]]
+            rows.append([sr["name"], sr["konten"], f"{sr['pnl_total']:+.2f} $", f"{sum(per.get(i, 0) for i in ids):+.2f} $",
+                         sr["settled"], _f(sr["winrate"], 0, pct=True), sr["open_count"], sr["paused"]])
+    L += _table(["Strategie", "Konten", "seit Start", "im Zeitraum", "entschieden", "Treffer", "offen", "pausiert"], rows)
     add("")
+    if accs:
+        topics = [(cat, name) for cat, _, name in config.TOPICS if any(a.get("topic") == cat for a in accs)]
+        by = {(a.get("strategy"), a.get("topic")): a for a in accs}
+        add("G/V seit Start je Konto (Strategie × Thema; „·“ = noch keine Wette, „–“ = gibt es nicht, P = pausiert):")
+        add("")
+        rows = []
+        for sid, sname in config.STRATEGY_NAME.items():
+            line = [sname]
+            for cat, _ in topics:
+                a = by.get((sid, cat))
+                if not a:
+                    line.append("–")
+                elif not (a["open_count"] or a["closed_count"]):
+                    line.append("·")
+                else:
+                    line.append(f"{a['pnl_total']:+.0f}{' P' if a['paused'] else ''}")
+            rows.append(line)
+        L += _table(["Strategie"] + [n for _, n in topics], rows)
+        add("")
     add(f"Backtests auf entschiedenen Märkten (Datensatz: {(lab.get('datensatz') or {}).get('mit_kurs_24h', 0)} Märkte mit Kursverlauf; nur der spätere Prüfteil zählt):")
     add("")
     rows = [[s["name"], s["is"].get("n", 0), _f(s["is"].get("roi"), 1, pct=True, sign=True), s["oos"].get("n", 0),
