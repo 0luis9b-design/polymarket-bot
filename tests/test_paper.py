@@ -122,6 +122,11 @@ def test_other_markets_are_collected_classified_and_deduplicated(tmp_path):
     assert [m["id"] for m in out] == ["p1"]                                      # doppelt, 5-Minuten-Markt und bekannte ID raus
     m = out[0]
     assert (m["category"], m["sub"], m["lane"]) == ("politics", "USA", "base")
+    # offene Basisraten-Wette auf einem Markt, der nicht mehr unter den aktivsten ist: wird einzeln nachgeladen
+    st.insert_position({"account": "haupt_weitere", "market_id": "old1", "category": "politics", "question": "q", "side": 0, "side_name": "Yes",
+                        "price": 0.5, "shares": 2, "cost": 1, "fee": 0, "status": "open", "opened_at": "2026-11-14T10:00:00+00:00", "lane": "base"})
+    eng.fetch_by_ids = lambda ids: {i: _raw(i, ["politics"]) for i in ids}
+    assert [m["id"] for m in eng.collect_others(NOW, {"s1"})] == ["p1", "old1"]
 
 
 def test_haupt_weitere_trades_base_rates_and_stores_entry(tmp_path):

@@ -402,6 +402,20 @@ class Engine:
                 out.append(m)
             if len(raws) < 100:
                 break
+        # Märkte mit offenen Basisraten-Wetten, die aus der Liste gefallen sind: trotzdem bewerten (Wert, früher Ausstieg)
+        held = sorted({p["market_id"] for p in self.store.open_positions() if p.get("lane") == "base" and p["market_id"] not in known})
+        if held:
+            for mid, raw in (self.fetch_by_ids(held[:100]) or {}).items():
+                ev = raw["events"][0] if isinstance(raw.get("events"), list) and raw.get("events") else None
+                m = polymarket.normalize_market(raw, ev, "other")
+                if not m or m["closed"]:
+                    continue
+                c = taxonomy.classify(m)
+                m.update(c)
+                m["fee_rate"] = polymarket.fee_rate_for(raw, c["category"])
+                m["lane"] = "base"
+                known.add(m["id"])
+                out.append(m)
         return out
 
     def model(self, m, now):
