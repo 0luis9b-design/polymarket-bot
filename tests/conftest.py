@@ -5,7 +5,7 @@ os.environ.setdefault("AUTOSTART", "0")
 
 import pytest  # noqa: E402
 
-from polybot import config, notify, settings, sources  # noqa: E402
+from polybot import config, notify, settings, sources, weather_model  # noqa: E402
 
 
 @pytest.fixture(autouse=True)
@@ -18,6 +18,7 @@ def _saubere_umgebung(monkeypatch):
     """
     sources.reset()
     notify.reset()
+    weather_model._blocked.clear()
     saved = {k: getattr(config, k) for k in settings.SPEC}
     monkeypatch.setattr(config, "MAX_DIVERGENCE", 0.99)
     yield

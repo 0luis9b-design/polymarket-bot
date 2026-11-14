@@ -85,6 +85,6 @@ Die Datenbank liegt in `DATA_DIR`; Sicherungen täglich in `DATA_DIR/backups` (d
 ## Lokal (Windows)
 ```
 pip install -r requirements-dev.txt
-python -m pytest -q   # 114 Tests
+python -m pytest -q   # 121 Tests
 python app.py      # dann http://localhost:5000
 ```

@@ -1,8 +1,9 @@
 """Versionsstand des Systems. CHANGES wird im Claude-Bericht unter „Neue Funktionen“ gezeigt."""
-VERSION = "2.0.0"
+VERSION = "2.0.1"
 
 # (Datum, Version, Text) – neueste zuerst
 CHANGES = [
+    ("2026-11-14", "2.0.1", "Nach der Live-Kontrolle: Zustand je Takt im Log, Wetter-Vorhersagen überleben Neustarts, Historie blättert an Minuten-Märkten vorbei, Summen-Prüfung am reinen Modellwert"),
     ("2026-11-14", "2.0.0", "Agenten-Architektur mit Koordinator (Scanner, Probability, Validation, Learning, Strategy, News, Guardian)"),
     ("2026-11-14", "2.0.0", "Prognose-Historie unveränderlich, mit Modell, Version, Quellen und Prüfergebnis"),
     ("2026-11-14", "2.0.0", "Validierung sperrt unplausible Prognosen fürs Handeln (Abweichungs-Deckel, veraltete Daten)"),

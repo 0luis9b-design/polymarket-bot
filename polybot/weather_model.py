@@ -8,6 +8,7 @@ ist die Wahrscheinlichkeit. Weil Wettermodelle die Unsicherheit eher unterschät
 Station nicht exakt dem Modell-Gitterpunkt entspricht, wird jedes Szenario zusätzlich mit
 einer Glockenkurve "verschmiert" (Breite wächst mit dem Vorlauf).
 """
+import json
 import logging
 import math
 import re
@@ -25,9 +26,31 @@ MODELS = "ecmwf_ifs025,gfs025,icon_seamless"
 # Ensembles werden nur alle 6 h neu gerechnet -> 3 h Zwischenspeicher reicht und hält das Kontingent ein.
 CACHE_SEC = 3 * 3600
 FAIL_PAUSE_SEC = 30 * 60   # nach einem Fehler diese Station 30 min in Ruhe lassen (statt pro Markt neu zu versuchen)
+BLOCK_PAUSE_SEC = 50       # nach „Budget leer“ diese Station für den Rest des Laufs nicht erneut anfragen
 status = {}
 _cache = {}
 _failed = {}
+_blocked = {}
+_store = None
+
+
+def attach(store):
+    """Zwischenspeicher an die Datenbank hängen: Vorhersagen überleben einen Neustart (jeder Deploy hat sonst
+    alle ~60 Stationen neu abgerufen – rund 700 Einheiten des Tagesbudgets von Open-Meteo)."""
+    global _store
+    _store = store
+    now, n = time.time(), 0
+    for row in store.q("SELECT k, v FROM kv WHERE k LIKE 'wx:%'"):
+        try:
+            _, icao, unit = row["k"].split(":")
+            d = json.loads(row["v"])
+            if icao in STATIONS and now - d["t"] < 4 * CACHE_SEC and (icao, unit) not in _cache:
+                _cache[(icao, unit)] = (d["t"], (d["h"], d["l"]))   # der Zeitstempel bleibt: veraltet wird wie gewohnt neu geholt
+                status[icao] = f"OK – {len(next(iter(d['h'].values()), []))} Szenarien"
+                n += 1
+        except Exception:  # noqa: BLE001 – ein kaputter Eintrag wird einfach neu geholt
+            continue
+    return n
 
 # Station (ICAO) -> (Breite, Länge, Zeitzone). Polymarket nennt die Station in der Beschreibung.
 STATIONS = {
@@ -129,6 +152,10 @@ def ensemble(icao, unit, fetch=get_json):
         if hit:
             return hit[1]  # lieber etwas ältere Vorhersage als gar keine
         raise HttpError(f"Pause nach Fehler ({icao})")
+    if time.time() - _blocked.get(key, 0) < BLOCK_PAUSE_SEC:
+        if hit:
+            return hit[1]
+        raise HttpError(f"wartet auf Abruf-Budget ({icao})", blocked=True)
     lat, lon, tz = STATIONS[icao]
     try:
         kw = {"retries": 0} if fetch is get_json else {}
@@ -138,6 +165,7 @@ def ensemble(icao, unit, fetch=get_json):
     except HttpError as e:
         if getattr(e, "blocked", False):
             # Budget/Minuten-Limit der Quellen-Verwaltung: kein Fehler der Station – im nächsten Lauf weiter
+            _blocked[key] = time.time()
             status.setdefault(icao, "wartet auf Abruf-Budget")
         else:
             _failed[key] = time.time()
@@ -163,6 +191,12 @@ def ensemble(icao, unit, fetch=get_json):
     res = (highs, lows)
     _cache[key] = (time.time(), res)
     _failed.pop(key, None)
+    _blocked.pop(key, None)
+    if _store is not None:
+        try:
+            _store.kv_set(f"wx:{icao}:{unit}", json.dumps({"t": time.time(), "h": highs, "l": lows}, separators=(",", ":")))
+        except Exception:  # noqa: BLE001 – der Zwischenspeicher ist nur eine Abkürzung
+            pass
     status[icao] = f"OK – {len(next(iter(highs.values()), []))} Szenarien"
     return res
 

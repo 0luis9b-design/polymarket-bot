@@ -45,15 +45,16 @@ Neues Gerüst mit Seitenleiste, 12 Bereiche, je Bereich eigener Daten-Abruf (T10
 ## Phase 9 · Telegram und Supervisor (Priorität 2) — ✅
 Prioritäten, Tageslimit, Ruhezeit · Claude-Review-Bericht Mi + So · geplante Claude-Sitzung.
 
-## Phase 10–11 · Qualität und Betrieb (Priorität 1) — 🔧
+## Phase 10–11 · Qualität und Betrieb (Priorität 1) — ✅
 | Schritt | Status |
 |---|---|
-| Tests für jedes neue Modul (114 Tests: Quellen, Migrationen, Prognose-Historie, Prüfung, Lernen, Backtests ohne Blick in die Zukunft, Nachrichten, Guardian, Berichte, alle API-Endpunkte) | ✅ |
+| Tests für jedes neue Modul (121 Tests: Quellen, Migrationen, Prognose-Historie, Prüfung, Lernen, Backtests ohne Blick in die Zukunft, Nachrichten, Guardian, Berichte, alle API-Endpunkte) | ✅ |
 | CSRF-Schutz, Anmelde-Sperre, Sicherheits-Header (T12) | ✅ |
 | Abhängigkeits-Prüfung in der CI (T17) | ✅ |
 | Upgrade einer v1.3-Datenbank geprüft (Backup vor Migration, Wetten und Guthaben bleiben) | ✅ |
 | Dashboard in echtem Browser geprüft (alle Seiten, Handy + Desktop, keine Skriptfehler) – von Hand, nicht in der CI | ✅ |
-| Kontrolle im Live-Betrieb nach dem Deploy | 🔧 läuft; Ergebnisse stehen im ersten Claude-Bericht |
+| Kontrolle im Live-Betrieb nach dem Deploy (14.11., über die Railway-Logs) | ✅ Migration mit Backup, Läufe ohne Fehler, alle Agenten ohne Fehler |
+| Im Live-Betrieb gefunden und behoben: Historie blieb bei Krypto an den 5-Minuten-Märkten hängen · Summen-Prüfung maß nach einer Mischung die Marktkurse statt das Modell · alte Risikobremsen wurden nach jedem Neustart erneut gemeldet · Wetter-Zwischenspeicher ging bei jedem Neustart verloren · Telegram ohne Wiederholung bei Verbindungsfehler | ✅ je mit Test |
 
 ## Machbarkeit (geprüft)
 | Ressource | Heute | Mit Ausbau (geschätzt) | Grenze |

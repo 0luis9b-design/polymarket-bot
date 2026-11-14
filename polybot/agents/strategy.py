@@ -187,6 +187,9 @@ def evaluate_strategy(key, name, desc, fn_or_factory, rows, baseline=False, lear
     return {"strategy": key, "name": name, "desc": desc, "baseline": baseline, "is": i, "oos": o, "warnungen": warn, "bestanden": passed}
 
 
+HISTORY_MAX_PAGES = 6
+
+
 class StrategyAgent(Agent):
     id = "strategy"
     name = "Strategy Research"
@@ -216,45 +219,52 @@ class StrategyAgent(Agent):
         oldest_dt = polymarket.parse_dt(oldest) if backfill else None
         end_max = (oldest_dt or now).strftime("%Y-%m-%dT%H:%M:%SZ")
         backfill = bool(oldest_dt)
-        raws = self.fetch_markets({"tag_id": tag_id, "related_tags": "true", "closed": "true", "order": "endDate",
-                                   "ascending": "false", "end_date_max": end_max, "volume_num_min": config.HISTORY_MIN_VOLUME,
-                                   "limit": 100})
-        ids = [str(r.get("id")) for r in raws]
-        have = set()
-        if ids:
-            have = {r["market_id"] for r in self.store.q("SELECT market_id FROM resolved WHERE market_id IN (%s)" % ",".join("?" * len(ids)), ids)}
-        added = skipped = gaps = 0
-        for raw in raws:
-            if added >= limit or self.time_left(deadline) < 6:
+        added = skipped = gaps = seen = 0
+        # Krypto: die zuletzt beendeten Märkte sind fast nur 5-Minuten-Märkte („Up or Down“) – deshalb mehrere Seiten
+        for page in range(HISTORY_MAX_PAGES):
+            if added >= limit or self.time_left(deadline) < 8:
                 break
-            mid = str(raw.get("id"))
-            q = raw.get("question") or ""
-            if mid in have or "up or down" in q.lower():
-                continue
-            res = polymarket.resolution(raw)
-            end = polymarket.parse_dt(raw.get("endDate") or raw.get("endDateIso"))
-            tokens = polymarket._loads(raw.get("clobTokenIds"), [])
-            if res not in (0, 1) or not end or len(tokens) != 2 or end > now:
-                skipped += 1
-                continue
-            closed = polymarket.parse_dt(raw.get("closedTime"))
-            try:
-                hist = self.fetch_history(str(tokens[0]), end.timestamp() - 8 * 86400, end.timestamp() + 3600)
-            except Exception:  # noqa: BLE001 – ein Markt darf fehlen; beim nächsten Durchlauf kommt er wieder dran
-                skipped += 1
-                continue
-            hist.sort()
-            ps = horizon_prices(hist, end.timestamp(), closed.timestamp() if closed else None)
-            if all(v is None for v in ps.values()):
-                gaps += 1
-            early = 1 if (closed and closed < end - timedelta(hours=1)) else 0
-            self.store.x("INSERT OR IGNORE INTO resolved(market_id, question, category, end_date, closed_at, outcome, volume, early, "
-                         "p_1h, p_6h, p_24h, p_72h, p_7d, n_points, fetched_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-                         (mid, q[:300], cat, end.isoformat(timespec="seconds"), closed.isoformat(timespec="seconds") if closed else None,
-                          1.0 if res == 0 else 0.0, polymarket._num(raw.get("volumeNum"), 0.0), early,
-                          ps["p_1h"], ps["p_6h"], ps["p_24h"], ps["p_72h"], ps["p_7d"], len(hist), now.isoformat(timespec="seconds")))
-            added += 1
-        return {"kategorie": CATEGORY_NAMES.get(cat, cat), "richtung": "ältere" if backfill else "neueste", "geprüft": len(raws),
+            raws = self.fetch_markets({"tag_id": tag_id, "related_tags": "true", "closed": "true", "order": "endDate",
+                                       "ascending": "false", "end_date_max": end_max, "volume_num_min": config.HISTORY_MIN_VOLUME,
+                                       "limit": 100, "offset": page * 100})
+            seen += len(raws)
+            ids = [str(r.get("id")) for r in raws]
+            have = set()
+            if ids:
+                have = {r["market_id"] for r in self.store.q("SELECT market_id FROM resolved WHERE market_id IN (%s)" % ",".join("?" * len(ids)), ids)}
+            for raw in raws:
+                if added >= limit or self.time_left(deadline) < 6:
+                    break
+                mid = str(raw.get("id"))
+                q = raw.get("question") or ""
+                if mid in have or "up or down" in q.lower():
+                    continue
+                res = polymarket.resolution(raw)
+                end = polymarket.parse_dt(raw.get("endDate") or raw.get("endDateIso"))
+                tokens = polymarket._loads(raw.get("clobTokenIds"), [])
+                if res not in (0, 1) or not end or len(tokens) != 2 or end > now:
+                    skipped += 1
+                    continue
+                closed = polymarket.parse_dt(raw.get("closedTime"))
+                try:
+                    hist = self.fetch_history(str(tokens[0]), end.timestamp() - 8 * 86400, end.timestamp() + 3600)
+                except Exception:  # noqa: BLE001 – ein Markt darf fehlen; beim nächsten Durchlauf kommt er wieder dran
+                    skipped += 1
+                    continue
+                hist.sort()
+                ps = horizon_prices(hist, end.timestamp(), closed.timestamp() if closed else None)
+                if all(v is None for v in ps.values()):
+                    gaps += 1
+                early = 1 if (closed and closed < end - timedelta(hours=1)) else 0
+                self.store.x("INSERT OR IGNORE INTO resolved(market_id, question, category, end_date, closed_at, outcome, volume, early, "
+                             "p_1h, p_6h, p_24h, p_72h, p_7d, n_points, fetched_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                             (mid, q[:300], cat, end.isoformat(timespec="seconds"), closed.isoformat(timespec="seconds") if closed else None,
+                              1.0 if res == 0 else 0.0, polymarket._num(raw.get("volumeNum"), 0.0), early,
+                              ps["p_1h"], ps["p_6h"], ps["p_24h"], ps["p_72h"], ps["p_7d"], len(hist), now.isoformat(timespec="seconds")))
+                added += 1
+            if len(raws) < 100:
+                break
+        return {"kategorie": CATEGORY_NAMES.get(cat, cat), "richtung": "ältere" if backfill else "neueste", "geprüft": seen,
                 "neu": added, "übersprungen": skipped, "ohne_kurse": gaps}
 
     # ------------------------------------------------------------------ Backtests

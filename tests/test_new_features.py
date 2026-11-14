@@ -239,3 +239,78 @@ def test_weather_failure_is_not_retried_per_market():
         except wm.HttpError:
             pass
     assert calls["n"] == 1
+
+
+def _london_forecast():
+    hours = [f"2026-11-{d:02d}T{h:02d}:00" for d in (19, 20, 21) for h in range(24)]
+    hourly = {"time": hours}
+    for i in range(30):
+        hourly[f"temperature_2m_member{i:02d}"] = [5 + (11 + i % 3 - 5) * math.sin(math.pi * (j % 24) / 24) for j in range(len(hours))]
+    return {"hourly": hourly}
+
+
+def test_weather_budget_block_is_remembered_for_the_run_and_not_a_station_error():
+    calls = {"n": 0}
+
+    def blocked(url, params=None, **kw):
+        calls["n"] += 1
+        raise wm.HttpError("Minutenbudget erreicht", blocked=True)
+    wm._cache.clear()
+    wm._failed.clear()
+    m = {"question": "Will the highest temperature in London be 12°C on November 20?", "outcomes": ["Yes", "No"],
+         "description": "London City Airport (EGLC)", "event_title": "x"}
+    now = datetime(2026, 11, 18, 12, 0, tzinfo=timezone.utc)
+    for _ in range(40):  # 40 Märkte derselben Station im selben Lauf
+        try:
+            wm.analyze(m, now=now, fetch=blocked)
+        except wm.HttpError as e:
+            assert e.blocked
+    assert calls["n"] == 1 and ("EGLC", "C") not in wm._failed          # ein Versuch, und die Station gilt nicht als gestört
+
+
+def test_weather_cache_survives_restart(tmp_path):
+    from polybot.store import Store
+    st = Store(str(tmp_path / "w.sqlite"))
+    wm._cache.clear()
+    wm._failed.clear()
+    old = wm._store
+    try:
+        assert wm.attach(st) == 0
+        m = {"question": "Will the highest temperature in London be 12°C on November 20?", "outcomes": ["Yes", "No"],
+             "description": "London City Airport (EGLC)", "event_title": "x"}
+        now = datetime(2026, 11, 18, 12, 0, tzinfo=timezone.utc)
+        first = wm.analyze(m, now=now, fetch=lambda url, params=None, **kw: _london_forecast())
+        assert st.kv_get("wx:EGLC:C")
+        wm._cache.clear()                                                  # „Neustart“: Arbeitsspeicher leer
+        assert wm.attach(st) == 1
+
+        def must_not_fetch(url, params=None, **kw):
+            raise AssertionError("nach dem Neustart darf nicht neu abgerufen werden")
+        again = wm.analyze(m, now=now, fetch=must_not_fetch)
+        assert abs(again["p_yes"] - first["p_yes"]) < 1e-9
+        st.kv_set("wx:EGLC:C", "kaputt")                                   # ein beschädigter Eintrag stört nicht
+        wm._cache.clear()
+        assert wm.attach(st) == 0
+    finally:
+        wm._store = old
+        wm._cache.clear()
+
+
+def test_known_pause_is_not_reported_again_after_restart(tmp_path):
+    """Live-Befund 14.11.: Nach jedem Neustart standen sechs alte Risikobremsen erneut als Fehler im Protokoll."""
+    now = datetime.now(timezone.utc).replace(microsecond=0)
+    store, eng = _eng(tmp_path, {})
+    store.add_cash(-300, config.START_BALANCE, "haupt_wetter")           # −30 % seit Start
+    eng.check_risk(now)
+    assert eng.paused("haupt_wetter")
+    errors = lambda: [l for l in store.recent_log(100) if l["level"] == "error" and "RISIKOBREMSE" in l["msg"]]  # noqa: E731
+    assert len(errors()) == 1
+    eng2 = Engine(store, fetch_events=lambda tag, **kw: [], fetch_by_ids=lambda ids: {}, closes_fn=lambda a: (CLOSES, "Test"),
+                  odds_client=OddsClient(store, api_key=""), chain_fn=lambda a, n: None, book_fn=None)
+    assert eng2.paused("haupt_wetter")                                    # Pause gilt sofort wieder, nicht erst nach dem ersten Lauf
+    eng2.check_risk(now)
+    assert len(errors()) == 1                                             # keine zweite Meldung
+    eng2.resume("haupt_wetter")
+    eng3 = Engine(store, fetch_events=lambda tag, **kw: [], fetch_by_ids=lambda ids: {}, closes_fn=lambda a: (CLOSES, "Test"),
+                  odds_client=OddsClient(store, api_key=""), chain_fn=lambda a, n: None, book_fn=None)
+    assert not eng3.paused("haupt_wetter")

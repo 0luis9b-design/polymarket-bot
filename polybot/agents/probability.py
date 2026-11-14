@@ -176,6 +176,7 @@ class ProbabilityAgent(Agent):
         if key not in variants:  # aktives Modell hat für diesen Markt nichts geliefert -> Ersatz des Modells selbst
             key = a.get("model_id") if a.get("model_id") in variants else next(iter(variants))
         p = variants[key]
+        a["p_model"] = p                  # reiner Modellwert vor einer Mischung – daran prüft die Validierung die Stimmigkeit
         w = reg["mix_w"] if reg and reg["mix_w"] is not None else 1.0
         if w < 0.999:
             p = w * p + (1 - w) * mkt_p

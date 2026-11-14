@@ -130,6 +130,7 @@ def _sicherheits_kopf(resp):
 
 
 store = Store(os.path.join(config.DATA_DIR, "polybot.sqlite"))
+weather_model.attach(store)   # Wetter-Vorhersagen aus der Zeit vor dem Neustart weiterverwenden
 coordinator = Coordinator(store)
 engine = Engine(store, intel=coordinator)
 STARTED = time.time()

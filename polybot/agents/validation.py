@@ -31,10 +31,12 @@ class ValidationAgent(Agent):
     def __init__(self, store):
         super().__init__(store)
         self.cycle = {}
+        self.cycle_by_cat = {}
         self.total = Counter()
 
     def check(self, results, now):
         counts = Counter()
+        self._by_cat = defaultdict(Counter)
         by_event = defaultdict(list)
         for o in results:
             m, a = o["market"], o["analysis"]
@@ -62,7 +64,7 @@ class ValidationAgent(Agent):
                 checks.append(("abweichung", reason is None))
             a["checks"] = checks
             if reason:
-                self._reject(o, reason, counts)
+                self._reject(o, reason, counts, self._by_cat)
             else:
                 a["valid"] = True
                 if m.get("neg_risk") and m.get("event_id"):
@@ -72,27 +74,33 @@ class ValidationAgent(Agent):
             n = group[0]["market"].get("event_n_markets") or 0
             if n < 2 or len(group) != n:
                 continue
-            total = sum(o["analysis"]["p_yes"] for o in group)
+            # am reinen Modellwert gemessen: nach einer freigegebenen Mischung mit dem Marktpreis würde sonst die
+            # (oft ungenaue) Summe der Marktkurse geprüft statt die Stimmigkeit des Modells
+            total = sum(o["analysis"].get("p_model", o["analysis"]["p_yes"]) for o in group)
             ok = 0.85 <= total <= 1.15
             for o in group:
                 o["analysis"]["checks"].append(("summe", ok))
                 if not ok:
-                    self._reject(o, f"Summe der Antworten = {total * 100:.0f} %", counts)
+                    self._reject(o, f"Summe der Antworten = {total * 100:.0f} %", counts, self._by_cat)
         counts["geprüft"] = len(results)
         counts["gültig"] = sum(1 for o in results if o["analysis"].get("valid"))
         self.cycle = dict(counts)
+        self.cycle_by_cat = {c: dict(v) for c, v in self._by_cat.items()}
         self.total.update({k: v for k, v in counts.items() if k not in ("geprüft", "gültig")})
         return self.cycle
 
     @staticmethod
-    def _reject(o, reason, counts):
+    def _reject(o, reason, counts, by_cat=None):
         a = o["analysis"]
         if a.get("valid") is False:
             return
         a["valid"] = False
         a["reject"] = reason
         o["base"].append(f"Prüfung: {reason}")
-        counts[reason.split(" (")[0].split(" =")[0]] += 1
+        short = reason.split(" (")[0].split(" =")[0]
+        counts[short] += 1
+        if by_cat is not None:
+            by_cat[o["market"]["category"]][short] += 1
 
     def run(self, now, deadline):
         return dict(self.cycle)

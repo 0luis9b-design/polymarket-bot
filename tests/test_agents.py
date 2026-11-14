@@ -323,6 +323,26 @@ def test_validation_sum_check_for_exclusive_events(tmp_path):
     assert all(o["analysis"]["valid"] is False and "Summe" in o["analysis"]["reject"] for o in bad)
 
 
+def test_select_keeps_raw_model_value_next_to_the_mixed_one(tmp_path):
+    pa = ProbabilityAgent(_store(tmp_path))
+    pa.activate("weather", "weather.ens", "2", 0.5, "Test")
+    a = {"p_yes": 0.8, "model_id": "weather.ens@2", "variants": {"weather.ens@2": 0.8}}
+    pa.select(_m(cat="weather"), a, 0.2)
+    assert a["p_model"] == 0.8 and abs(a["p_yes"] - 0.5) < 1e-9 and a["model_id"] == "weather.ens.mix@2w50"
+
+
+def test_validation_sum_check_uses_raw_model_value_not_the_mix(tmp_path):
+    """Live-Befund 14.11.: Nach einer Mischung mit dem Marktpreis wurde die Summe der Marktkurse geprüft (517 Ablehnungen)."""
+    va = ValidationAgent(_store(tmp_path))
+    ms = [_m(f"s{i}", cat="weather", bid=0.48, ask=0.52, neg_risk=True, event_id="ev", event_n_markets=3) for i in range(3)]
+    mixed = [_o(m, 0.5, p_model=p) for m, p in zip(ms, (0.2, 0.3, 0.5))]       # gehandelter Wert 3 × 50 %, Modell selbst stimmig
+    out = va.check(mixed, NOW)
+    assert out["gültig"] == 3
+    broken = [_o(m, 0.5, p_model=p) for m, p in zip(ms, (0.6, 0.6, 0.6))]      # Modell selbst unstimmig -> gesperrt
+    out = va.check(broken, NOW)
+    assert out["gültig"] == 0 and va.cycle_by_cat == {"weather": {"Summe der Antworten": 3}}
+
+
 # ================================================================ Scanner
 def test_scanner_quality_and_priority():
     good = _m(liq=50000, volume24h=200000.0, end=NOW + timedelta(hours=10))
@@ -568,6 +588,25 @@ def test_strategy_collect_builds_dataset(tmp_path):
     assert (r1["outcome"], r1["early"], r1["p_24h"], r1["p_1h"]) == (1.0, 0, 0.5, 0.5)
     assert (r2["outcome"], r2["early"], r2["p_72h"], r2["p_24h"], r2["p_1h"]) == (0.0, 1, 0.5, None, None)
     assert sa.collect(NOW, time.time() + 60)["neu"] == 0                                       # keine Duplikate
+
+
+def test_strategy_collect_pages_past_minute_markets(tmp_path):
+    """Live-Befund 14.11.: Bei Krypto ist die erste Seite fast nur „Up or Down“ – dann muss weitergeblättert werden."""
+    st = _store(tmp_path)
+    end = NOW - timedelta(days=1)
+    base = {"outcomes": '["Yes","No"]', "closed": True, "umaResolutionStatus": "resolved", "volumeNum": 9000, "outcomePrices": '["1","0"]',
+            "endDate": end.strftime("%Y-%m-%dT%H:%M:%SZ"), "clobTokenIds": '["tokY","tokN"]', "closedTime": "2026-11-13 12:13:19+00"}
+    pages = {0: [{**base, "id": f"u{i}", "question": "Bitcoin Up or Down - 5 min"} for i in range(100)],
+             100: [{**base, "id": f"k{i}", "question": f"Will the price of Bitcoin be above ${60 + i},000?"} for i in range(40)]}
+    offsets = []
+
+    def fetch_markets(params):
+        offsets.append(params["offset"])
+        return pages.get(params["offset"], [])
+    sa = S.StrategyAgent(st, fetch_markets=fetch_markets, fetch_history=lambda t, a, b: [(int(end.timestamp()) - 3600 * h, 0.4) for h in range(100, 0, -1)])
+    out = sa.collect(NOW, time.time() + 60, limit=25)
+    assert out["neu"] == 25 and offsets == [0, 100] and out["geprüft"] == 140
+    assert st.scalar("SELECT COUNT(*) FROM resolved WHERE question LIKE '%Up or Down%'") == 0
 
 
 # ================================================================ News

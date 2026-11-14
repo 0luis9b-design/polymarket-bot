@@ -126,6 +126,7 @@ class Engine:
                       "opportunities": [], "skips": {}, "markets_seen": {}, "duration": None, "arbs": [],
                       "weights": {}, "paused": {}}
         self.migrate_split()
+        self.state["paused"] = self.store.kv_json("paused_state", {}) or {}
         self.migrate_mix()
         saved = store.kv_json("last_state", {})  # letzte Analyse nach Neustart weiter anzeigen
         for k in ("last_scan", "opportunities", "skips", "markets_seen", "duration", "arbs", "weights"):
@@ -666,6 +667,8 @@ class Engine:
                     self.store.kv_set(k, json.dumps(saved))
             was = self.state["paused"].get(aid)
             self.state["paused"][aid] = reason
+            if reason != was:  # Stand merken: nach einem Neustart ist eine bekannte Pause keine neue Meldung
+                self.store.kv_set("paused_state", json.dumps(self.state["paused"]))
             if reason and reason != was:
                 self.store.log(f"[{a['name']}] RISIKOBREMSE: {reason}", "error")
                 events.emit(self.store, "hoch", "risikobremse", f"Risikobremse: {a['name']}", f"{reason} · Kontowert {_usd(eq)}",
@@ -677,6 +680,7 @@ class Engine:
         self.store.kv_set(f"paused:{aid}", "")
         self.store.kv_set(f"daystart:{aid}", json.dumps({}))
         self.state["paused"][aid] = None
+        self.store.kv_set("paused_state", json.dumps(self.state["paused"]))
         self.store.log(f"[{ACC.get(aid, {}).get('name', aid)}] wieder freigegeben (Fortsetzen)")
         events.emit(self.store, "info", "risikobremse", f"Konto fortgesetzt: {ACC.get(aid, {}).get('name', aid)}",
                     "Im Dashboard freigegeben; die Verlustgrenze zählt ab dem jetzigen Kontowert neu.", agent="trader", telegram=False)

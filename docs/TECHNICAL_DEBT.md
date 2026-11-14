@@ -23,7 +23,7 @@ Status wird bei jeder Änderung gepflegt.
 | T16 | N | JS/CSS inline in einer 733-Zeilen-Datei | `templates/index.html` | erledigt – `static/*.js`, `static/*.css`, strenge CSP |
 | T17 | N | Keine Abhängigkeits-Prüfung in der CI, Deploy nicht an Tests gekoppelt | `ci.yml`, Railway | teilweise – `pip-audit` läuft in der CI (meldet, blockiert nicht); Deploy ist weiter nicht an die Tests gekoppelt |
 | T18 | N | Test-Daten sind handgebaut, keine aufgezeichneten echten API-Antworten | `tests/` | offen |
-| T19 | N | Zwischenspeicher für Wetter geht bei jedem Deploy verloren | `weather_model._cache` | offen |
+| T19 | N | Zwischenspeicher für Wetter geht bei jedem Deploy verloren | `weather_model._cache` | erledigt – Vorhersagen je Station liegen in der Datenbank und überleben den Neustart |
 | T20 | N | Limit-Order-Füllung ist optimistisch simuliert | `engine.do_maker` | dokumentiert |
 | T21 | M | Sicherungen liegen auf demselben Volume wie die Datenbank | `guardian.py` | offen – ein zweiter Ort wäre ein externer Dienst (Kosten/Zugangsdaten), deshalb nicht ohne Absprache |
 | T22 | N | Dashboard-Skripte ohne automatische Browser-Tests in der CI | `static/` | offen – geprüft von Hand mit Playwright (alle Seiten, zwei Breiten) |

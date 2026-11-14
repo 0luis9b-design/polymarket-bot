@@ -136,13 +136,17 @@ class Coordinator:
             c = self.counts()
             v = dict(self.validation.cycle or {})
             checked, valid = v.pop("geprüft", 0), v.pop("gültig", 0)
-            check = f"{checked} geprüft, {valid} gültig" + "".join(f", {k}: {n}" for k, n in sorted(v.items(), key=lambda x: -x[1]))
+            by_cat = getattr(self.validation, "cycle_by_cat", {}) or {}
+            check = f"{checked} geprüft, {valid} gültig" + "".join(
+                f", {cat}: " + "/".join(f"{k} {n}" for k, n in sorted(rs.items(), key=lambda x: -x[1])) for cat, rs in sorted(by_cat.items()))
+            models = ", ".join(f"{r['model']}@{r['version']}" + ("" if r["mix_w"] is None or r["mix_w"] >= 0.999 else f" (Mischung {r['mix_w'] * 100:.0f} % Modell)")
+                               for _, r in sorted(self.probability.reg.items()))
             paused_acc = sorted(k for k, r in (self.engine.state.get("paused") or {}).items() if r) if self.engine is not None else []
             log.info("Takt %.0f s · gelaufen: %s · zurückgestellt: %s · Agenten mit Fehler: %s · pausierte Quellen: %s · "
-                     "heute vom Budget gebremst: %s · Prüfung: %s · pausierte Konten: %s · "
+                     "heute vom Budget gebremst: %s · Prüfung: %s · aktive Modelle: %s · pausierte Konten: %s · "
                      "Bestand: %s Märkte offen (%s mit Modell), %s Prognosen, %s Ergebnisse, %s im Datensatz, %s Schlagzeilen",
                      self.last_tick["dauer"], ", ".join(parts) or "–", ", ".join(skipped) or "–", "; ".join(failing) or "keine",
-                     ", ".join(paused) or "keine", ", ".join(held) or "nichts", check, ", ".join(paused_acc) or "keine", c["märkte_offen"], c["märkte_mit_modell"], c["prognosen"], c["ergebnisse"],
+                     ", ".join(paused) or "keine", ", ".join(held) or "nichts", check, models, ", ".join(paused_acc) or "keine", c["märkte_offen"], c["märkte_mit_modell"], c["prognosen"], c["ergebnisse"],
                      c["entschiedene_märkte_datensatz"], c["nachrichten"])
         except Exception:  # noqa: BLE001 – eine Logzeile darf nie stören
             pass
