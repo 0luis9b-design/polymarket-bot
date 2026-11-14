@@ -1,8 +1,13 @@
 """Versionsstand des Systems. CHANGES wird im Claude-Bericht unter „Neue Funktionen“ gezeigt."""
-VERSION = "2.0.1"
+VERSION = "2.1.0"
 
 # (Datum, Version, Text) – neueste zuerst
 CHANGES = [
+    ("2026-11-14", "2.1.0", "Alle Märkte im Paper-Trading: Konto „Haupt · Weitere“ mit Basisraten für Märkte ohne eigenes Modell"),
+    ("2026-11-14", "2.1.0", "Einordnung jedes Marktes in Bereich › Unterbereich › Detail (z. B. Sport › Fußball › Champions League), überall filterbar"),
+    ("2026-11-14", "2.1.0", "Wetten-Historie mit Detailseite (alles, was beim Einstieg bekannt war) und filterbarer Kalender mit G/V je Tag"),
+    ("2026-11-14", "2.1.0", "Wetter am Messtag: gemessene Werte (METAR) plus korrigierte Vorhersage für die restlichen Stunden"),
+    ("2026-11-14", "2.1.0", "Echte API-Antworten als Testdaten, Browser-Tests aller Seiten in der GitHub-Prüfung"),
     ("2026-11-14", "2.0.1", "Nach der Live-Kontrolle: Zustand je Takt im Log, Wetter-Vorhersagen überleben Neustarts, Historie blättert an Minuten-Märkten vorbei, Summen-Prüfung am reinen Modellwert"),
     ("2026-11-14", "2.0.0", "Agenten-Architektur mit Koordinator (Scanner, Probability, Validation, Learning, Strategy, News, Guardian)"),
     ("2026-11-14", "2.0.0", "Prognose-Historie unveränderlich, mit Modell, Version, Quellen und Prüfergebnis"),

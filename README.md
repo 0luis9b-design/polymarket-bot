@@ -1,4 +1,4 @@
-# Polymarket-Bot – Forschung und Paper-Trading (Version 2)
+# Polymarket-Bot – Forschung und Paper-Trading (Version 2.1)
 
 Ein System, das Polymarket-Märkte beobachtet, **eigene Wahrscheinlichkeiten** berechnet, sie gegen den Marktpreis und das
 tatsächliche Ergebnis misst und daraus lernt. Gehandelt wird **nur mit Spielgeld** auf 11 Testkonten.
@@ -19,12 +19,18 @@ Ausführlich: [`docs/SYSTEM_ARCHITECTURE.md`](docs/SYSTEM_ARCHITECTURE.md) · [`
 | **Guardian** | Ressourcen, Quellen-Ausfälle, tägliches Backup, Integrität, Aufräumen |
 | **Koordinator** | Takt alle 10 min, Zeitbudget, stuft fehlerhafte Agenten zurück, schreibt Mi + So den Claude-Review-Bericht |
 | **Paper Trading** | virtuelle Wetten nach den geprüften Prognosen, Risikobremse je Konto |
+| **Basisraten** | Prognose für alle Märkte ohne eigenes Modell (Politik, Wirtschaft, Kultur, E-Sport, weitere Sportarten …): wie oft trat bei gleichartigen Märkten zum gleichen Kurs „Ja“ ein |
 
 Die „Agenten“ sind Programm-Module, keine Sprachmodelle – das Budget für externe Dienste ist 0 €.
 
 ## Dashboard
 Übersicht · Märkte (Suche, Filter, Detail mit Preisverlauf) · Prognosen · KI-Zentrale · Lernen (Vorschläge freigeben/ablehnen,
-Modell zurückholen) · Strategie-Labor · Performance · Daten · System · Claude-Berichte · Einstellungen · Paper-Trading.
+Modell zurückholen) · Strategie-Labor · Performance · Daten · System · Claude-Berichte · Einstellungen.
+
+**Paper-Trading:** „Konten und Lage“ (Kennzahlen, Kurve, Konten, offene Wetten, was der Bot gerade sieht) · „Wetten“ (alle Wetten,
+filterbar nach Konto und Bereich › Unterbereich › Detail, z. B. Sport › Fußball › Champions League, nach Ergebnis, Art, Zeitraum)
+· Detailseite je Wette (Wahrscheinlichkeit für den eigenen Tipp beim Einstieg, Markt, Modell, Begründung, Prüfung, Verlauf, Ausgang)
+· „Kalender“ (Gewinn/Verlust je Tag, gleicher Filter).
 Angezeigt werden nur gemessene Werte; fehlt etwas, steht dort „Keine Daten verfügbar“.
 
 ## Regeln, die im Code fest verankert sind
@@ -56,11 +62,13 @@ Angezeigt werden nur gemessene Werte; fehlt etwas, steht dort „Keine Daten ver
 - Einsatz 2–6 % des Kontos je nach Sicherheit, höchstens 10 % pro Ereignis/Gruppe, 60 % insgesamt.
 - Kauf und Verkauf über das echte Orderbuch inkl. Gebühr. Früher Ausstieg, wenn der Verkaufserlös die eigene Wahrscheinlichkeit erreicht.
 - Risikobremse: −8 % an einem Tag → Pause bis zum nächsten Tag; −25 % gesamt → Pause bis „Fortsetzen“ im Dashboard.
-- Konten (je 1.000 $ Spielgeld): Haupt·Krypto, Haupt·Sport, Haupt·Wetter, Schwelle 4/2/7, Schwelle 8/4/14, Fest 10 $,
+- Konten (je 1.000 $ Spielgeld): Haupt·Krypto, Haupt·Sport, Haupt·Wetter, Haupt·Weitere (Basisraten, ab 3 Pkt und statistisch
+  gesichert), Schwelle 4/2/7, Schwelle 8/4/14, Fest 10 $,
   Ohne Ausstieg, Viertel-Kelly, Limit-Orders, Außenseiter verkaufen, Nur Arbitrage.
 
 **Wetter-Märkte:** Höchst-/Tiefsttemperatur an ~60 Flughäfen mit dem Open-Meteo-Ensemble (ECMWF, GFS, ICON, ~120 Szenarien).
-Ein gelerntes Modell (Stations-Korrektur + gemessene Streuung) läuft als Herausforderer mit.
+Ein gelerntes Modell (Stations-Korrektur + gemessene Streuung) läuft als Herausforderer mit. Am Messtag selbst nimmt der Bot die
+gemessenen Werte der Station (METAR, aviationweather.gov) dazu: bisheriger Höchst-/Tiefstwert plus korrigierte Vorhersage für den Rest des Tages.
 
 ## Claude als Supervisor
 Mittwoch und Sonntag um 17 Uhr schreibt der Bot einen Review-Bericht (13 Abschnitte, nur gemessene Werte), speichert ihn,
@@ -85,6 +93,6 @@ Die Datenbank liegt in `DATA_DIR`; Sicherungen täglich in `DATA_DIR/backups` (d
 ## Lokal (Windows)
 ```
 pip install -r requirements-dev.txt
-python -m pytest -q   # 121 Tests
+python -m pytest -q   # 144 Tests (+ Browser-Tests mit BROWSER_TESTS=1)
 python app.py      # dann http://localhost:5000
 ```

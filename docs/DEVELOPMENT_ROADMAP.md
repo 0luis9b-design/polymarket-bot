@@ -1,7 +1,7 @@
 # Entwicklungs-Roadmap
 
 Priorität: **1** = verhindert Schaden oder ist Voraussetzung · **2** = Kern des Zielsystems · **3** = Ausbau.
-Status: ✅ erledigt (mit Tests belegt) · 🔧 in Arbeit · ⏳ geplant. Stand: 14.11.2026, Version 2.0.0.
+Status: ✅ erledigt (mit Tests belegt) · 🔧 in Arbeit · ⏳ geplant. Stand: 14.11.2026 (abends), Version 2.1.0.
 
 ## Phase 1–2 · Audit und Architektur — ✅
 Dokumente: `PROJECT_AUDIT.md`, `SYSTEM_ARCHITECTURE.md`, `TECHNICAL_DEBT.md`, `RISK_REGISTER.md`, diese Datei.
@@ -48,13 +48,26 @@ Prioritäten, Tageslimit, Ruhezeit · Claude-Review-Bericht Mi + So · geplante 
 ## Phase 10–11 · Qualität und Betrieb (Priorität 1) — ✅
 | Schritt | Status |
 |---|---|
-| Tests für jedes neue Modul (121 Tests: Quellen, Migrationen, Prognose-Historie, Prüfung, Lernen, Backtests ohne Blick in die Zukunft, Nachrichten, Guardian, Berichte, alle API-Endpunkte) | ✅ |
+| Tests für jedes neue Modul (Stand 2.1: 144 Tests + Browser-Tests; Quellen, Migrationen, Prognose-Historie, Prüfung, Lernen, Backtests ohne Blick in die Zukunft, Nachrichten, Guardian, Berichte, alle API-Endpunkte) | ✅ |
 | CSRF-Schutz, Anmelde-Sperre, Sicherheits-Header (T12) | ✅ |
 | Abhängigkeits-Prüfung in der CI (T17) | ✅ |
 | Upgrade einer v1.3-Datenbank geprüft (Backup vor Migration, Wetten und Guthaben bleiben) | ✅ |
 | Dashboard in echtem Browser geprüft (alle Seiten, Handy + Desktop, keine Skriptfehler) – von Hand, nicht in der CI | ✅ |
 | Kontrolle im Live-Betrieb nach dem Deploy (14.11., über die Railway-Logs) | ✅ Migration mit Backup, Läufe ohne Fehler, alle Agenten ohne Fehler |
 | Im Live-Betrieb gefunden und behoben: Historie blieb bei Krypto an den 5-Minuten-Märkten hängen · Summen-Prüfung maß nach einer Mischung die Marktkurse statt das Modell · alte Risikobremsen wurden nach jedem Neustart erneut gemeldet · Wetter-Zwischenspeicher ging bei jedem Neustart verloren · Telegram ohne Wiederholung bei Verbindungsfehler | ✅ je mit Test |
+
+## Version 2.1 · Alle Märkte im Paper-Trading (Wunsch vom 14.11.) — ✅
+| Schritt | Status |
+|---|---|
+| Einordnung jedes Marktes in Bereich › Unterbereich › Detail aus den Polymarket-Schlagwörtern (`taxonomy.py`), für Katalog, Datensatz und alle Wetten; ältere Wetten nachträglich eingeordnet | ✅ |
+| Basisraten-Modell (`base_model.py`) für alle Märkte ohne eigenes Datenmodell: Marktpreis + gemessene Abweichung gleichartiger entschiedener Märkte, zur Null gestaucht bei wenig Daten | ✅ |
+| Neues Spielgeld-Konto „Haupt · Weitere“ (1.000 $): handelt nur Basisraten, ab 3 Pkt Vorsprung und nur bei statistisch gesicherter Abweichung (z ≥ 1,64); die anderen Konten bleiben bei ihren Modellen | ✅ |
+| Je Wette gespeichert (Migration v9): Wahrscheinlichkeit für den eigenen Tipp, Markt-Wahrscheinlichkeit, Modell, Unsicherheit, Restlaufzeit, Spanne, Liquidität, Prüfung, Quellen, Begründung, Ausstiegsgrund | ✅ |
+| Dashboard: „Konten und Lage“, „Wetten“ (Historie mit Filtern, Sortierung, Suche, Zeitraum), Detailseite je Wette, „Kalender“ (G/V je Tag, Tag antippen) – überall derselbe Stufen-Filter; auf dem Handy Karten statt Tabellen | ✅ |
+| Datensatz entschiedener Märkte wächst schneller (60 statt 25 je Lauf) – er ist die Grundlage der Basisraten | ✅ |
+
+Wichtig zum Verständnis: Das Konto „Haupt · Weitere“ wettet anfangs wenig oder gar nicht. Solange der Datensatz klein ist,
+liegen die Basisraten fast genau auf dem Marktpreis – dann gibt es keinen Vorsprung. Das ist gewollt: Ohne Belege kein Einsatz.
 
 ## Machbarkeit (geprüft)
 | Ressource | Heute | Mit Ausbau (geschätzt) | Grenze |
@@ -79,13 +92,15 @@ Ergebnis: alles läuft auf dem vorhandenen Railway-Dienst ohne Zusatzkosten.
 | Automatische Code-Änderungen durch den Bot | nein | Lernen geschieht über Parameter und Modellwahl mit Freigabe, nie über Code |
 
 ## Nächste Schritte (Vorschlag, nach Priorität)
-1. **Daten sammeln lassen.** Lernsystem und Strategie-Labor brauchen entschiedene Märkte. Erste belastbare Aussagen
-   zu Wetter nach etwa 1–2 Wochen (≥ 100 spätere Prognosen aus ≥ 30 Ereignissen), zu Sport und Krypto später.
+1. **Daten sammeln lassen.** Lernsystem, Strategie-Labor und Basisraten brauchen entschiedene Märkte. Erste belastbare
+   Aussagen zu Wetter nach etwa 1–2 Wochen (≥ 100 spätere Prognosen aus ≥ 30 Ereignissen), zu Sport und Krypto später.
 2. **Wetter-Modell „weather.emp“ prüfen**, sobald es als Herausforderer genug Daten hat (Stations-Korrektur, gemessene Streuung).
-3. **Wetter am Messtag mit Live-Messwerten (METAR)** – größter erwarteter Qualitätsgewinn für kurze Restlaufzeiten.
-4. **Aufgezeichnete echte API-Antworten als Testdaten** (T18).
-5. **Automatische Browser-Tests in der CI** (T22).
-6. **`engine.py` weiter zerlegen** (T9) – erst wenn das neue System zwei Wochen stabil läuft.
+3. ~~Wetter am Messtag mit Live-Messwerten (METAR)~~ ✅ 14.11. (`metar.py`, Modell `weather.live@1`)
+4. ~~Aufgezeichnete echte API-Antworten als Testdaten (T18)~~ ✅ 14.11. (Polymarket Gamma/CLOB, METAR; Open-Meteo weiter synthetisch)
+5. ~~Automatische Browser-Tests in der CI (T22)~~ ✅ 14.11.
+6. **Basisraten verfeinern**, sobald je Bereich einige Hundert entschiedene Märkte da sind: nach Unterbereich (z. B. Fußball
+   getrennt von NBA) und nach Markttyp (Sieger, Handicap, Über/Unter).
+7. **`engine.py` weiter zerlegen** (T9) – erst wenn das neue System zwei Wochen stabil läuft.
 
 ## Vorgemerkt (aus früheren Absprachen)
 Wetter am Messtag mit Live-Messwerten (METAR) · Export als Tabelle · Auswertung nach Quelle

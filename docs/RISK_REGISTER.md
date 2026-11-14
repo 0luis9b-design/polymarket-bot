@@ -19,3 +19,5 @@ W = Wahrscheinlichkeit, A = Auswirkung (1 niedrig – 3 hoch).
 | R13 | Rechtlich: Polymarket ist nicht überall zum Handeln zugelassen | – | – | System liest nur öffentliche Daten und handelt nicht. Echtgeld ist ausdrücklich nicht Teil des Projekts | akzeptiert |
 | R14 | Die Validierung sperrt echte Chancen (Modell hat recht, Markt irrt stark) | 2 | 1 | abgelehnte Prognosen werden gespeichert und im Lernzentrum gegen den Markt ausgewertet („War die Prüfung berechtigt?“); Grenze in den Einstellungen änderbar | umgesetzt |
 | R15 | Ein Vorschlag wird freigegeben und verschlechtert die Prognosen | 2 | 2 | Vorgänger läuft als Herausforderer weiter, Rückfall-Erkennung schlägt das Zurückholen vor, Rückholung mit einem Klick | umgesetzt |
+| R16 | Das Basisraten-Konto handelt auf dünner Datengrundlage | 2 | 1 | Stauchung zur Null bei wenig Daten, Mindestzahl Vergleichsmärkte, Handel nur bei z ≥ 1,64, eigenes Konto (Verluste bleiben dort) | umgesetzt |
+| R17 | aviationweather.gov drosselt oder fällt aus | 2 | 1 | 30 min Zwischenspeicher, höchstens 5 Stationen je Abruf, Budget, 15 min Pause nach Fehler; ohne Messwerte gilt das alte Vorgehen | umgesetzt |

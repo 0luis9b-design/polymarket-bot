@@ -19,13 +19,15 @@ Status wird bei jeder Änderung gepflegt.
 | T12 | M | POST ohne CSRF-Schutz, keine Sperre bei Fehlanmeldungen, keine Sicherheits-Header | `app.py` | erledigt |
 | T13 | M | `/health` gibt Fehlertexte ohne Anmeldung aus; `/api/scan` mit Schlüssel in der URL | `app.py` | erledigt |
 | T14 | M | Open-Meteo: alle Stationen in einem Lauf (Minuten-Limit 600) | `weather_model.py` | erledigt – Minutenbudget 480 Einheiten in `sources.py` |
-| T15 | M | Wetter-Modell ohne Stations-Korrektur, Streuung geschätzt statt gemessen | Verluste 13.11. | teilweise – `weather.emp` lernt Korrektur und Streuung und läuft als Herausforderer, sobald 30 Messungen da sind; aktiv erst nach Freigabe |
+| T15 | M | Wetter-Modell ohne Stations-Korrektur, Streuung geschätzt statt gemessen | Verluste 13.11. | teilweise – `weather.emp` lernt Korrektur und Streuung (Herausforderer, aktiv erst nach Freigabe); am Messtag korrigiert `weather.live` die Vorhersage mit den gemessenen Werten |
 | T16 | N | JS/CSS inline in einer 733-Zeilen-Datei | `templates/index.html` | erledigt – `static/*.js`, `static/*.css`, strenge CSP |
 | T17 | N | Keine Abhängigkeits-Prüfung in der CI, Deploy nicht an Tests gekoppelt | `ci.yml`, Railway | teilweise – `pip-audit` läuft in der CI (meldet, blockiert nicht); Deploy ist weiter nicht an die Tests gekoppelt |
-| T18 | N | Test-Daten sind handgebaut, keine aufgezeichneten echten API-Antworten | `tests/` | offen |
+| T18 | N | Test-Daten sind handgebaut, keine aufgezeichneten echten API-Antworten | `tests/` | erledigt – echte, gekürzte Antworten von Polymarket (Gamma, CLOB) und METAR in `tests/fixtures/`; Open-Meteo bleibt synthetisch (vom Browser aus nicht abrufbar) |
 | T19 | N | Zwischenspeicher für Wetter geht bei jedem Deploy verloren | `weather_model._cache` | erledigt – Vorhersagen je Station liegen in der Datenbank und überleben den Neustart |
 | T20 | N | Limit-Order-Füllung ist optimistisch simuliert | `engine.do_maker` | dokumentiert |
 | T21 | M | Sicherungen liegen auf demselben Volume wie die Datenbank | `guardian.py` | offen – ein zweiter Ort wäre ein externer Dienst (Kosten/Zugangsdaten), deshalb nicht ohne Absprache |
-| T22 | N | Dashboard-Skripte ohne automatische Browser-Tests in der CI | `static/` | offen – geprüft von Hand mit Playwright (alle Seiten, zwei Breiten) |
+| T22 | N | Dashboard-Skripte ohne automatische Browser-Tests in der CI | `static/` | erledigt – Playwright prüft alle Seiten in zwei Breiten in der GitHub-Prüfung (`tests/browser/`) |
 | T23 | N | Nachrichten nur per Stichwort zugeordnet, nur BBC | `agents/news.py` | bewusst – siehe Roadmap „Bewusst nicht gebaut“ |
 | T24 | N | Für Politik, Wirtschaft, Kultur usw. gibt es keine eigenen Prognosen, nur Beobachtung und Backtests | `agents/scanner.py`, `agents/strategy.py` | bewusst – ohne Datenmodell wäre es geraten |
+| T25 | N | Basisraten nur je Bereich und Kursstufe, noch nicht je Unterbereich oder Markttyp | `base_model.py` | bewusst – erst wenn genug Daten da sind (Roadmap „Nächste Schritte“ 6) |
+| T26 | N | Alte Wetten (vor 14.11.) haben keine vollständigen Einstiegs-Daten | `positions` | bewusst – damals nicht gespeichert; die Detailseite sagt das |

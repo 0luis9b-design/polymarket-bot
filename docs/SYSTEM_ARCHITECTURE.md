@@ -58,6 +58,19 @@
 | Paper Trading | `engine.py` | virtuelle Wetten auf 11 Spielgeld-Konten, Risikobremse, Abrechnung | jeder Lauf |
 | Berichte | `reports.py` | Claude-Review-Bericht Mi + So (13 Abschnitte, nur gemessene Werte) | Zeitplan |
 
+## Alle Märkte im Paper-Trading (ab 2.1)
+- **Einordnung** (`taxonomy.py`): Bereich › Unterbereich › Detail aus den Polymarket-Schlagwörtern, in fester Rangfolge
+  (die Reihenfolge der Schlagwörter bei Polymarket ist nicht verlässlich). Krypto und Wetter aus der Marktfrage selbst.
+  Gespeichert an Katalog (`markets`), Datensatz (`resolved`), Wetten (`positions`) und Kaufgeboten (`orders`).
+- **Zwei Spuren** je Markt: `model` (eigenes Datenmodell: Krypto, Sport, Wetter) und `base` (Basisraten, `base_model.py`).
+  Hat das eigene Modell für einen Markt nichts (z. B. Spiel in 3 Tagen), bekommt er Basisraten. Jede Wette merkt sich
+  ihre Spur (`lane`), dazu `rule` (Außenseiter-Regel), `arb`, `maker`.
+- **Konten**: Die drei Hauptkonten und die Testkonten handeln nur die Spur `model`; „Haupt · Weitere“ nur `base`;
+  „Außenseiter verkaufen“ alle Märkte (Regel ohne Modell); Arbitrage nur vollständige Ereignisse.
+- **Einstiegs-Daten**: Spalten zum Filtern (`sub`, `detail`, `model`, `lane`, `p_mid`, `uncertainty`, `hours_left`, `spread`,
+  `liquidity`, `volume24h`) plus `entry` (JSON mit allem für die Detailseite) und `exit_reason`.
+- **Seiten-Daten**: `paperview.py` (eine Filterlogik für Übersicht, Historie, Detail und Kalender; Tage in deutscher Zeit).
+
 ## Datenmodell
 Bestehend (bleibt): `kv`, `positions`, `orders`, `predictions`, `log`, `equity_acc`.
 Neu, über nummerierte Migrationen (`schema_version`):
