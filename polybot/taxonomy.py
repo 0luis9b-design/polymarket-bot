@@ -77,9 +77,10 @@ TOPIC_ORDER = [
     ({"tweets-markets", "mention-markets"}, "culture"),
     ({"elections", "us-presidential-election", "midterms", "primaries", "world-elections", "global-elections", "congress",
       "senate-elections", "2028-election", "house-of-representatives"}, "politics"),
+    # Welt vor Wirtschaft: „Blockade gegen den Iran“ trägt auch das Schlagwort „oil“, ist aber Geopolitik
+    ({"geopolitics", "world", "ukraine", "russia", "iran", "israel", "middle-east", "china", "taiwan", "venezuela"}, "world"),
     ({"fed", "fomc", "fed-rates", "economy", "economic-policy", "macro-indicators", "commodities", "oil", "gold", "inflation", "ipo",
       "ipos", "finance", "business", "stocks", "equities", "finance-updown"}, "economy"),
-    ({"geopolitics", "world", "ukraine", "russia", "iran", "israel", "middle-east", "china", "taiwan", "venezuela"}, "world"),
     ({"science", "climate-science", "climate", "fda", "vaccine", "health", "pandemic"}, "science"),
     ({"tech", "ai", "big-tech", "openai", "anthropic", "nvidia", "spacex", "space", "apple", "google", "tesla", "llm"}, "tech"),
     ({"politics", "trump", "us-politics", "trump-presidency"}, "politics"),

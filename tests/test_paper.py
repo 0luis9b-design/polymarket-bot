@@ -79,7 +79,8 @@ def test_base_rates_need_data_and_shrink_small_samples(tmp_path):
     # Rohabweichung wäre −10 Pkt; gestaucht mit 50 gedachten Märkten bleibt viel weniger übrig
     assert 0.03 < a["p_yes"] < 0.08 and a["lane"] == "base" and a["model_id"] == "base.calib@1"
     assert br.analyze(_bm(hours=24 * 9), NOW)["skip"].startswith("Restlaufzeit über 8 Tage")
-    assert br.analyze(_bm(outcomes=("Bayern", "Paris")), NOW) == {"skip": "kein Ja/Nein-Markt"}
+    assert br.analyze(_bm(outcomes=("A", "B", "C")), NOW) == {"skip": "nicht genau zwei Ausgänge"}
+    assert "p_yes" in br.analyze(_bm(outcomes=("Bayern", "Paris")), NOW)          # zwei Mannschaften: erster Ausgang wie „Ja“
     assert base_model.horizon_col(30) == "p_24h" and base_model.horizon_col(50) == "p_72h" and base_model.horizon_col(0.5) == "p_1h"
 
 

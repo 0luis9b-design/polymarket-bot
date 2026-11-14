@@ -103,8 +103,9 @@ class BaseRates:
         return d, se, desc, {"col": col, "bin": b, "n_all": n_g, "n_cat": n_c}
 
     def analyze(self, m, now):
-        if m["outcomes"][0].lower() not in ("yes", "ja"):
-            return {"skip": "kein Ja/Nein-Markt"}
+        # Ja/Nein oder zwei Mannschaften: der Datensatz misst immer den ersten Ausgang – das passt für beide
+        if len(m.get("outcomes") or []) != 2:
+            return {"skip": "nicht genau zwei Ausgänge"}
         if not m.get("best_bid") or not m.get("best_ask"):
             return {"skip": "kein Orderbuch"}
         if not m.get("end_date"):
