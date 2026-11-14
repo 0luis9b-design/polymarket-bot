@@ -60,9 +60,13 @@ class Store:
         d = os.path.dirname(path)
         if d:
             os.makedirs(d, exist_ok=True)
+        self.path = path
         self.lock = threading.RLock()
-        self.db = sqlite3.connect(path, check_same_thread=False)
+        self.db = sqlite3.connect(path, check_same_thread=False, isolation_level=None)  # Autocommit; Transaktionen explizit
         self.db.row_factory = sqlite3.Row
+        self.db.execute("PRAGMA journal_mode=WAL")
+        self.db.execute("PRAGMA synchronous=NORMAL")
+        self.db.execute("PRAGMA busy_timeout=5000")
         with self.lock:
             self.db.executescript(SCHEMA)
             have = {r["name"] for r in self.db.execute("PRAGMA table_info(positions)")}
@@ -77,6 +81,60 @@ class Store:
                 self.db.execute("INSERT OR IGNORE INTO equity_acc(account,ts,equity,cash) "
                                 "SELECT 'haupt', ts, equity, cash FROM equity")
             self.db.commit()
+            from . import migrations
+            self.migrated = migrations.migrate(self.db, path)
+            self.schema_version = migrations.current_version(self.db)
+
+    # --- allgemeine Helfer (für die Agenten) ---
+    def q(self, sql, args=()):
+        with self.lock:
+            return [dict(r) for r in self.db.execute(sql, args)]
+
+    def q1(self, sql, args=()):
+        with self.lock:
+            r = self.db.execute(sql, args).fetchone()
+        return dict(r) if r else None
+
+    def scalar(self, sql, args=()):
+        with self.lock:
+            r = self.db.execute(sql, args).fetchone()
+        return r[0] if r else None
+
+    def x(self, sql, args=()):
+        with self.lock:
+            return self.db.execute(sql, args)
+
+    def xmany(self, sql, rows):
+        """Viele Zeilen in einer Transaktion (schnell und alles-oder-nichts)."""
+        rows = list(rows)
+        if not rows:
+            return 0
+        with self.lock:
+            self.db.execute("BEGIN")
+            try:
+                self.db.executemany(sql, rows)
+                self.db.execute("COMMIT")
+            except Exception:
+                self.db.execute("ROLLBACK")
+                raise
+        return len(rows)
+
+    def backup(self, keep=7):
+        """Tägliche Sicherung neben der Datenbank; behält die letzten `keep`."""
+        from . import migrations
+        folder = os.path.join(os.path.dirname(self.path), "backups")
+        name = os.path.join(folder, f"polybot-{datetime.now(timezone.utc):%Y%m%d}.sqlite")
+        with self.lock:
+            migrations.backup_file(self.db, name)
+        files = sorted(f for f in os.listdir(folder) if f.startswith("polybot-") and f.endswith(".sqlite"))
+        for old in files[:-keep]:
+            os.remove(os.path.join(folder, old))
+        return name, os.path.getsize(name)
+
+    def add_outcome(self, market_id, outcome, source="polymarket"):
+        with self.lock:
+            self.db.execute("INSERT OR IGNORE INTO outcomes(market_id, outcome, resolved_at, source) VALUES(?,?,?,?)",
+                            (market_id, outcome, now_iso(), source))
 
     # --- kv ---
     def kv_get(self, k, default=None):

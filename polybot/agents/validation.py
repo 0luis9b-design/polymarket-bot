@@ -1,0 +1,98 @@
+"""Validation Agent: prüft jede Prognose, bevor sie ins Paper-Trading geht.
+
+Eine abgelehnte Prognose wird trotzdem gespeichert (mit Grund) – so lässt sich später messen,
+ob die Ablehnung richtig war. Gehandelt wird sie nicht.
+
+Regeln
+  wert        Wahrscheinlichkeit ist eine Zahl zwischen 0 und 1
+  ende        der Markt läuft noch
+  frische     die Daten hinter der Prognose sind nicht zu alt
+  abweichung  Modell und liquider Markt liegen nicht weiter auseinander als MAX_DIVERGENCE.
+              Eine riesige Abweichung ist fast immer ein Modellfehler, kein Vorsprung
+              (Beleg: Wetter-Wetten vom 12./13.11.2026).
+  summe       bei Ereignissen mit genau einer richtigen Antwort ergeben die Modell-Werte zusammen etwa 100 %
+"""
+import time
+from collections import Counter, defaultdict
+
+from .. import config
+from . import Agent
+
+MAX_AGE = {"crypto": 20 * 60, "sports": 8 * 3600, "weather": 8 * 3600}
+
+
+class ValidationAgent(Agent):
+    id = "validation"
+    name = "Validation"
+    role = "Prüft Prognosen auf Datenfrische, Plausibilität und Stimmigkeit; sperrt Unsicheres fürs Handeln"
+    priority = 3
+    budget = 10
+
+    def __init__(self, store):
+        super().__init__(store)
+        self.cycle = {}
+        self.total = Counter()
+
+    def check(self, results, now):
+        counts = Counter()
+        by_event = defaultdict(list)
+        for o in results:
+            m, a = o["market"], o["analysis"]
+            checks, reason = [], None
+            p = a.get("p_yes")
+            if p is None or p != p or not (0 < p < 1):
+                reason = "Wert ungültig"
+            checks.append(("wert", reason is None))
+            hours = a.get("hours")
+            if reason is None and hours is not None and hours <= 0:
+                reason = "Markt läuft nicht mehr"
+            checks.append(("ende", reason is None))
+            if reason is None:
+                ts = a.get("data_ts")
+                limit = MAX_AGE.get(m["category"])
+                if ts and limit and time.time() - ts > limit:
+                    reason = f"Daten veraltet ({(time.time() - ts) / 3600:.1f} h)"
+                checks.append(("frische", reason is None))
+            if reason is None:
+                spread = (m["best_ask"] - m["best_bid"]) if (m.get("best_ask") and m.get("best_bid")) else None
+                liquid = (m.get("liquidity") or 0) >= config.MIN_LIQUIDITY and spread is not None and spread <= config.MAX_SPREAD
+                div = abs(p - o["market_p"])
+                if liquid and div > config.MAX_DIVERGENCE:
+                    reason = f"Abweichung unplausibel ({div * 100:.0f} Pkt gegen liquiden Markt)"
+                checks.append(("abweichung", reason is None))
+            a["checks"] = checks
+            if reason:
+                self._reject(o, reason, counts)
+            else:
+                a["valid"] = True
+                if m.get("neg_risk") and m.get("event_id"):
+                    by_event[m["event_id"]].append(o)
+        # Summen-Prüfung über vollständige Ereignisse
+        for eid, group in by_event.items():
+            n = group[0]["market"].get("event_n_markets") or 0
+            if n < 2 or len(group) != n:
+                continue
+            total = sum(o["analysis"]["p_yes"] for o in group)
+            ok = 0.85 <= total <= 1.15
+            for o in group:
+                o["analysis"]["checks"].append(("summe", ok))
+                if not ok:
+                    self._reject(o, f"Summe der Antworten = {total * 100:.0f} %", counts)
+        counts["geprüft"] = len(results)
+        counts["gültig"] = sum(1 for o in results if o["analysis"].get("valid"))
+        self.cycle = dict(counts)
+        self.total.update({k: v for k, v in counts.items() if k not in ("geprüft", "gültig")})
+        return self.cycle
+
+    @staticmethod
+    def _reject(o, reason, counts):
+        a = o["analysis"]
+        if a.get("valid") is False:
+            return
+        a["valid"] = False
+        a["reject"] = reason
+        o["base"].append(f"Prüfung: {reason}")
+        counts[reason.split(" (")[0].split(" =")[0]] += 1
+
+    def run(self, now, deadline):
+        return dict(self.cycle)

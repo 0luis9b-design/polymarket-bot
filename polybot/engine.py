@@ -18,8 +18,10 @@ from collections import Counter
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
-from . import config, crypto_model, notify, polymarket, sports_model, weather_model
+from . import config, crypto_model, events, notify, polymarket, sports_model, weather_model
+from .agents.coordinator import Coordinator
 from .prices import hourly_closes, source_status
+from .sources import redact
 
 log = logging.getLogger("polybot.engine")
 BERLIN = ZoneInfo("Europe/Berlin")
@@ -106,8 +108,10 @@ def _usd(v):
 
 class Engine:
     def __init__(self, store, fetch_events=polymarket.fetch_events, fetch_by_ids=polymarket.fetch_markets_by_ids,
-                 closes_fn=hourly_closes, odds_client=None, chain_fn=None, book_fn=polymarket.fetch_book):
+                 closes_fn=hourly_closes, odds_client=None, chain_fn=None, book_fn=polymarket.fetch_book, intel=None):
         self.store = store
+        self.intel = intel or Coordinator(store)   # Agenten: Katalog, Modell-Auswahl, Prüfung, Prognose-Historie
+        self.intel.engine = self
         self.fetch_events = fetch_events
         self.fetch_by_ids = fetch_by_ids
         self.closes_fn = closes_fn
@@ -195,6 +199,7 @@ class Engine:
             t = time.time()
             markets = self.collect_markets(now)
             tm["märkte"] = time.time() - t
+            self.intel.on_markets(markets, now)
             self.refresh_closing_odds(markets, now)
             t = time.time()
             results = self.analyze_all(markets, now)
@@ -227,16 +232,17 @@ class Engine:
             self.weekly_report(now)
             self._log_summary(results)
             if self._err_runs >= config.ERROR_ALERT_RUNS:
-                notify.send("✅ <b>Polymarket-Bot</b>: Lauf klappt wieder ohne Fehler")
+                notify.send("✅ <b>Polymarket-Bot</b>: Lauf klappt wieder ohne Fehler", level="hoch")
             self._err_runs = 0
             self.state["last_error"] = None
         except Exception as e:  # noqa: BLE001
-            self.state["last_error"] = f"{type(e).__name__}: {e}"
-            self.store.log(f"Fehler im Lauf: {e}", "error")
-            log.error(traceback.format_exc())
+            self.state["last_error"] = redact(f"{type(e).__name__}: {e}")[:400]
+            self.store.log(f"Fehler im Lauf: {self.state['last_error']}", "error")
+            log.error(redact(traceback.format_exc()))
             self._err_runs += 1
             if self._err_runs == config.ERROR_ALERT_RUNS:
-                notify.send(f"⚠️ <b>Polymarket-Bot</b>: {self._err_runs} Läufe hintereinander mit Fehler\n{self.state['last_error'][:300]}")
+                notify.send(f"⚠️ <b>Polymarket-Bot</b>: {self._err_runs} Läufe hintereinander mit Fehler\n{self.state['last_error'][:300]}",
+                            level="hoch", key="fehlläufe")
         finally:
             self.state["last_scan"] = datetime.now(timezone.utc).isoformat(timespec="seconds")
             self.state["duration"] = round(time.time() - t0, 1)
@@ -334,13 +340,11 @@ class Engine:
                 skips[a["skip"].split(" (")[0]] += 1
                 continue
             mkt_p = polymarket.mid_yes(m)
+            # Aktives Modell laut Register wählen (Wechsel und Mischung mit dem Markt nur nach Freigabe im Lernzentrum –
+            # früher wurde das Mischgewicht automatisch angewendet; das ist jetzt nur noch eine Messgröße).
+            a = self.intel.select(m, a, mkt_p)
             self.store.add_prediction(m["id"], m["category"], m["question"], a["p_yes"], mkt_p,
                                       m["end_date"].isoformat() if m["end_date"] else None)
-            w = self.state["weights"].get(m["category"], {}).get("w")
-            if w is not None and w < 1:  # Selbstkorrektur: mit dem Marktkurs mischen, so viel wie es früher geholfen hätte
-                a["p_raw"] = a["p_yes"]
-                a["p_yes"] = w * a["p_yes"] + (1 - w) * mkt_p
-                a["info"] = f"{a.get('info', '')} · gemischt {w * 100:.0f} % Bot / {(1 - w) * 100:.0f} % Markt (roh {a['p_raw'] * 100:.1f} %)"
             ev = evaluate(m, a["p_yes"])
             spread = (m["best_ask"] - m["best_bid"]) if (m["best_ask"] and m["best_bid"]) else None
             base = []
@@ -350,9 +354,12 @@ class Engine:
                 base.append("Spanne zu groß")
             if m["liquidity"] < config.MIN_LIQUIDITY:
                 base.append("zu wenig Liquidität")
+            if not getattr(config, f"TRADE_{m['category'].upper()}", True):
+                base.append("Bereich im Paper-Trading ausgeschaltet")
             grp = a.get("group") if m["category"] in ("crypto", "weather") else f"spiel:{m['event_id'] or m['id']}"
             out.append({"market": m, "analysis": a, "eval": ev, "market_p": mkt_p, "base": base,
                         "group": grp, "status": {}})
+        self.intel.on_results(out, now)   # Prüfung (sperrt Unplausibles über o["base"]) + Prognose-Historie
         out.sort(key=lambda o: o["eval"]["edge"], reverse=True)
         self.state["skips"] = dict(skips.most_common())
         return out
@@ -632,13 +639,17 @@ class Engine:
             elif eq <= float(self.store.kv_get(f"risk_base:{aid}") or config.START_BALANCE) * (1 - config.RISK_TOTAL_LOSS_PCT):
                 reason = f"−{config.RISK_TOTAL_LOSS_PCT * 100:.0f} % seit Start – pausiert bis „Fortsetzen“"
                 self.store.kv_set(f"paused:{aid}", reason)
-            elif eq <= saved["equity"] * (1 - config.RISK_DAY_LOSS_PCT):
+            elif saved.get("locked") or eq <= saved["equity"] * (1 - config.RISK_DAY_LOSS_PCT):
                 reason = f"−{config.RISK_DAY_LOSS_PCT * 100:.0f} % heute – pausiert bis morgen"
+                if not saved.get("locked"):  # bleibt für den Rest des Tages, auch wenn sich der Kontowert erholt
+                    saved["locked"] = True
+                    self.store.kv_set(k, json.dumps(saved))
             was = self.state["paused"].get(aid)
             self.state["paused"][aid] = reason
             if reason and reason != was:
                 self.store.log(f"[{a['name']}] RISIKOBREMSE: {reason}", "error")
-                notify.send(f"⛔ <b>Risikobremse</b> ({a['name']})\n{reason}\nKontowert {_usd(eq)}", aid)
+                events.emit(self.store, "hoch", "risikobremse", f"Risikobremse: {a['name']}", f"{reason} · Kontowert {_usd(eq)}",
+                            key=f"bremse:{aid}:{reason[:12]}", agent="trader", telegram=aid in config.NOTIFY_ACCOUNTS, dedupe_h=20)
 
     def resume(self, aid):
         # neue Bezugsgröße: −25 % zählen ab jetzt, sonst würde die Bremse sofort wieder greifen
@@ -647,6 +658,8 @@ class Engine:
         self.store.kv_set(f"daystart:{aid}", json.dumps({}))
         self.state["paused"][aid] = None
         self.store.log(f"[{ACC.get(aid, {}).get('name', aid)}] wieder freigegeben (Fortsetzen)")
+        events.emit(self.store, "info", "risikobremse", f"Konto fortgesetzt: {ACC.get(aid, {}).get('name', aid)}",
+                    "Im Dashboard freigegeben; die Verlustgrenze zählt ab dem jetzigen Kontowert neu.", agent="trader", telegram=False)
 
     # ------------------------------------------------------------------ Selbstkorrektur
     def update_weights(self):
@@ -654,7 +667,7 @@ class Engine:
         out = {}
         for cat in ("crypto", "sports", "weather"):
             rows = [r for r in preds if r["category"] == cat and 0.05 <= r["market_p"] <= 0.95]
-            if len(rows) >= config.CALIB_MIN_N:
+            if len(rows) >= config.CALIB_MIN_N:  # nur Messgröße; angewendet wird, was im Lernzentrum freigegeben ist
                 out[cat] = {"w": best_weight(rows), "n": len(rows)}
             else:
                 out[cat] = {"w": None, "n": len(rows)}
@@ -666,7 +679,7 @@ class Engine:
             if p.get("kind") == "arb":
                 continue
             o = by_market.get(p["market_id"])
-            if not o:
+            if not o or o["analysis"].get("valid") is False:  # auf eine abgelehnte Prognose hin wird auch nicht verkauft
                 continue
             opened = polymarket.parse_dt(p["opened_at"])
             if opened and (now - opened).total_seconds() < config.MIN_HOLD_MIN * 60:
@@ -866,6 +879,10 @@ class Engine:
         if not ids:
             return
         raws = self.fetch_by_ids(sorted(ids))
+        for mid, raw in raws.items():  # Ergebnis dauerhaft festhalten (Grundlage aller Auswertungen)
+            r_ = polymarket.resolution(raw)
+            if r_ in (0, 1):
+                self.store.add_outcome(mid, 1.0 if r_ == 0 else 0.0)
         for p in pos:
             res = polymarket.resolution(raws.get(p["market_id"]))
             if res is None:

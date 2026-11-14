@@ -141,7 +141,7 @@ def test_resume_endpoint(tmp_path, monkeypatch):
 def test_error_alert_after_three_failed_runs(tmp_path, monkeypatch):
     from polybot import notify
     sent = []
-    monkeypatch.setattr(notify, "send", lambda text, account=None: sent.append(text))
+    monkeypatch.setattr(notify, "send", lambda text, account=None, **kw: sent.append(text))
     store, eng = _eng(tmp_path, {})
 
     def boom():
@@ -189,7 +189,10 @@ def test_maker_cancels_order_when_market_no_longer_rated(tmp_path):
     eng.run_cycle()
     assert len(store.open_orders("limit")) == 1
     # Markt läuft gleich ab -> wird nicht mehr bewertet -> Gebot weg
-    ev["markets"] = [_market("mk", 100000, now + timedelta(minutes=30), 0.20, 0.22)]
+    # (Frage nennt den Vortag: sonst hinge der Test von der Uhrzeit ab, zu der er läuft)
+    past = now - timedelta(days=1)
+    q = f"Will the price of Bitcoin be above $100,000 on {past:%B} {past.day}?"
+    ev["markets"] = [_market("mk", 100000, now + timedelta(minutes=30), 0.20, 0.22, q=q)]
     eng.run_cycle()
     assert store.open_orders("limit") == []
 

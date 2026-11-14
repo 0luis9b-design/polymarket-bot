@@ -230,6 +230,17 @@ def analyze(market, now=None, closes_fn=hourly_closes, chain_fn=None):
         info = (f"{head} · Vol {f'{sig2 * 100:.2f}'.replace('.', ',')} %/h "
                 f"(Historie × {f'{prem:.2f}'.replace('.', ',')} Optionsaufschlag, {source})")
     day = tt.astimezone(ET).strftime("%Y-%m-%d")
-    return {"p_yes": min(max(p, 0.001), 0.999), "info": info, "asset": parsed["asset"], "model": model,
+    clamp = lambda v: min(max(v, 0.001), 0.999)  # noqa: E731
+    model_id = "crypto.options@1" if ch else "crypto.histprem@1"
+    variants = {"crypto.hist@1": clamp(p_hist), model_id: clamp(p)}
+    from . import prices as _prices
+    stamps = [t for t in (_prices.cache_time(parsed["asset"]) if closes_fn is hourly_closes else None,
+                          options.cache_time(parsed["asset"]) if ch else None) if t]
+    extra = {"model_id": model_id, "variants": variants, "uncertainty": abs(p - p_hist) if ch else 0.10,
+             "sources": (["Deribit-Optionen"] if ch else []) + [f"Kurse: {source}"],
+             "data_ts": min(stamps) if stamps else None,
+             "features": {"asset": parsed["asset"], "kind": parsed["kind"], "k1": parsed["k1"], "k2": parsed.get("k2"),
+                          "spot": round(spot, 6), "hours": round(hours, 2), "iv": round(iv, 4) if ch else None}}
+    return {**extra, "p_yes": clamp(p), "info": info, "asset": parsed["asset"], "model": model,
             "spot": spot, "sigma_h": sigma, "hours": hours, "kind": parsed["kind"], "parsed": parsed,
             "target": tt.isoformat(), "group": f"{parsed['asset']}:{day}"}

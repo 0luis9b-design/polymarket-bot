@@ -134,6 +134,44 @@ NOTIFY_ACCOUNTS = [x.strip() for x in os.environ.get("NOTIFY_ACCOUNTS", "haupt_k
 DAILY_SUMMARY_HOUR = _i("DAILY_SUMMARY_HOUR", 22)   # Tageszusammenfassung um 22 Uhr (deutsche Zeit)
 WEEKLY_REPORT_HOUR = _i("WEEKLY_REPORT_HOUR", 18)   # Wochenbericht sonntags um 18 Uhr (vor der Besprechung um 19 Uhr)
 
+# --- Version 2: Agenten, Validierung, Katalog, Lernen (im Dashboard einstellbar: siehe settings.py) ---
+MAX_DIVERGENCE = _f("MAX_DIVERGENCE", 0.25)          # größere Abweichung Modell/Markt gilt als Modellfehler -> kein Handel
+TRADE_CRYPTO = os.environ.get("TRADE_CRYPTO", "1") == "1"
+TRADE_SPORTS = os.environ.get("TRADE_SPORTS", "1") == "1"
+TRADE_WEATHER = os.environ.get("TRADE_WEATHER", "1") == "1"
+SCANNER_ENABLED = os.environ.get("SCANNER_ENABLED", "1") == "1"
+CATALOG_PER_CATEGORY = _i("CATALOG_PER_CATEGORY", 100)
+NEWS_ENABLED = os.environ.get("NEWS_ENABLED", "1") == "1"
+NEWS_FEEDS = [  # (Name, Adresse) – alle am 14.11.2026 als Standard-RSS geprüft
+    ("BBC Welt", "https://feeds.bbci.co.uk/news/world/rss.xml"),
+    ("BBC USA", "https://feeds.bbci.co.uk/news/world/us_and_canada/rss.xml"),
+    ("BBC Politik", "https://feeds.bbci.co.uk/news/politics/rss.xml"),
+    ("BBC Wirtschaft", "https://feeds.bbci.co.uk/news/business/rss.xml"),
+    ("BBC Technik", "https://feeds.bbci.co.uk/news/technology/rss.xml"),
+    ("BBC Sport", "https://feeds.bbci.co.uk/sport/rss.xml"),
+]
+BACKTEST_ENABLED = os.environ.get("BACKTEST_ENABLED", "1") == "1"
+HISTORY_PER_RUN = _i("HISTORY_PER_RUN", 25)           # entschiedene Märkte pro Lauf nachladen (je 1 Abruf Preisverlauf)
+HISTORY_MIN_VOLUME = _f("HISTORY_MIN_VOLUME", 2000)
+MOVE_ALERT_PTS = _f("MOVE_ALERT_PTS", 0.10)
+NOTIFY_MIN_LEVEL = os.environ.get("NOTIFY_MIN_LEVEL", "normal")
+NOTIFY_DAILY_CAP = _i("NOTIFY_DAILY_CAP", 40)
+QUIET_FROM = _i("QUIET_FROM", 23)
+QUIET_TO = _i("QUIET_TO", 7)
+DASH_REFRESH_SEC = _i("DASH_REFRESH_SEC", 60)
+EXPERIMENT_MIN_OOS = _i("EXPERIMENT_MIN_OOS", 100)    # Mindestzahl späterer Prognosen für einen Freigabe-Vorschlag
+EXPERIMENT_MIN_CLUSTERS = _i("EXPERIMENT_MIN_CLUSTERS", 30)
+EXPERIMENT_MIN_GAIN = _f("EXPERIMENT_MIN_GAIN", 0.02) # Brier mindestens 2 % besser
+EXPERIMENT_MIN_Z = _f("EXPERIMENT_MIN_Z", 1.64)
+REPORT_DAYS = [int(x) for x in os.environ.get("REPORT_DAYS", "2,6").split(",") if x.strip().isdigit()]  # 0=Mo … 6=So
+REPORT_HOUR = _i("REPORT_HOUR", 17)
+BACKUP_KEEP = _i("BACKUP_KEEP", 7)
+CYCLE_BUDGET_SEC = _f("CYCLE_BUDGET_SEC", 240)        # so lange darf ein ganzer Takt höchstens dauern
+SELF_RESTART_MIN = _f("SELF_RESTART_MIN", 45)         # hängt ein Takt länger, beendet sich der Prozess (Railway startet neu)
+RETAIN_SNAPSHOT_DAYS = _i("RETAIN_SNAPSHOT_DAYS", 14)
+RETAIN_EVENT_DAYS = _i("RETAIN_EVENT_DAYS", 90)
+RETAIN_RUN_DAYS = _i("RETAIN_RUN_DAYS", 14)
+
 # --- Ablauf ---
 SCAN_INTERVAL_MIN = _f("SCAN_INTERVAL_MIN", 10)
 AUTOSTART = os.environ.get("AUTOSTART", "1") == "1"

@@ -12,6 +12,7 @@ from . import config
 from .http import HttpError, get_json
 
 GAMMA = "https://gamma-api.polymarket.com"
+CLOB = "https://clob.polymarket.com"
 log = logging.getLogger("polybot.polymarket")
 
 
@@ -103,6 +104,8 @@ def normalize_market(raw, event=None, category="other"):
         "tags": tags,
         "category": category,
         "fee_rate": fee_rate_for(raw, category),
+        "volume24h": _num(raw.get("volume24hr"), 0.0),
+        "created": parse_dt(raw.get("createdAt")),
         "token_ids": [str(t) for t in _loads(raw.get("clobTokenIds"), [])],
         "neg_risk": bool(ev.get("negRisk") or ev.get("enableNegRisk")),
         "event_n_markets": len(ev.get("markets") or []),
@@ -200,6 +203,19 @@ def fetch_markets_by_ids(ids):
     return result
 
 
+def fetch_markets(params):
+    """Flache Marktliste (höchstens 100 pro Seite). Viel kleiner als /events – für Katalog und Historie."""
+    data = get_json(f"{GAMMA}/markets", params=params, retries=1)
+    return data if isinstance(data, list) else (data.get("data") or [])
+
+
+def fetch_price_history(token_id, start_ts, end_ts, fidelity=60):
+    """Preisverlauf eines Outcome-Tokens: Liste (Zeit, Preis), auch für geschlossene Märkte."""
+    data = get_json(f"{CLOB}/prices-history", params={"market": token_id, "startTs": int(start_ts), "endTs": int(end_ts),
+                                                       "fidelity": fidelity}, retries=1)
+    return [(int(h["t"]), float(h["p"])) for h in (data.get("history") or []) if "t" in h and "p" in h]
+
+
 _tag_ids = {}
 
 
@@ -235,7 +251,6 @@ def resolution(raw):
 
 
 # ---------------------------------------------------------------- Orderbuch (CLOB)
-CLOB = "https://clob.polymarket.com"
 
 
 def fetch_book(token_id):

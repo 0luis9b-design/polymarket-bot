@@ -327,4 +327,10 @@ def analyze(market, odds_client, now=None):
         return {"skip": "Outcome nicht zugeordnet"}
     info = (f"{ev.get('home_team')} – {ev.get('away_team')} · faire Quote {label}: {p * 100:.1f} % "
             f"({books} Buchmacher) · Anstoß in {hours:.0f} h")
-    return {"p_yes": min(max(p, 0.001), 0.999), "info": info, "hours": hours, "books": books}
+    pc = min(max(p, 0.001), 0.999)
+    hit = odds_client.cache.get(sport)
+    return {"p_yes": pc, "info": info, "hours": hours, "books": books, "model": "Buchmacher-Quoten",
+            "model_id": "sports.books@1", "variants": {"sports.books@1": pc},
+            "uncertainty": 0.02 + 0.06 / max(books, 1) ** 0.5, "sources": [f"The Odds API ({books} Buchmacher)"],
+            "data_ts": hit[0] if hit else None,
+            "features": {"league": sport, "books": books, "hours": round(hours, 2)}}

@@ -123,6 +123,12 @@ class Chain:
         return min(max(p, 0.0), 1.0)
 
 
+def cache_time(asset):
+    src = SOURCES.get(asset.upper())
+    hit = _cache.get(src[0]) if src else None
+    return hit[0] if hit else None
+
+
 def chain(asset, now=None, fetch=get_json):
     """Liefert die Chain eines Coins oder None (z. B. DOGE, oder Deribit nicht erreichbar)."""
     asset = asset.upper()

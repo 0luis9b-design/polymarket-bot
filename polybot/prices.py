@@ -43,6 +43,12 @@ def _kraken(sym):
     return [float(r[4]) for r in res[key]]
 
 
+def cache_time(asset):
+    """Zeitpunkt (time.time) des letzten erfolgreichen Kursabrufs, oder None."""
+    hit = _cache.get(asset.upper())
+    return hit[0] if hit else None
+
+
 def hourly_closes(asset):
     """Liste der Stunden-Schlusskurse (älteste zuerst); letzter Wert ≈ aktueller Kurs."""
     asset = asset.upper()

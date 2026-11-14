@@ -136,8 +136,12 @@ def ensemble(icao, unit, fetch=get_json):
                                   "timezone": tz, "forecast_days": int(config.WEATHER_MAX_DAYS) + 2,
                                   "temperature_unit": "fahrenheit" if unit == "F" else "celsius"}, **kw)
     except HttpError as e:
-        _failed[key] = time.time()
-        status[icao] = f"Fehler: {str(e)[:100]}"
+        if getattr(e, "blocked", False):
+            # Budget/Minuten-Limit der Quellen-Verwaltung: kein Fehler der Station – im nächsten Lauf weiter
+            status.setdefault(icao, "wartet auf Abruf-Budget")
+        else:
+            _failed[key] = time.time()
+            status[icao] = f"Fehler: {str(e)[:100]}"
         if hit:
             return hit[1]
         raise
@@ -158,6 +162,7 @@ def ensemble(icao, unit, fetch=get_json):
                 lows.setdefault(d, []).append(min(vs))
     res = (highs, lows)
     _cache[key] = (time.time(), res)
+    _failed.pop(key, None)
     status[icao] = f"OK – {len(next(iter(highs.values()), []))} Szenarien"
     return res
 
@@ -214,5 +219,16 @@ def analyze(market, now=None, fetch=get_json):
            else f"{p['lo'] + 0.5:.0f}{u}" if p["hi"] - p["lo"] == 1 else f"{p['lo'] + 0.5:.0f}–{p['hi'] - 0.5:.0f}{u}")
     info = (f"{'Höchst' if p['kind'] == 'high' else 'Tiefst'}wert {icao} am {day:%d.%m.} · Ziel {rng} · "
             f"Modelle Ø {mean:.1f}{u} (Spanne {min(vals):.0f}–{max(vals):.0f}) · {len(vals)} Szenarien")
-    return {"p_yes": min(max(prob, 0.002), 0.998), "info": info, "model": "Wetter-Ensemble",
+    clamp = lambda v: min(max(v, 0.002), 0.998)  # noqa: E731
+    wide = bucket_prob(vals, p["lo"], p["hi"], spread * 2.0)
+    sd = (sum((v - mean) ** 2 for v in vals) / len(vals)) ** 0.5
+    hit = _cache.get((icao, p["unit"]))
+    fin = lambda v: None if v in (math.inf, -math.inf) else v  # noqa: E731
+    extra = {"model_id": "weather.ens@2", "variants": {"weather.ens@2": clamp(prob), "weather.wide@1": clamp(wide)},
+             "uncertainty": abs(prob - wide), "sources": ["Open-Meteo Ensemble (ECMWF, GFS, ICON)"],
+             "data_ts": hit[0] if hit else None, "hours": hours_to_start + 24,
+             "features": {"icao": icao, "date": day.strftime("%Y-%m-%d"), "kind": p["kind"], "unit": p["unit"],
+                          "ens_mean": round(mean, 3), "ens_sd": round(sd, 3), "lead_h": round(hours_to_start, 1),
+                          "lo": fin(p["lo"]), "hi": fin(p["hi"]), "n": len(vals)}}
+    return {**extra, "p_yes": clamp(prob), "info": info, "model": "Wetter-Ensemble",
             "group": f"wetter:{icao}:{day:%Y-%m-%d}:{p['kind']}"}
