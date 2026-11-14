@@ -1,53 +1,71 @@
-# Polymarket-Bot (Spielgeld)
+# Polymarket-Bot – Forschung und Paper-Trading (Version 2)
 
-Ein Bot, der Polymarket-Wetten **nur mit Spielgeld** spielt. Er übernimmt nicht die Polymarket-Kurse,
-sondern berechnet **eigene Wahrscheinlichkeiten** und wettet nur, wenn er deutlich anderer Meinung ist als der Markt.
-Kein Konto, kein Wallet, kein echtes Geld – er liest nur öffentliche Daten.
+Ein System, das Polymarket-Märkte beobachtet, **eigene Wahrscheinlichkeiten** berechnet, sie gegen den Marktpreis und das
+tatsächliche Ergebnis misst und daraus lernt. Gehandelt wird **nur mit Spielgeld** auf 11 Testkonten.
+Kein Konto, kein Wallet, keine Signatur, kein echtes Geld – es liest ausschließlich öffentliche Daten.
+
+Ausführlich: [`docs/SYSTEM_ARCHITECTURE.md`](docs/SYSTEM_ARCHITECTURE.md) · [`docs/DEVELOPMENT_ROADMAP.md`](docs/DEVELOPMENT_ROADMAP.md) ·
+[`docs/PROJECT_AUDIT.md`](docs/PROJECT_AUDIT.md) · [`docs/TECHNICAL_DEBT.md`](docs/TECHNICAL_DEBT.md) · [`docs/RISK_REGISTER.md`](docs/RISK_REGISTER.md)
+
+## Was das System tut
+| Baustein | Aufgabe |
+|---|---|
+| **Market Scanner** | Katalog der aktivsten Märkte aller Kategorien, stündlicher Preisverlauf, neue Märkte, auffällige Bewegungen, Datenqualität |
+| **Probability** | eigene Prognosen für Krypto, Sport und Wetter; mehrere Modell-Varianten laufen parallel; jede Prognose wird unveränderlich gespeichert |
+| **Validation** | sperrt Prognosen fürs Handeln, wenn Daten veraltet sind oder die Abweichung vom liquiden Markt unplausibel groß ist |
+| **Learning** | Brier, LogLoss, Kalibrierung, Verzerrung je Modell/Bereich/Zeithorizont gegen den Marktpreis; testet Herausforderer an späteren Daten; **schlägt vor, aktiviert nie selbst** |
+| **Strategy Research** | Datensatz entschiedener Märkte aus der Polymarket-Historie, Backtests mit Gebühren und zeitlicher Trennung, Warnung bei Überanpassung |
+| **News** | BBC-Schlagzeilen, per Stichwort Märkten zugeordnet (mit Quelle und Zeit, ohne Bewertung) |
+| **Guardian** | Ressourcen, Quellen-Ausfälle, tägliches Backup, Integrität, Aufräumen |
+| **Koordinator** | Takt alle 10 min, Zeitbudget, stuft fehlerhafte Agenten zurück, schreibt Mi + So den Claude-Review-Bericht |
+| **Paper Trading** | virtuelle Wetten nach den geprüften Prognosen, Risikobremse je Konto |
+
+Die „Agenten“ sind Programm-Module, keine Sprachmodelle – das Budget für externe Dienste ist 0 €.
+
+## Dashboard
+Übersicht · Märkte (Suche, Filter, Detail mit Preisverlauf) · Prognosen · KI-Zentrale · Lernen (Vorschläge freigeben/ablehnen,
+Modell zurückholen) · Strategie-Labor · Performance · Daten · System · Claude-Berichte · Einstellungen · Paper-Trading.
+Angezeigt werden nur gemessene Werte; fehlt etwas, steht dort „Keine Daten verfügbar“.
+
+## Regeln, die im Code fest verankert sind
+- **Nichts lernt unkontrolliert.** Ein neues Modell oder eine Mischung mit dem Marktpreis wird erst aktiv, wenn es an
+  späteren Daten klar besser war (≥ 100 Prognosen aus ≥ 30 Ereignissen, Brier ≥ 2 % besser, z ≥ 1,64) **und** im Dashboard
+  freigegeben wurde. Jede Aktivierung ist rückholbar.
+- **Prognose-Historie ist unveränderlich.** Die Datenbank selbst lehnt Ändern und Löschen ab; eine Prüfsummen-Kette macht Eingriffe sichtbar.
+- **Jede Datenquelle hat ein Budget.** Ist es leer oder antwortet die Quelle mit „zu viele Abrufe“, wird pausiert statt weiter angefragt.
+- **Geheimnisse** stehen nur in Umgebungsvariablen und werden aus allen Fehlertexten entfernt.
+- **Externe Texte** (Marktfragen, Schlagzeilen) werden nur gespeichert und als Text angezeigt, nie ausgeführt.
 
 ## Wie der Bot seine Wahrscheinlichkeit berechnet
 
 **Krypto-Märkte** (z. B. „Bitcoin über 104.000 $ am 14. November?“, „Bitcoin erreicht 120.000 $ im November?“)
-- Holt die Stundenkurse der letzten 30 Tage (Binance → Coinbase → Kraken als Ersatz).
-- Misst die Schwankung (Volatilität): halb die letzten Tage, halb der 30-Tage-Schnitt.
-- Rechnet aus Kurs, Ziel-Preis, Restzeit und Schwankung die Wahrscheinlichkeit aus
-  (Mischung aus ruhigen und wilden Phasen, damit große Sprünge nicht unterschätzt werden).
+- Erwartete Schwankung aus dem Deribit-Optionsmarkt (BTC, ETH, SOL, XRP; inkl. Smile, also höhere Wahrscheinlichkeit für große Sprünge).
+  Ohne Optionsdaten (z. B. DOGE): Stundenkurse der letzten 30 Tage (Binance → Coinbase → Kraken) mit Aufschlag.
+- Aus Kurs, Ziel-Preis, Restzeit und Schwankung ergibt sich die Wahrscheinlichkeit. Die Variante „nur Kurshistorie“ läuft als Herausforderer mit.
 - Stichtag-Märkte: Binance-Schlusskurs um 12:00 Uhr New Yorker Zeit. Berühren-Märkte: Ziel irgendwann vor Ablauf erreicht.
 - Unterstützt: Bitcoin, Ethereum, Solana, XRP, Dogecoin. „Up or Down“-Minutenmärkte werden bewusst ignoriert.
 
-**Sport-Märkte** – nur „Wer gewinnt“ in: Bundesliga, 2. Bundesliga, Premier League, La Liga, Serie A, Ligue 1, Champions League, Europa League, NBA, NHL, NFL, UFC (änderbar über `SPORTS_LEAGUES`)
+**Sport-Märkte** – nur „Wer gewinnt“ in: Bundesliga, 2. Bundesliga, Premier League, La Liga, Serie A, Ligue 1, Champions League, Europa League, Championship, La Liga 2, Ligue 2, Serie B, Schottland, League One, NFL, UFC (änderbar über `SPORTS_LEAGUES`)
 - Holt die Quoten vieler Buchmacher (The Odds API), rechnet deren Marge heraus und bildet den Mittelwert
   (Pinnacle – der genaueste Buchmacher – zählt doppelt).
 - Nur Spiele, die in den nächsten 24 Stunden beginnen, nur vor Anpfiff.
 
-## Wann und wie viel gewettet wird
-- Vorsprung = eigene Wahrscheinlichkeit − Kaufkurs − Polymarket-Gebühr. Gekauft wird erst ab 6 Punkten (Krypto) bzw. 3 Punkten (Sport).
-- Einsatz 2–6 % des Kontos je nach **Sicherheit**: 60 % zählt der Vorsprung (Schwelle = 2 %, 10 Punkte darüber = 6 %),
-  40 % die Trefferchance (35 % → wenig, 85 % → viel). Höchstens 10 % pro Ereignis, 60 % insgesamt im Markt.
-- Kauf zum echten Briefkurs (Ask) inkl. Gebühr – so realistisch wie möglich. Gehalten bis zur Entscheidung.
-- Startkapital: 1.000 $ Spielgeld.
+## Wann und wie viel (virtuell) gewettet wird
+- Vorsprung = eigene Wahrscheinlichkeit − Kaufkurs − Gebühr. Gekauft wird ab 6 Punkten (Krypto), 3 (Sport), 10 (Wetter) –
+  und nur, wenn die Prognose die Prüfung bestanden hat.
+- Einsatz 2–6 % des Kontos je nach Sicherheit, höchstens 10 % pro Ereignis/Gruppe, 60 % insgesamt.
+- Kauf und Verkauf über das echte Orderbuch inkl. Gebühr. Früher Ausstieg, wenn der Verkaufserlös die eigene Wahrscheinlichkeit erreicht.
+- Risikobremse: −8 % an einem Tag → Pause bis zum nächsten Tag; −25 % gesamt → Pause bis „Fortsetzen“ im Dashboard.
+- Konten (je 1.000 $ Spielgeld): Haupt·Krypto, Haupt·Sport, Haupt·Wetter, Schwelle 4/2/7, Schwelle 8/4/14, Fest 10 $,
+  Ohne Ausstieg, Viertel-Kelly, Limit-Orders, Außenseiter verkaufen, Nur Arbitrage.
 
-## Neu (12.11.2026)
-- **Krypto mit Optionsdaten:** Für BTC, ETH, SOL und XRP nimmt der Bot die erwartete Schwankung aus dem Deribit-Optionsmarkt
-  (inkl. Smile, also höhere Wahrscheinlichkeit für große Sprünge). DOGE nutzt die Kurshistorie mit Aufschlag.
-- **Arbitrage:** Findet Widersprüche (Summe aller Antworten ≠ 100 %, oder „über 72k“ teurer als „über 70k“) und kauft das Paket.
-- **Orderbuch:** Käufe/Verkäufe laufen über das echte Orderbuch (Durchschnittskurs), zu dünne Bücher werden ausgelassen.
-- **Früher Ausstieg:** Verkauft, sobald der Verkaufserlös die eigene Wahrscheinlichkeit erreicht (frühestens nach 30 min).
-- **Testkonten:** Hauptkonto, Schwelle 4/2, Schwelle 8/4, Fest 10 $, Ohne Ausstieg, Viertel-Kelly, Nur Arbitrage – je 1.000 $.
-- **Schlusskurs-Vergleich (Sport):** Buchmacher-Quote kurz vor Anpfiff vs. Kaufkurs.
-- **Gruppen-Grenze:** max. 10 % für alles am selben Coin+Stichtag bzw. Spiel.
-- **Telegram:** `TELEGRAM_BOT_TOKEN` und `TELEGRAM_CHAT_ID` setzen (Chat-ID zeigt das Dashboard unter Status an).
+**Wetter-Märkte:** Höchst-/Tiefsttemperatur an ~60 Flughäfen mit dem Open-Meteo-Ensemble (ECMWF, GFS, ICON, ~120 Szenarien).
+Ein gelerntes Modell (Stations-Korrektur + gemessene Streuung) läuft als Herausforderer mit.
 
-## Neu (12.11.2026, Abend)
-- **Wetter-Märkte:** Temperatur-Märkte (Höchst-/Tiefstwert an ~60 Flughäfen) mit dem Open-Meteo-Ensemble (ECMWF, GFS, ICON, >120 Szenarien).
-- **Ligen:** NBA/NHL raus, dafür 2. Bundesliga, Championship, La Liga 2, Ligue 2, Serie B, Schottland, League One.
-- **Neue Testkonten:** „Limit-Orders“ (Gebote unter fairem Wert, ohne Gebühr – Füllung nur angenähert) und „Außenseiter verkaufen“ (Nein bei 2–5 %).
-- **Risikobremse:** −8 % an einem Tag → Pause bis morgen; −25 % gesamt → Pause bis „Fortsetzen“ im Dashboard.
-- **Selbstkorrektur:** Ab 200 entschiedenen Märkten pro Bereich mischt der Bot seine Zahl mit dem Marktkurs (Gewicht aus der Vergangenheit gelernt).
-- **Wochenbericht:** sonntags 18 Uhr per Telegram.
-
-## Ist der Bot besser als der Markt?
-Reiter **Treffsicherheit**: Für jeden berechneten Markt wird beim ersten Mal die Bot-Prognose und der Marktkurs gespeichert.
-Nach der Entscheidung wird verglichen (Brier-Wert, kleiner = besser). Erst nach einigen hundert Märkten ist das aussagekräftig.
+## Claude als Supervisor
+Mittwoch und Sonntag um 17 Uhr schreibt der Bot einen Review-Bericht (13 Abschnitte, nur gemessene Werte), speichert ihn,
+zeigt ihn im Dashboard und schreibt ihn ins Railway-Log. Eine geplante Claude-Sitzung liest ihn dort und bespricht
+Verbesserungen – ohne kostenpflichtige API, und ohne dass Claude selbst etwas ändert.
 
 ## Railway einrichten
 1. Repo auf GitHub, in Railway „Deploy from GitHub repo“ – Start-Befehl steht in `railway.json`.
@@ -58,11 +76,15 @@ Nach der Entscheidung wird verglichen (Brier-Wert, kleiner = besser). Erst nach 
 5. **Anmeldung** (wie beim XAUUSD-Bot): `DASHBOARD_USER` und `DASHBOARD_PASSWORD` setzen. Dann fragt der Browser
    nach Benutzername und Passwort. Fehlt eine der beiden, ist das Dashboard offen (Warnung im Log). `/health` bleibt frei.
 
-Alle Zahlen (Mindest-Vorsprung, Kelly-Anteil, Intervall …) lassen sich per Variable ändern, siehe `polybot/config.py`.
+6. **Telegram** (optional): `TELEGRAM_BOT_TOKEN` und `TELEGRAM_CHAT_ID`. Meldungen haben Prioritäten, ein Tageslimit und eine Ruhezeit (23–7 Uhr; Kritisches kommt immer durch).
+
+Häufige Einstellungen (Takt, Abweichungs-Grenze, Bereiche an/aus, Benachrichtigungen) lassen sich im Dashboard unter
+„Einstellungen“ ändern und bleiben gespeichert. Alles Weitere per Variable, siehe `polybot/config.py`.
+Die Datenbank liegt in `DATA_DIR`; Sicherungen täglich in `DATA_DIR/backups` (die letzten 7) und vor jeder Schema-Änderung.
 
 ## Lokal (Windows)
 ```
 pip install -r requirements-dev.txt
-python -m pytest -q
+python -m pytest -q   # 114 Tests
 python app.py      # dann http://localhost:5000
 ```

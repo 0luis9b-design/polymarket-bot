@@ -1,53 +1,59 @@
 # Entwicklungs-Roadmap
 
 Priorität: **1** = verhindert Schaden oder ist Voraussetzung · **2** = Kern des Zielsystems · **3** = Ausbau.
-Status: ✅ erledigt · 🔧 in Arbeit · ⏳ geplant.
+Status: ✅ erledigt (mit Tests belegt) · 🔧 in Arbeit · ⏳ geplant. Stand: 14.11.2026, Version 2.0.0.
 
-## Phase 1–2 · Audit und Architektur — ⏳
+## Phase 1–2 · Audit und Architektur — ✅
 Dokumente: `PROJECT_AUDIT.md`, `SYSTEM_ARCHITECTURE.md`, `TECHNICAL_DEBT.md`, `RISK_REGISTER.md`, diese Datei.
 
-## Phase 3 · Fundament (Priorität 1) — ⏳
+## Phase 3 · Fundament (Priorität 1) — ✅
 | Schritt | Löst | Status |
 |---|---|---|
-| Nummerierte Datenbank-Migrationen | T6 | ⏳ |
-| Tägliches Backup + Integritätsprüfung | T3, R3 | ⏳ |
-| Quellen-Verwaltung: Budget, Mindestabstand, Fehler-Pause, Statistik | T1, T14, R1 | ⏳ |
-| Fehlertexte schwärzen, `/health` entschärfen, `/api/scan` entfernen | T4, T13, R7 | ⏳ |
-| Agenten-Gerüst + Koordinator mit Zeitbudget | T9 | ⏳ |
-| Schleife startet nach Absturz neu, Notfall-Neustart bei Hänger | T11 | ⏳ |
-| Risikobremse rastet für den Tag ein | T8 | ⏳ |
+| Nummerierte Datenbank-Migrationen | T6 | ✅ |
+| Tägliches Backup + Integritätsprüfung | T3, R3 | ✅ |
+| Quellen-Verwaltung: Budget, Mindestabstand, Fehler-Pause, Statistik | T1, T14, R1 | ✅ |
+| Fehlertexte schwärzen, `/health` entschärfen, `/api/scan` entfernen | T4, T13, R7 | ✅ |
+| Agenten-Gerüst + Koordinator mit Zeitbudget | T9 | ✅ |
+| Schleife startet nach Absturz neu, Notfall-Neustart bei Hänger | T11 | ✅ |
+| Risikobremse rastet für den Tag ein | T8 | ✅ |
 
-## Phase 4 · Market Intelligence (Priorität 2) — ⏳
+## Phase 4 · Market Intelligence (Priorität 2) — ✅
 Marktkatalog aller Kategorien (je Kategorie die aktivsten Märkte), stündlicher Preisverlauf, neue Märkte,
 auffällige Bewegungen, Datenqualität, Priorität je Markt.
 
-## Phase 5 · Agenten (Priorität 1–2) — ⏳
+## Phase 5 · Agenten (Priorität 1–2) — ✅
 | Schritt | Löst | Status |
 |---|---|---|
-| Validation: Abweichungs-Deckel, Frische, Stimmigkeit – sperrt fürs Handeln | T2, R2 | ⏳ |
-| Probability: Modell-Register, Varianten, Unsicherheit, Prognose-Historie (unveränderlich) | T5 | ⏳ |
-| News: BBC-RSS, Zuordnung zu Märkten | – | ⏳ |
-| Guardian: Ressourcen, Quellen-Ausfälle, Aufräumen | R1, R8 | ⏳ |
+| Validation: Abweichungs-Deckel, Frische, Stimmigkeit – sperrt fürs Handeln | T2, R2 | ✅ |
+| Probability: Modell-Register, Varianten, Unsicherheit, Prognose-Historie (unveränderlich) | T5 | ✅ |
+| News: BBC-RSS, Zuordnung zu Märkten | – | ✅ |
+| Guardian: Ressourcen, Quellen-Ausfälle, Aufräumen | R1, R8 | ✅ |
 
-## Phase 6 · Lernsystem (Priorität 2) — ⏳
+## Phase 6 · Lernsystem (Priorität 2) — ✅
 Kennzahlen (Brier, LogLoss, Kalibrierung, Treffer, Verzerrung) je Modell, Kategorie, Zeithorizont gegen
 Marktpreis und 50-%-Baseline · Fehlerarten · Experimente mit zeitlicher Trennung · Vorschläge mit Freigabe
 und Rückholung · Wetter: Stations-Korrektur und gemessene Streuung als lernendes Modell (T15) ·
 Selbstkorrektur nur noch nach Freigabe (T7).
 
-## Phase 7 · Backtesting (Priorität 2) — ⏳
+## Phase 7 · Backtesting (Priorität 2) — ✅
 Datensatz entschiedener Märkte (Preis 1 h/6 h/24 h/72 h/7 T vor Schluss + Ergebnis) aus Polymarket-Historie ·
 Strategie-Tests mit Gebühren, In-Sample/Out-of-Sample, Warnung bei Überanpassung · gespeichert und wiederholbar.
 
-## Phase 8 · Dashboard (Priorität 1) — ⏳
+## Phase 8 · Dashboard (Priorität 1) — ✅
 Neues Gerüst mit Seitenleiste, 12 Bereiche, je Bereich eigener Daten-Abruf (T10), JS/CSS als Dateien (T16).
 
-## Phase 9 · Telegram und Supervisor (Priorität 2) — ⏳
+## Phase 9 · Telegram und Supervisor (Priorität 2) — ✅
 Prioritäten, Tageslimit, Ruhezeit · Claude-Review-Bericht Mi + So · geplante Claude-Sitzung.
 
-## Phase 10–11 · Qualität und Betrieb (Priorität 1) — ⏳
-Tests für jedes neue Modul · CSRF-Schutz, Anmelde-Sperre, Sicherheits-Header (T12) · Abhängigkeits-Prüfung
-in der CI (T17) · ein Push · Kontrolle im Live-Betrieb.
+## Phase 10–11 · Qualität und Betrieb (Priorität 1) — 🔧
+| Schritt | Status |
+|---|---|
+| Tests für jedes neue Modul (114 Tests: Quellen, Migrationen, Prognose-Historie, Prüfung, Lernen, Backtests ohne Blick in die Zukunft, Nachrichten, Guardian, Berichte, alle API-Endpunkte) | ✅ |
+| CSRF-Schutz, Anmelde-Sperre, Sicherheits-Header (T12) | ✅ |
+| Abhängigkeits-Prüfung in der CI (T17) | ✅ |
+| Upgrade einer v1.3-Datenbank geprüft (Backup vor Migration, Wetten und Guthaben bleiben) | ✅ |
+| Dashboard in echtem Browser geprüft (alle Seiten, Handy + Desktop, keine Skriptfehler) – von Hand, nicht in der CI | ✅ |
+| Kontrolle im Live-Betrieb nach dem Deploy | 🔧 läuft; Ergebnisse stehen im ersten Claude-Bericht |
 
 ## Machbarkeit (geprüft)
 | Ressource | Heute | Mit Ausbau (geschätzt) | Grenze |
@@ -70,6 +76,15 @@ Ergebnis: alles läuft auf dem vorhandenen Railway-Dienst ohne Zusatzkosten.
 | Eigene Prognosen für Politik, Kultur usw. | noch nicht | ohne Datenmodell wäre es geraten. Diese Märkte werden beobachtet und im Strategie-Labor statistisch ausgewertet |
 | GDELT als Nachrichtenquelle | nein | lehnt Abrufe ab (429) |
 | Automatische Code-Änderungen durch den Bot | nein | Lernen geschieht über Parameter und Modellwahl mit Freigabe, nie über Code |
+
+## Nächste Schritte (Vorschlag, nach Priorität)
+1. **Daten sammeln lassen.** Lernsystem und Strategie-Labor brauchen entschiedene Märkte. Erste belastbare Aussagen
+   zu Wetter nach etwa 1–2 Wochen (≥ 100 spätere Prognosen aus ≥ 30 Ereignissen), zu Sport und Krypto später.
+2. **Wetter-Modell „weather.emp“ prüfen**, sobald es als Herausforderer genug Daten hat (Stations-Korrektur, gemessene Streuung).
+3. **Wetter am Messtag mit Live-Messwerten (METAR)** – größter erwarteter Qualitätsgewinn für kurze Restlaufzeiten.
+4. **Aufgezeichnete echte API-Antworten als Testdaten** (T18).
+5. **Automatische Browser-Tests in der CI** (T22).
+6. **`engine.py` weiter zerlegen** (T9) – erst wenn das neue System zwei Wochen stabil läuft.
 
 ## Vorgemerkt (aus früheren Absprachen)
 Wetter am Messtag mit Live-Messwerten (METAR) · Export als Tabelle · Auswertung nach Quelle

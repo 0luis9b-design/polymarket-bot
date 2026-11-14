@@ -134,8 +134,10 @@ def test_resume_endpoint(tmp_path, monkeypatch):
     import app as app_module
     importlib.reload(app_module)
     c = app_module.app.test_client()
-    assert c.post("/api/account/haupt_krypto/resume").status_code == 200
-    assert c.post("/api/account/gibtsnicht/resume").status_code == 404
+    hdr = {"X-Requested-With": "polybot"}
+    assert c.post("/api/account/haupt_krypto/resume", headers=hdr).status_code == 200
+    assert c.post("/api/account/gibtsnicht/resume", headers=hdr).status_code == 404
+    assert c.post("/api/account/haupt_krypto/resume").status_code == 403   # ohne den Kopf des Dashboards: abgewiesen
 
 
 def test_error_alert_after_three_failed_runs(tmp_path, monkeypatch):

@@ -27,17 +27,18 @@ def due(store, now):
     return store.kv_get("report:last_day") != local.strftime("%Y-%m-%d")
 
 
-def _f(v, digits=3, pct=False, sign=False):
+def _f(v, digits=3, pct=False, sign=False, unit=""):
+    """Zahl für den Bericht – oder ausdrücklich „keine Daten“ (dann auch ohne Einheit)."""
     if v is None:
         return NA
     if pct:
         return f"{v * 100:{'+' if sign else ''}.{digits}f} %"
-    return f"{v:{'+' if sign else ''}.{digits}f}"
+    return f"{v:{'+' if sign else ''}.{digits}f}{unit}"
 
 
 def _table(head, rows):
     if not rows:
-        return [NA.capitalize() + "."]
+        return ["Keine Daten."]
     out = ["| " + " | ".join(head) + " |", "|" + "|".join("---" for _ in head) + "|"]
     out += ["| " + " | ".join(str(c) for c in r) + " |" for r in rows]
     return out
@@ -61,7 +62,7 @@ def build(coord, now, since):
     agents = coord.registry.view()
     warn = st.q("SELECT level, type, title, ts, count FROM events WHERE ts>=? AND level IN ('hoch','kritisch') ORDER BY id DESC LIMIT 30", (since_iso,))
     runs = st.q("SELECT agent, COUNT(*) n, SUM(1-ok) fehler, AVG(duration) dauer FROM agent_runs WHERE started_at>=? GROUP BY agent", (since_iso,))
-    cyc = next((r for r in runs if r["agent"] == "zyklus"), None)
+    cyc = next((r for r in runs if r["agent"] == "trader"), None)
     paused = {a["name"]: eng.state["paused"].get(a["id"]) for a in config.ACCOUNTS if eng.state["paused"].get(a["id"])} if eng else {}
     add("## 1. Allgemeiner Systemzustand")
     add(f"- Handels-Läufe im Zeitraum: {cyc['n'] if cyc else NA}" + (f", davon mit Fehler: {cyc['fehler']}, mittlere Dauer {cyc['dauer']:.0f} s" if cyc else ""))
@@ -225,9 +226,9 @@ def build(coord, now, since):
     add("## 10. Ressourcenverbrauch")
     res = coord.guardian.latest or {}
     hist = [h for h in st.kv_json("guardian:res", []) if h.get("rss_mb")]
-    add(f"- Arbeitsspeicher: aktuell {_f(res.get('rss_mb'), 0)} MB" + (f", Spitze {max(h['rss_mb'] for h in hist):.0f} MB (letzte {len(hist)} Messungen)" if hist else ""))
-    add(f"- CPU-Anteil des Prozesses: {_f(res.get('cpu_pct'), 1)} % eines Kerns")
-    add(f"- Datenbank: {_f(res.get('db_mb'), 1)} MB · Platte frei: {_f(res.get('disk_free_gb'), 2)} GB")
+    add(f"- Arbeitsspeicher: aktuell {_f(res.get('rss_mb'), 0, unit=' MB')}" + (f", Spitze {max(h['rss_mb'] for h in hist):.0f} MB (letzte {len(hist)} Messungen)" if hist else ""))
+    add(f"- CPU-Anteil des Prozesses: {_f(res.get('cpu_pct'), 1, unit=' % eines Kerns')}")
+    add(f"- Datenbank: {_f(res.get('db_mb'), 1, unit=' MB')} · Platte frei: {_f(res.get('disk_free_gb'), 2, unit=' GB')}")
     add("- Rechenzeit je Agent im Zeitraum:")
     for r in sorted(runs, key=lambda r: -(r["dauer"] or 0) * r["n"]):
         add(f"  - {r['agent']}: {r['n']} Läufe, zusammen {(r['dauer'] or 0) * r['n'] / 60:.1f} min, Fehler {r['fehler']}")

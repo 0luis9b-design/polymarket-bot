@@ -126,6 +126,7 @@ class Engine:
                       "opportunities": [], "skips": {}, "markets_seen": {}, "duration": None, "arbs": [],
                       "weights": {}, "paused": {}}
         self.migrate_split()
+        self.migrate_mix()
         saved = store.kv_json("last_state", {})  # letzte Analyse nach Neustart weiter anzeigen
         for k in ("last_scan", "opportunities", "skips", "markets_seen", "duration", "arbs", "weights"):
             if k in saved:
@@ -163,6 +164,25 @@ class Engine:
             st.kv_set("split_v1", datetime.now(timezone.utc).isoformat(timespec="seconds"))
         if rows:
             st.log(f"Hauptkonto aufgeteilt: {len(rows)} Wetten auf Haupt·Krypto/Sport/Wetter verteilt (je 1.000 $ Start)")
+
+    def migrate_mix(self):
+        """14.11.: Bis v1.3 wurde die Mischung mit dem Marktpreis automatisch angewendet. Was zum Zeitpunkt des Updates
+        galt, wird einmalig ins Modell-Register übernommen (damit sich das Verhalten nicht still ändert).
+        Jede weitere Änderung läuft über einen Vorschlag mit Freigabe."""
+        if self.store.kv_get("mix_v2"):
+            return
+        try:
+            self.update_weights()
+            pa = self.intel.probability
+            for cat, x in self.state["weights"].items():
+                reg = pa.reg.get(cat)
+                if reg and x.get("w") is not None and x["w"] < 0.999 and (reg["mix_w"] is None or reg["mix_w"] >= 0.999):
+                    pa.activate(cat, reg["model"], reg["version"], float(x["w"]),
+                                f"übernommen aus v1.3: automatische Mischung ({x['w'] * 100:.0f} % Modell, gemessen an {x['n']} Märkten)")
+        except Exception:  # noqa: BLE001 – eine Übernahme darf den Start nie verhindern; ohne sie gilt das reine Modell
+            log.exception("Übernahme der Mischgewichte fehlgeschlagen")
+            self.store.log("Übernahme der Mischgewichte aus v1.3 fehlgeschlagen – es gilt das reine Modell", "error")
+        self.store.kv_set("mix_v2", datetime.now(timezone.utc).isoformat(timespec="seconds"))
 
     # ------------------------------------------------------------------ Konto
     def cash(self, acc=MAIN):
@@ -666,7 +686,8 @@ class Engine:
         preds = self.store.resolved_predictions()
         out = {}
         for cat in ("crypto", "sports", "weather"):
-            rows = [r for r in preds if r["category"] == cat and 0.05 <= r["market_p"] <= 0.95]
+            rows = [r for r in preds if r["category"] == cat and r["market_p"] is not None and r["own_p"] is not None
+                    and r["outcome"] is not None and 0.05 <= r["market_p"] <= 0.95]
             if len(rows) >= config.CALIB_MIN_N:  # nur Messgröße; angewendet wird, was im Lernzentrum freigegeben ist
                 out[cat] = {"w": best_weight(rows), "n": len(rows)}
             else:

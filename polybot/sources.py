@@ -38,7 +38,7 @@ _stats = {}       # (source, day) -> dict
 _runtime = {}     # source -> {"last_call", "pause_until", "streak", "minute": [(ts, units)]}
 
 _SECRET_PATTERNS = [
-    (re.compile(r"(bot)\d{6,}:[A-Za-z0-9_-]{20,}"), r"\1<geheim>"),
+    (re.compile(r"(bot)\d{4,}:[A-Za-z0-9_-]{6,}"), r"\1<geheim>"),
     (re.compile(r"((?:api_?key|apikey|token|key|secret|password)=)[^&\s'\"]+", re.I), r"\1<geheim>"),
 ]
 

@@ -1,0 +1,285 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0a0e16">
+<title>Paper-Trading · Polymarket-Bot</title>
+<link rel="icon" href="/static/icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/static/shell.css">
+<style>
+  :root {
+    --bg:#0a0e16; --bg2:#0e1420; --card:#121a28; --card2:#172133; --line:#222d42; --line2:#2c3a54;
+    --txt:#e7ebf3; --dim:#8c97ab; --dim2:#5f6b80;
+    --acc:#5b8cff; --acc2:#3d6be0; --accbg:rgba(91,140,255,.12);
+    --pos:#2fd07f; --posbg:rgba(47,208,127,.13); --neg:#ff5d6c; --negbg:rgba(255,93,108,.13);
+    --warn:#f5b84a; --warnbg:rgba(245,184,74,.13);
+    --crypto:#f5a623; --sport:#38bdf8; --weather:#2dd4bf;
+    --r:14px;
+  }
+  * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  html, body { margin:0; background:var(--bg); color:var(--txt); overflow-x:hidden; }
+  body { font:14px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; font-variant-numeric:tabular-nums;
+         background:radial-gradient(1200px 500px at 50% -200px, #14203a 0%, var(--bg) 60%) fixed; }
+  .wrap { max-width:1080px; margin:0 auto; padding:0 14px 60px; }
+  button { font:inherit; color:inherit; }
+
+  /* Kopf */
+  header { display:flex; align-items:center; justify-content:space-between; gap:10px; padding:16px 0 10px; }
+  .brand { display:flex; align-items:center; gap:10px; }
+  .logo { width:34px; height:34px; border-radius:10px; background:linear-gradient(135deg,var(--acc),#8b5cf6);
+          display:grid; place-items:center; font-weight:800; font-size:15px; box-shadow:0 4px 18px rgba(91,140,255,.35); }
+  h1 { font-size:16px; margin:0; letter-spacing:.2px; }
+  .sub { color:var(--dim); font-size:12px; }
+  .pill { display:inline-flex; align-items:center; gap:6px; font-size:12px; padding:4px 10px; border-radius:999px;
+          border:1px solid var(--line); background:var(--card); color:var(--dim); white-space:nowrap; }
+  .dot { width:7px; height:7px; border-radius:50%; background:var(--pos); box-shadow:0 0 8px var(--pos); }
+  .dot.err { background:var(--neg); box-shadow:0 0 8px var(--neg); }
+  .dot.run { background:var(--warn); box-shadow:0 0 8px var(--warn); }
+
+  /* Leiste mit Filter + Reitern */
+  .bar { position:sticky; top:0; z-index:5; background:rgba(10,14,22,.88); backdrop-filter:blur(10px);
+         -webkit-backdrop-filter:blur(10px); margin:0 -14px; padding:8px 14px; border-bottom:1px solid var(--line); }
+  .seg { display:flex; background:var(--card); border:1px solid var(--line); border-radius:12px; padding:3px; gap:3px; }
+  .seg button { flex:1; border:0; background:none; padding:7px 8px; border-radius:9px; color:var(--dim); cursor:pointer; font-weight:500; }
+  .seg button.on { background:var(--card2); color:var(--txt); box-shadow:inset 0 0 0 1px var(--line2); }
+  .seg button .c { display:inline-block; width:8px; height:8px; border-radius:50%; margin-right:6px; vertical-align:1px; }
+  .tabs { display:flex; gap:4px; overflow-x:auto; margin-top:8px; scrollbar-width:none; }
+  .tabs::-webkit-scrollbar { display:none; }
+  .tabs button { border:0; background:none; padding:7px 12px; border-radius:999px; color:var(--dim); white-space:nowrap; cursor:pointer; }
+  .tabs button.on { color:#fff; background:var(--accbg); box-shadow:inset 0 0 0 1px rgba(91,140,255,.45); }
+  .tabs .n { font-size:11px; margin-left:5px; padding:0 6px; border-radius:999px; background:var(--line); color:var(--dim); }
+
+  section { display:none; padding-top:14px; } section.on { display:block; }
+  h2 { font-size:13px; font-weight:600; color:var(--dim); text-transform:uppercase; letter-spacing:.6px; margin:18px 2px 8px; }
+  h2:first-child { margin-top:2px; }
+
+  /* Kennzahlen */
+  .kpis { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; }
+  @media (min-width:720px) { .kpis { grid-template-columns:repeat(3,1fr); } }
+  .kpi { background:linear-gradient(180deg,var(--card2),var(--card)); border:1px solid var(--line); border-radius:var(--r); padding:12px 13px; }
+  .kpi.big { grid-column:span 2; }
+  @media (min-width:720px) { .kpi.big { grid-column:span 1; } }
+  .kpi .l { color:var(--dim); font-size:12px; }
+  .kpi .v { font-size:22px; font-weight:700; margin-top:3px; letter-spacing:-.3px; }
+  .kpi .s { color:var(--dim); font-size:12px; margin-top:2px; }
+  .pos { color:var(--pos); } .neg { color:var(--neg); } .dim { color:var(--dim); }
+
+  .card { background:var(--card); border:1px solid var(--line); border-radius:var(--r); padding:13px; margin-bottom:10px; }
+  .card.flat { padding:0; overflow:hidden; }
+  .row { display:flex; align-items:center; justify-content:space-between; gap:10px; }
+  .note { color:var(--dim); font-size:12.5px; margin:8px 2px; }
+  .empty { color:var(--dim); text-align:center; padding:26px 10px; border:1px dashed var(--line); border-radius:var(--r); }
+
+  /* Chart */
+  .chart { width:100%; height:170px; display:block; }
+  .chart .ln { fill:none; stroke-width:2.2; vector-effect:non-scaling-stroke; }
+  .chart .base { stroke:var(--line2); stroke-dasharray:4 5; vector-effect:non-scaling-stroke; }
+  .axis { display:flex; justify-content:space-between; color:var(--dim2); font-size:11px; margin-top:4px; }
+
+  /* Tabelle Bereiche */
+  table { width:100%; border-collapse:collapse; }
+  th, td { padding:9px 10px; white-space:nowrap; border-bottom:1px solid var(--line); text-align:left; }
+  th { color:var(--dim); font-weight:500; font-size:12px; background:var(--bg2); }
+  tr:last-child td { border-bottom:0; }
+  td.n, th.n { text-align:right; }
+
+  /* Wetten-Karten */
+  .bet { background:var(--card); border:1px solid var(--line); border-radius:var(--r); padding:12px 13px; margin-bottom:8px;
+         border-left:3px solid var(--line2); }
+  .bet.win { border-left-color:var(--pos); } .bet.lose { border-left-color:var(--neg); } .bet.void { border-left-color:var(--warn); }
+  .bet .top { display:flex; align-items:center; gap:6px; flex-wrap:wrap; margin-bottom:5px; }
+  .bet .q { font-weight:500; }
+  .bet .meta { display:grid; grid-template-columns:repeat(3,1fr); gap:8px 10px; margin-top:9px; }
+  @media (min-width:720px) { .bet .meta { grid-template-columns:repeat(6,1fr); } }
+  .bet .meta div b { display:block; color:var(--dim); font-weight:400; font-size:11px; }
+  .bet .info { color:var(--dim2); font-size:12px; margin-top:8px; }
+  .badge { font-size:11.5px; font-weight:700; padding:2px 9px; border-radius:999px; letter-spacing:.2px; }
+  .b-yes { background:var(--posbg); color:var(--pos); box-shadow:inset 0 0 0 1px rgba(47,208,127,.35); }
+  .b-no { background:var(--negbg); color:var(--neg); box-shadow:inset 0 0 0 1px rgba(255,93,108,.35); }
+  .b-team { background:var(--accbg); color:#9db8ff; box-shadow:inset 0 0 0 1px rgba(91,140,255,.35); }
+  .tag { font-size:11px; padding:2px 8px; border-radius:6px; background:var(--bg2); color:var(--dim); border:1px solid var(--line); }
+  .tag.crypto { color:var(--crypto); border-color:rgba(245,166,35,.35); }
+  .tag.sports { color:var(--sport); border-color:rgba(56,189,248,.35); }
+  .tag.weather { color:var(--weather); border-color:rgba(45,212,191,.35); }
+  .pausebtn { margin-top:8px; border:1px solid var(--neg); background:var(--negbg); color:var(--neg); border-radius:9px; padding:6px 12px; cursor:pointer; font-weight:600; }
+  .res { margin-left:auto; font-weight:700; }
+  .chip { font-size:11px; padding:2px 8px; border-radius:999px; background:var(--bg2); color:var(--dim); }
+  .chip.win { color:var(--pos); background:var(--posbg); } .chip.lose { color:var(--neg); background:var(--negbg); }
+  .chip.void { color:var(--warn); background:var(--warnbg); } .chip.go { color:#9db8ff; background:var(--accbg); }
+
+  /* Wahrscheinlichkeits-Balken */
+  .pbar { position:relative; height:8px; border-radius:99px; background:var(--bg2); margin-top:10px; border:1px solid var(--line); }
+  .pbar .mk { position:absolute; top:-3px; width:3px; height:12px; border-radius:2px; transform:translateX(-50%); }
+  .pbar .mk.m { background:#c9d2e3; } .pbar .mk.b { background:var(--acc); box-shadow:0 0 6px var(--acc); }
+  .pbar .fill { position:absolute; top:0; bottom:0; border-radius:99px; }
+  .legend { display:flex; gap:12px; font-size:11px; color:var(--dim); margin-top:5px; }
+  .legend i { display:inline-block; width:8px; height:8px; border-radius:2px; margin-right:4px; vertical-align:0; }
+
+  /* Kalender */
+  .calhead { display:flex; align-items:center; justify-content:space-between; margin-bottom:10px; }
+  .calhead button { border:1px solid var(--line); background:var(--card); border-radius:10px; width:36px; height:34px; cursor:pointer; color:var(--txt); }
+  .calhead .t { font-weight:600; font-size:15px; text-align:center; }
+  .calsum { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:8px; margin-bottom:10px; }
+  .calsum div { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:8px 10px; }
+  .calsum b { display:block; font-size:11px; color:var(--dim); font-weight:400; }
+  .grid { display:grid; grid-template-columns:repeat(7,minmax(0,1fr)); gap:4px; }
+  .wd { text-align:center; color:var(--dim2); font-size:11px; padding-bottom:2px; }
+  .day { min-width:0; min-height:56px; border-radius:9px; background:var(--card); border:1px solid var(--line); padding:5px 5px 4px;
+         display:flex; flex-direction:column; justify-content:space-between; cursor:pointer; position:relative; }
+  .day.out { background:transparent; border-color:transparent; cursor:default; }
+  .day .d { font-size:11.5px; color:var(--dim); }
+  .day .p { font-size:10.5px; letter-spacing:-.2px; font-weight:700; text-align:right; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .day.today { box-shadow:inset 0 0 0 1px var(--acc); }
+  .day.today .d { color:var(--acc); font-weight:700; }
+  .day.up { background:linear-gradient(180deg,rgba(47,208,127,.18),rgba(47,208,127,.05)); border-color:rgba(47,208,127,.3); }
+  .day.down { background:linear-gradient(180deg,rgba(255,93,108,.18),rgba(255,93,108,.05)); border-color:rgba(255,93,108,.3); }
+  .day.sel { outline:2px solid var(--acc); outline-offset:1px; }
+  .day .dots { position:absolute; top:6px; right:6px; display:flex; gap:2px; }
+  .day .dots i { width:5px; height:5px; border-radius:50%; background:var(--dim2); }
+  .daypanel { margin-top:10px; border:1px solid var(--line2); border-radius:var(--r); background:var(--bg2); overflow:hidden;
+              max-height:0; opacity:0; transition:max-height .35s ease, opacity .25s ease; }
+  .daypanel.open { max-height:6000px; opacity:1; }
+  .daypanel .in { padding:12px; }
+  .daypanel .hd { display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; }
+  .daypanel .hd .t { font-weight:600; }
+  .daypanel .close { border:1px solid var(--line); background:var(--card); border-radius:8px; padding:3px 10px; cursor:pointer; color:var(--dim); }
+  .stats3 { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:6px; margin-bottom:10px; }
+  @media (min-width:600px) { .stats3 { grid-template-columns:repeat(4,minmax(0,1fr)); } }
+  .stats3 div { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:7px 8px; }
+  .stats3 b { display:block; font-size:10.5px; color:var(--dim); font-weight:400; }
+  .sub2 { color:var(--dim); font-size:12px; margin:12px 0 6px; font-weight:600; }
+
+  /* kleine Filter */
+  .mini { display:flex; gap:6px; margin-bottom:10px; flex-wrap:wrap; }
+  .mini button { border:1px solid var(--line); background:var(--card); border-radius:999px; padding:5px 12px; color:var(--dim); cursor:pointer; font-size:12.5px; }
+  .mini button.on { color:var(--txt); border-color:var(--acc); background:var(--accbg); }
+
+  .accsel { display:flex; gap:8px; align-items:center; margin-top:8px; }
+  .accsel select { flex:1; background:var(--card); color:var(--txt); border:1px solid var(--line); border-radius:10px;
+                   padding:7px 10px; font:inherit; appearance:none; -webkit-appearance:none;
+                   background-image:linear-gradient(45deg,transparent 50%,var(--dim) 50%),linear-gradient(135deg,var(--dim) 50%,transparent 50%);
+                   background-position:calc(100% - 16px) 50%, calc(100% - 11px) 50%; background-size:5px 5px; background-repeat:no-repeat; }
+  .accsel .lbl { color:var(--dim); font-size:12px; white-space:nowrap; }
+  .acc { background:var(--card); border:1px solid var(--line); border-radius:var(--r); padding:12px 13px; margin-bottom:8px; cursor:pointer; }
+  .acc.cur { box-shadow:inset 0 0 0 1px var(--acc); }
+  .acc .nm { font-weight:600; } .acc .ds { color:var(--dim); font-size:12px; margin:2px 0 8px; }
+  .acc .meta { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:8px 10px; }
+  @media (min-width:720px) { .acc .meta { grid-template-columns:repeat(6,minmax(0,1fr)); } }
+  .acc .meta div b { display:block; color:var(--dim); font-weight:400; font-size:11px; }
+  .rank { font-size:11px; padding:2px 8px; border-radius:999px; background:var(--accbg); color:#9db8ff; margin-left:6px; }
+  .tag.arb { color:#c4a5ff; border-color:rgba(167,139,250,.4); }
+  .clv { font-size:12px; margin-top:6px; }
+  .log { font-size:12.5px; }
+  .log div { padding:7px 12px; border-bottom:1px solid var(--line); display:flex; gap:10px; }
+  .log div:last-child { border-bottom:0; }
+  .log span.t { color:var(--dim2); white-space:nowrap; }
+  .err { color:var(--neg); }
+  .bars div { display:flex; align-items:center; gap:8px; margin:5px 0; font-size:12.5px; }
+  .bars .bl { flex:0 0 46%; color:var(--dim); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .bars .bt { flex:1; height:6px; background:var(--bg2); border-radius:99px; overflow:hidden; }
+  .bars .bt i { display:block; height:100%; background:var(--acc2); }
+  .bars .bv { width:44px; text-align:right; color:var(--dim); }
+</style>
+</head>
+<body class="has-shell">
+{% set base = "/" %}{% include "_nav.html" %}
+<div class="wrap">
+  <header>
+    <div class="brand">
+      <div><h1>Paper-Trading</h1><div class="sub" id="hsub">Spielgeld</div></div>
+    </div>
+    <span class="pill" id="status"><span class="dot"></span>…</span>
+  </header>
+
+  <div class="bar">
+    <div class="seg" id="filter">
+      <button data-f="all" class="on">Alle</button>
+      <button data-f="crypto"><span class="c" style="background:var(--crypto)"></span>Krypto</button>
+      <button data-f="sports"><span class="c" style="background:var(--sport)"></span>Sport</button>
+      <button data-f="weather"><span class="c" style="background:var(--weather)"></span>Wetter</button>
+    </div>
+    <div class="accsel"><span class="lbl">Konto</span><select id="accsel"></select></div>
+    <div class="tabs" id="tabs">
+      <button data-t="overview">Übersicht</button>
+      <button data-t="open">Offen<span class="n" id="n-open">0</span></button>
+      <button data-t="calendar">Kalender</button>
+      <button data-t="history">Verlauf<span class="n" id="n-hist">0</span></button>
+      <button data-t="accounts">Testkonten</button>
+      <button data-t="analysis">Analyse</button>
+      <button data-t="calib">Treffsicherheit</button>
+      <button data-t="status">Status</button>
+    </div>
+  </div>
+
+  <section id="overview">
+    <div class="kpis" id="kpis"></div>
+    <h2 id="chart-title">Kontowert</h2>
+    <div class="card"><div id="chart"></div></div>
+    <h2>Nach Bereich</h2>
+    <div class="card flat"><table id="cats"></table></div>
+    <h2>Endet als Nächstes</h2>
+    <div id="soon"></div>
+    <p class="note" id="rules"></p>
+  </section>
+
+  <section id="open"><div id="open-list"></div><div id="orders-wrap"></div></section>
+
+  <section id="calendar">
+    <div class="calhead">
+      <button id="cal-prev" aria-label="Vormonat">‹</button>
+      <div class="t" id="cal-title"></div>
+      <button id="cal-next" aria-label="Nächster Monat">›</button>
+    </div>
+    <div class="calsum" id="cal-sum"></div>
+    <div class="grid" id="cal-grid"></div>
+    <div class="daypanel" id="daypanel"><div class="in" id="daypanel-in"></div></div>
+    <p class="note">Tippe auf einen Tag: Gewinn/Verlust der an diesem Tag abgerechneten Wetten, mit allen Einzelheiten. Punkte oben rechts = an dem Tag neu eröffnete Wetten.</p>
+  </section>
+
+  <section id="history">
+    <div class="mini" id="hist-filter">
+      <button data-h="all" class="on">Alle</button><button data-h="won">Gewonnen</button><button data-h="lost">Verloren</button>
+    </div>
+    <div id="hist-list"></div>
+  </section>
+
+  <section id="accounts">
+    <p class="note">Alle Konten sehen dieselben Märkte und starten mit demselben Spielgeld – sie unterscheiden sich nur in den Regeln. Nach ein paar Wochen zeigt sich, welche Einstellung am besten funktioniert. Tippe auf ein Konto, um es oben auszuwählen.</p>
+    <div class="card"><div id="acc-chart"></div><div class="legend" id="acc-legend" style="flex-wrap:wrap"></div></div>
+    <div id="acc-list"></div>
+  </section>
+
+  <section id="analysis">
+    <div class="mini" id="ana-filter">
+      <button data-a="all" class="on">Alle berechneten</button><button data-a="plus">Nur mit Vorsprung</button><button data-a="traded">Gekauft</button>
+    </div>
+    <p class="note" id="ana-note"></p>
+    <div id="ana-list"></div>
+    <h2>Widersprüche (Arbitrage) im letzten Lauf</h2>
+    <div id="arbs"></div>
+    <h2>Übersprungen im letzten Lauf</h2>
+    <div class="card bars" id="skips"></div>
+  </section>
+
+  <section id="calib">
+    <p class="note">Der Filter oben (Alle/Krypto/Sport/Wetter) gilt auch hier. Der wichtigste Test: Sind die Wahrscheinlichkeiten des Bots genauer als die von Polymarket? Gemessen über alle berechneten Märkte, sobald sie entschieden sind (nur Märkte, die beim ersten Blick zwischen 5 % und 95 % standen). <b>Kleiner = besser.</b></p>
+    <div class="kpis" id="calib-kpis"></div>
+    <h2>Kalibrierung (alle Bereiche)</h2>
+    <div class="card flat"><table id="buckets"></table></div>
+    <p class="note">Sagt der Bot z. B. 30 %, sollte es in etwa 30 % der Fälle eintreten.</p>
+  </section>
+
+  <section id="status">
+    <h2>Datenquellen</h2>
+    <div class="card" id="sources"></div>
+    <h2>Protokoll</h2>
+    <div class="card flat log" id="log"></div>
+  </section>
+</div>
+
+<script type="application/json" id="data">{{ data|tojson }}</script>
+<script src="/static/shell.js"></script>
+<script src="/static/paper.js"></script>
+</body>
+</html>

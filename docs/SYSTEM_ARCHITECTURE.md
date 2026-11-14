@@ -26,13 +26,14 @@
                          │ Paper-Trading                                                        │
                          └───────────────────────────────▲──────────────────────────────────────┘
                                                          │ liest
-┌─────────────── Koordinator (ein Takt alle 10 min, Zeitbudget, Prioritäten) ───────────────────┐
-│ 1 Guardian (vorher)   Ressourcen prüfen, bei Engpass schwere Agenten aussetzen                 │
-│ 2 Handels-Lauf (Engine)                                                                        │
+┌─────────────── Koordinator (ein Takt alle 10 min, Zeitbudget 240 s, Prioritäten) ─────────────┐
+│ 1 Handels-Lauf (Engine, Agent „Paper Trading“)                                                 │
 │      Scanner ─► Probability ─► Validation ─► Paper-Konten (Ausstieg, Einstieg, Arbitrage)      │
-│ 3 Langsame Agenten nach Fälligkeit und Priorität                                               │
-│      Scanner (alle Kategorien, stündlich) · Learning · Strategy · News · Berichte              │
-│ 4 Guardian (nachher)  Quellen-Statistik, Backup, Aufräumen, Ausfall-Meldungen                  │
+│ 2 Hintergrund-Agenten nach Fälligkeit und Priorität, solange das Zeitbudget reicht             │
+│      Scanner (alle Kategorien, stündlich) · News (30 min) · Learning (stündlich) ·             │
+│      Strategy (30 min) · Guardian (jeder Takt, läuft immer)                                    │
+│      Wer dreimal hintereinander scheitert, wird zurückgestuft (5 → 60 min Pause)               │
+│ 3 Mittwoch und Sonntag ab 17 Uhr: Claude-Review-Bericht                                        │
 └───────────────────────────────────────────────┬────────────────────────────────────────────────┘
                                                 │ schreibt
                                    ┌────────────▼────────────┐         ┌───────────────────────┐
@@ -51,10 +52,11 @@
 | Probability | `agents/probability.py` | Modell-Register mit Versionen, Varianten je Markt, Unsicherheit, unveränderliche Prognose-Historie | jeder Lauf |
 | Validation | `agents/validation.py` | prüft jede Prognose (Daten frisch? Markt handelbar? Abweichung plausibel? Summen stimmig?) und darf sie fürs Handeln sperren | jeder Lauf |
 | Learning | `agents/learning.py` | Kennzahlen je Modell/Kategorie/Zeithorizont gegen Markt und Baselines, Fehlerarten, Experimente, Freigabe-Vorschläge, Rückfall-Erkennung | stündlich |
-| Strategy Research | `agents/strategy.py` | baut den Datensatz entschiedener Märkte (Preis vor Schluss + Ergebnis), testet Strategien mit zeitlicher Trennung | Datensatz jeder Lauf (kleine Portion), Tests täglich |
+| Strategy Research | `agents/strategy.py` | baut den Datensatz entschiedener Märkte (Preis vor Schluss + Ergebnis), testet Strategien mit zeitlicher Trennung | alle 30 min eine Portion Datensatz, Tests wenn der Datensatz gewachsen ist |
 | News Research | `agents/news.py` | RSS-Schlagzeilen sammeln, entdoppeln, Märkten zuordnen | 30 min |
-| System Guardian | `agents/guardian.py` | Ressourcen, Quellen-Ausfälle, Backup, Integrität, Aufräumen, sicherer Neustart | jeder Lauf |
-| Berichte | `reports.py` | Claude-Review-Bericht Mi + So, Tages-/Wochenbilanz | Zeitplan |
+| System Guardian | `agents/guardian.py` | Ressourcen, Quellen-Ausfälle, tägliches Backup, Integrität (Datenbank + Prüfsummen-Kette der Prognosen), Aufräumen. Der Neustart einer hängenden Schleife liegt im Wachhund (`app.py`) | jeder Lauf |
+| Paper Trading | `engine.py` | virtuelle Wetten auf 11 Spielgeld-Konten, Risikobremse, Abrechnung | jeder Lauf |
+| Berichte | `reports.py` | Claude-Review-Bericht Mi + So (13 Abschnitte, nur gemessene Werte) | Zeitplan |
 
 ## Datenmodell
 Bestehend (bleibt): `kv`, `positions`, `orders`, `predictions`, `log`, `equity_acc`.
@@ -68,11 +70,13 @@ Neu, über nummerierte Migrationen (`schema_version`):
 | `outcomes` | tatsächliches Ergebnis je Markt | getrennt von der Prognose |
 | `model_registry`, `model_versions` | aktives Modell je Kategorie, alle Parameter-Stände | Rückkehr zu jeder früheren Version möglich |
 | `experiments`, `proposals` | Tests Herausforderer gegen aktives Modell, Freigabe-Vorschläge mit Status | |
-| `metrics_daily` | Tageswerte Brier/LogLoss je Modell | für Verlaufs-Diagramme |
 | `resolved`, `backtests` | Datensatz entschiedener Märkte, gespeicherte Strategie-Tests | Tests sind reproduzierbar (Parameter + Datenstand) |
 | `agent_runs`, `events`, `source_stats` | Agenten-Läufe, Systemereignisse, Abrufe/Fehler je Quelle und Tag | Aufbewahrung 14/90/90 Tage |
 | `news`, `news_links` | Schlagzeilen mit Quelle und Zeit, Zuordnung zu Märkten | URL eindeutig |
 | `reports`, `recommendations` | Claude-Berichte, Empfehlungen mit Status und Notiz | dauerhaft |
+
+Kennzahlen (Brier, LogLoss, Kalibrierung, Tagesverlauf) werden nicht als eigene Tabelle geführt, sondern stündlich aus
+`forecasts` + `outcomes` neu berechnet und als Zwischenstand in `kv` (`learn:summary`) abgelegt – so kann nichts auseinanderlaufen.
 
 ## Der Weg einer Prognose
 1. Scanner liefert den Markt. 2. Probability rechnet alle Varianten (z. B. Wetter: Ensemble eng, Ensemble
@@ -84,8 +88,9 @@ Prognose-Zeitpunkt. 7. Ist ein Herausforderer an **späteren** Daten klar besser
 
 ## Kontrolliertes Lernen – Kriterien
 - Trennung nach Zeit: erste 60 % der entschiedenen Prognosen = Vergleich, letzte 40 % = Out-of-Sample.
-- Vorschlag nur, wenn Out-of-Sample: mindestens 100 Prognosen, Brier ≥ 2 % besser, Unterschied statistisch
-  klar (z ≥ 1,64), keine Verschlechterung der Kalibrierung.
+- Vorschlag nur, wenn Out-of-Sample: mindestens 100 Prognosen aus mindestens 30 unabhängigen Ereignissen,
+  Brier ≥ 2 % besser, Unterschied statistisch klar (z ≥ 1,64, über Ereignis-Gruppen gerechnet) und im früheren
+  Teil nicht schlechter. Pro Bereich wird nur der beste bestandene Herausforderer vorgeschlagen.
 - Rückfall: aktives Modell wird laufend gegen seinen Vorgänger gemessen; ist es klar schlechter, entsteht
   ein Vorschlag „zurückrollen“.
 
@@ -94,13 +99,15 @@ Prognose-Zeitpunkt. 7. Ist ein Herausforderer an **späteren** Daten klar besser
   wird nicht mehr abgerufen – der letzte Stand bleibt nutzbar.
 - Jeder Agent hat ein Zeitbudget; der Koordinator stellt Agenten zurück, wenn der Takt zu lang wird,
   und zählt das mit.
-- Priorität je Markt = Handelsaktivität × Nähe zur Entscheidung × Datenqualität × Abweichung Modell/Markt.
-  Sie bestimmt, welche Märkte Preisverlauf, Nachrichten-Zuordnung und einen Platz oben im Dashboard bekommen.
+- Priorität je Markt (0–100) = 40 % Handelsaktivität + 20 % Liquidität + 20 % Nähe zur Entscheidung + 10 % eigenes
+  Modell vorhanden + 10 % aktuelle Schlagzeilen, abgewertet um 25 % je Datenmangel. Sie bestimmt die Reihenfolge im
+  Dashboard und welche Märkte (die 400 wichtigsten) Schlagzeilen zugeordnet bekommen.
 - Kostenpflichtige Dienste werden nie automatisch aktiviert; es gibt im Code keinen Schalter dafür.
 
 ## Sicherheit
 Geheimnisse nur in Umgebungsvariablen; alle Fehlertexte werden vor dem Speichern geschwärzt. Anmeldung für
-alles außer `/health`. POST nur von der eigenen Seite. Eingaben der Einstellungen gegen feste Grenzen
+alles außer `/health`, Sperre nach 10 Fehlanmeldungen. POST nur von der eigenen Seite (eigener Kopf). Strenge
+Content-Security-Policy, kein eingebettetes JavaScript. Eingaben der Einstellungen gegen feste Grenzen
 geprüft. Externe Texte (Marktbeschreibungen, Schlagzeilen) werden nur gespeichert und maskiert angezeigt.
 
 ## Claude-Supervisor

@@ -8,6 +8,7 @@ Ein Wechsel des aktiven Modells passiert nur über `activate` (Freigabe im Dashb
 import hashlib
 import json
 import math
+import re
 from datetime import datetime, timezone
 
 from . import Agent
@@ -22,7 +23,28 @@ MODEL_INFO = {
     "weather.wide": "Wetter: dasselbe Ensemble, doppelt so breite Verteilung",
     "weather.emp": "Wetter: Ensemble-Mittel + gelernte Stations-Korrektur und gemessene Streuung",
     "sports.books": "Sport: faire Quote aus Buchmachern (Marge herausgerechnet)",
+    "crypto.v1": "Krypto: Prognosen aus der Zeit vor v2 (Modellstand nicht mitgespeichert)",
+    "weather.v1": "Wetter: Prognosen aus der Zeit vor v2 (Modellstand nicht mitgespeichert)",
+    "sports.v1": "Sport: Prognosen aus der Zeit vor v2 (Modellstand nicht mitgespeichert)",
 }
+
+
+LEGACY_VERSION = "alt"   # Prognosen aus der Zeit vor v2 (ohne Modell-Angabe gespeichert)
+_DATE = re.compile(r"(January|February|March|April|May|June|July|August|September|October|November|December) \d{1,2}")
+_CITY = re.compile(r"temperature in (.+?) be ")
+_COIN = re.compile(r"\b(Bitcoin|Ethereum|Solana|XRP|Dogecoin|BNB|Cardano|Hyperliquid|BTC|ETH|SOL|DOGE)\b")
+
+
+def legacy_cluster(category, question):
+    """Gruppe zusammenhängender Alt-Prognosen aus dem Fragetext (Stadt bzw. Coin + Stichtag); None, wenn nicht erkennbar."""
+    d = _DATE.search(question or "")
+    if category == "weather":
+        c = _CITY.search(question or "")
+        return f"alt:{c.group(1)}:{d.group(0)}" if c and d else None
+    if category == "crypto":
+        c = _COIN.search(question or "")
+        return f"alt:{c.group(1)}:{d.group(0)}" if c and d else None
+    return None
 
 
 def horizon(hours):
@@ -76,10 +98,53 @@ class ProbabilityAgent(Agent):
         last = store.q1("SELECT hash FROM forecasts ORDER BY id DESC LIMIT 1")
         self._last_hash = last["hash"] if last else ""
         self.cycle = {"logged": 0, "variants": 0}
+        self.legacy_imported = self.import_legacy()
 
     @staticmethod
     def _now():
         return datetime.now(timezone.utc).isoformat(timespec="seconds")
+
+    def import_legacy(self):
+        """Einmalig: die Prognosen aus der alten Tabelle `predictions` (v1.x) in die Historie übernehmen.
+
+        Sie bekommen das Modell „<Bereich>.v1“ in Version „alt“, weil damals nicht mitgespeichert wurde, welcher
+        Modellstand gerechnet hat. Gespeichert war je Markt die erste, ungemischte Modell-Prognose samt Marktpreis.
+        Bereits bekannte Ergebnisse kommen mit. So beginnt die Auswertung nicht bei null.
+        """
+        if self.store.kv_get("legacy_import"):
+            return 0
+        rows, outcomes, prev = [], [], self._last_hash
+        for r in self.store.q("SELECT * FROM predictions WHERE own_p IS NOT NULL AND market_p IS NOT NULL AND created_at IS NOT NULL "
+                              "AND end_date IS NOT NULL ORDER BY created_at, market_id"):
+            try:
+                made = datetime.fromisoformat(r["created_at"])
+                hours = (datetime.fromisoformat(r["end_date"]) - made).total_seconds() / 3600
+            except (TypeError, ValueError):
+                continue
+            if not (0 < r["own_p"] < 1) or hours <= 0:
+                continue
+            model, hz = f"{r['category']}.v1", horizon(hours)
+            h = hashlib.sha256(f"{prev}|{r['market_id']}|{model}|{LEGACY_VERSION}|{hz}|{r['created_at']}|{r['own_p']:.6f}|{r['market_p']:.6f}".encode()).hexdigest()[:32]
+            rows.append((r["market_id"], r["category"], model, LEGACY_VERSION, hz, r["created_at"], round(r["own_p"], 6), round(r["market_p"], 6), None,
+                         round(hours, 2), 1, 1, None, legacy_cluster(r["category"], r["question"]), '["übernommen aus v1.3"]', None, prev, h))
+            prev = h
+            if r["outcome"] is not None:
+                outcomes.append((r["market_id"], r["outcome"], r["resolved_at"] or r["created_at"], "polymarket (v1.3)"))
+        if rows:
+            # Die Prüfsumme rechnet mit den gerundeten Werten, wie sie in der Tabelle stehen
+            fixed, prev = [], self._last_hash
+            for row in rows:
+                h = hashlib.sha256(f"{prev}|{row[0]}|{row[2]}|{row[3]}|{row[4]}|{row[5]}|{row[6]:.6f}|{row[7]:.6f}".encode()).hexdigest()[:32]
+                fixed.append(row[:16] + (prev, h))
+                prev = h
+            self.store.xmany("INSERT OR IGNORE INTO forecasts(market_id, category, model, version, horizon, created_at, p, market_p, uncertainty, "
+                             "hours_left, champion, valid, reject_reason, cluster, sources, features, prev_hash, hash) "
+                             "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", fixed)
+            self._last_hash = prev
+        if outcomes:
+            self.store.xmany("INSERT OR IGNORE INTO outcomes(market_id, outcome, resolved_at, source) VALUES(?,?,?,?)", outcomes)
+        self.store.kv_set("legacy_import", f"{self._now()}: {len(rows)} Prognosen, {len(outcomes)} Ergebnisse")
+        return len(rows)
 
     def reload(self):
         self.reg = {r["category"]: r for r in self.store.q("SELECT * FROM model_registry")}

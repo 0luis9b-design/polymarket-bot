@@ -10,3 +10,17 @@ jobs:
           python-version: "3.12"
       - run: pip install -r requirements-dev.txt
       - run: AUTOSTART=0 python -m pytest -q
+      - name: Dashboard-Skripte auf Syntaxfehler prüfen
+        run: for f in static/*.js; do node --check "$f"; done
+  abhaengigkeiten:
+    # Prüft die verwendeten Pakete gegen bekannte Sicherheitslücken. Meldet nur – ein Fund blockiert nichts,
+    # weil sonst eine neu veröffentlichte Lücke in einem fremden Paket jeden Push rot färben würde.
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install pip-audit
+      - run: pip-audit -r requirements.txt

@@ -213,7 +213,9 @@ class StrategyAgent(Agent):
         # abwechselnd: frisch entschiedene Märkte / weiter zurück in die Vergangenheit
         oldest = self.store.scalar("SELECT MIN(end_date) FROM resolved WHERE category=?", (cat,))
         backfill = bool(oldest) and (idx // len(cats)) % 2 == 1
-        end_max = oldest if backfill else now.strftime("%Y-%m-%dT%H:%M:%SZ")
+        oldest_dt = polymarket.parse_dt(oldest) if backfill else None
+        end_max = (oldest_dt or now).strftime("%Y-%m-%dT%H:%M:%SZ")
+        backfill = bool(oldest_dt)
         raws = self.fetch_markets({"tag_id": tag_id, "related_tags": "true", "closed": "true", "order": "endDate",
                                    "ascending": "false", "end_date_max": end_max, "volume_num_min": config.HISTORY_MIN_VOLUME,
                                    "limit": 100})

@@ -119,7 +119,7 @@ class LearningAgent(Agent):
     # ------------------------------------------------------------------ Hauptlauf
     def run(self, now, deadline):
         rows = self.rows()
-        summary = {"stand": now.isoformat(timespec="seconds"), "n": len(rows), "modelle": self.metrics(rows),
+        summary = {"stand": now.isoformat(timespec="seconds"), "n": len(rows), "modelle": self.metrics(rows), "bereiche": self.areas(rows),
                    "kalibrierung": self.calibrations(rows), "fehler": self.errors(rows), "verlauf": self.timeline(rows)}
         new_version = self.learn_weather(now) if self.time_left(deadline) > 10 else None
         exps = self.experiments(rows, now) if self.time_left(deadline) > 5 else []
@@ -140,12 +140,25 @@ class LearningAgent(Agent):
         out = []
         for (cat, key), rs in sorted(groups.items()):
             s = summarize(rs)
-            active = reg.get(cat) and key.startswith(f"{reg[cat]['model']}") and key.split("@")[1].startswith(str(reg[cat]["version"]))
-            s.update(category=cat, model=key, active=bool(active),
+            base = f"{reg[cat]['model']}@{reg[cat]['version']}" if reg.get(cat) else None
+            active = base and (key == base or key.startswith(f"{reg[cat]['model']}.mix@{reg[cat]['version']}w"))
+            s.update(category=cat, model=key, active=bool(active), gehandelt=sum(1 for r in rs if r["champion"]),
                      horizonte={h: summarize([r for r in rs if r["horizon"] == h]) for h in HORIZON_ORDER
                                 if any(r["horizon"] == h for r in rs)},
                      nur_gueltig=summarize([r for r in rs if r["valid"]]))
             out.append(s)
+        return out
+
+    def areas(self, rows):
+        """Je Bereich: alle Prognosen, nach denen tatsächlich entschieden wurde (auch die aus der Zeit vor v2)."""
+        out = []
+        for cat in sorted({r["category"] for r in rows}):
+            rs = [r for r in rows if r["category"] == cat and r["champion"]]
+            if rs:
+                s = summarize(rs)
+                models = sorted({r["key"] for r in rs})
+                s.update(category=cat, modelle=models, alt=sum(1 for r in rs if r["version"] == "alt"))
+                out.append(s)
         return out
 
     def calibrations(self, rows):
@@ -285,7 +298,7 @@ class LearningAgent(Agent):
                 continue
             challengers = defaultdict(dict)
             for r in cat_rows:
-                if r["key"] != champ_key and ".mix@" not in r["key"]:
+                if r["key"] != champ_key and ".mix@" not in r["key"] and r["version"] != "alt":   # Alt-Prognosen sind kein wählbares Modell
                     challengers[r["key"]][(r["market_id"], r["horizon"])] = r
             tests = []
             for key, rs in challengers.items():

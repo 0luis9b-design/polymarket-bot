@@ -1,0 +1,51 @@
+/* Gemeinsame Hülle: Farben und Navigation für Zentrale (/) und Paper-Trading (/paper).
+   Alle Regeln hier beginnen mit .sh- oder .has-shell, damit sie die Paper-Trading-Seite nicht verändern. */
+:root {
+  --bg:#0a0e16; --panel:#111826; --panel2:#182235; --line:#222d42; --line2:#2c3a54;
+  --ink:#e7ebf3; --ink2:#a7b1c4; --ink3:#7d899f;
+  --acc:#5b8cff; --accbg:rgba(91,140,255,.13);
+  --pos:#2fd07f; --neg:#ff5d6c; --warn:#f5b84a;
+  /* Diagramm-Farben (für die dunkle Fläche geprüft: Lesbarkeit und Farbfehlsichtigkeit) */
+  --s-krypto:#d95926; --s-sport:#3987e5; --s-wetter:#199e70; --s-modell:#3987e5; --s-markt:#8c97ab;
+  --sh-w:216px;
+}
+.has-shell { padding-bottom:calc(62px + env(safe-area-inset-bottom)); }
+
+.sh-side { position:fixed; z-index:40; left:0; right:0; bottom:calc(58px + env(safe-area-inset-bottom)); max-height:72vh; overflow-y:auto;
+  background:var(--panel); border-top:1px solid var(--line2); border-radius:16px 16px 0 0; padding:10px 10px 14px;
+  transform:translateY(110%); visibility:hidden; transition:transform .18s ease, visibility 0s .18s;
+  font:14px/1.3 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; }
+.sh-open .sh-side { transform:none; visibility:visible; transition:transform .18s ease; box-shadow:0 -24px 60px rgba(0,0,0,.55); }
+.sh-side a { display:flex; align-items:center; justify-content:space-between; gap:8px; padding:10px 12px; border-radius:9px;
+  color:var(--ink2); text-decoration:none; }
+.sh-side a:hover { color:var(--ink); background:var(--panel2); }
+.sh-side a.on { color:var(--ink); background:var(--accbg); box-shadow:inset 2px 0 0 var(--acc); }
+.sh-side a:focus-visible, .sh-tabs a:focus-visible, .sh-tabs button:focus-visible { outline:2px solid var(--acc); outline-offset:-2px; }
+.sh-brand { gap:10px !important; justify-content:flex-start !important; margin-bottom:4px; }
+.sh-brand b { display:block; color:var(--ink); font-size:14px; font-weight:650; }
+.sh-brand small { display:block; color:var(--ink3); font-size:11.5px; }
+.sh-mark { width:26px; height:26px; flex:none; border-radius:7px; background:
+  linear-gradient(90deg, var(--s-markt) 0 46%, transparent 46% 54%, var(--acc) 54% 100%); opacity:.95;
+  -webkit-mask:linear-gradient(#000 0 0) 0 4px/100% 5px no-repeat, linear-gradient(#000 0 0) 0 11px/72% 5px no-repeat, linear-gradient(#000 0 0) 0 18px/88% 5px no-repeat;
+  mask:linear-gradient(#000 0 0) 0 4px/100% 5px no-repeat, linear-gradient(#000 0 0) 0 11px/72% 5px no-repeat, linear-gradient(#000 0 0) 0 18px/88% 5px no-repeat; }
+.sh-group { color:var(--ink3); font-size:11.5px; padding:12px 12px 4px; }
+.sh-badge { min-width:18px; padding:1px 6px; border-radius:999px; background:var(--warn); color:#1a1304; font-size:11px; font-weight:700; text-align:center; }
+.sh-foot { color:var(--ink3); font-size:11.5px; line-height:1.5; padding:14px 12px 2px; }
+
+.sh-tabs { position:fixed; z-index:41; left:0; right:0; bottom:0; display:flex; background:rgba(13,19,31,.96); border-top:1px solid var(--line);
+  padding-bottom:env(safe-area-inset-bottom); backdrop-filter:blur(10px); -webkit-backdrop-filter:blur(10px); }
+.sh-tabs a, .sh-tabs button { flex:1; display:flex; flex-direction:column; align-items:center; gap:3px; padding:8px 2px 7px; border:0; background:none;
+  color:var(--ink3); font:11px/1.2 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; text-decoration:none; cursor:pointer; }
+.sh-tabs svg { width:21px; height:21px; fill:none; stroke:currentColor; stroke-width:1.7; stroke-linecap:round; stroke-linejoin:round; }
+.sh-tabs .on { color:var(--ink); }
+.sh-tabs .on svg { stroke:var(--acc); }
+
+@media (min-width:1020px) {
+  .has-shell { padding-left:var(--sh-w); padding-bottom:0; }
+  .sh-tabs { display:none; }
+  .sh-side { top:0; bottom:0; right:auto; width:var(--sh-w); max-height:none; transform:none; visibility:visible; transition:none;
+    border:0; border-right:1px solid var(--line); border-radius:0; padding:14px 10px; background:#0c121d; display:flex; flex-direction:column; box-shadow:none; }
+  .sh-side a { padding:7px 12px; font-size:13.5px; }
+  .sh-foot { margin-top:auto; }
+}
+@media (prefers-reduced-motion:reduce) { .sh-side { transition:none !important; } }
