@@ -16,7 +16,7 @@ import time
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
-from . import config
+from . import config, metar
 from .http import HttpError, get_json
 
 log = logging.getLogger("polybot.weather")
@@ -45,7 +45,7 @@ def attach(store):
             _, icao, unit = row["k"].split(":")
             d = json.loads(row["v"])
             if icao in STATIONS and now - d["t"] < 4 * CACHE_SEC and (icao, unit) not in _cache:
-                _cache[(icao, unit)] = (d["t"], (d["h"], d["l"]))   # der Zeitstempel bleibt: veraltet wird wie gewohnt neu geholt
+                _cache[(icao, unit)] = (d["t"], (d["h"], d["l"], d.get("hr") or {}))   # Zeitstempel bleibt: veraltet wird neu geholt
                 status[icao] = f"OK – {len(next(iter(d['h'].values()), []))} Szenarien"
                 n += 1
         except Exception:  # noqa: BLE001 – ein kaputter Eintrag wird einfach neu geholt
@@ -143,7 +143,9 @@ def station_for(market):
 
 
 def ensemble(icao, unit, fetch=get_json):
-    """{local_date: [max je Szenario]}, {local_date: [min je Szenario]}"""
+    """({Ortsdatum: [Max je Szenario]}, {Ortsdatum: [Min je Szenario]}, {Ortsdatum: [[24 Stundenwerte] je Szenario]})
+
+    Die Stundenwerte gibt es nur für heute und morgen (Ortszeit) – sie braucht das Modell am Messtag."""
     key = (icao, unit)
     hit = _cache.get(key)
     if hit and time.time() - hit[0] < CACHE_SEC:
@@ -175,26 +177,31 @@ def ensemble(icao, unit, fetch=get_json):
         raise
     hourly = data.get("hourly") or {}
     times = hourly.get("time") or []
-    highs, lows = {}, {}
+    keep = sorted({t[:10] for t in times})[:2]   # die Vorhersage beginnt mit dem heutigen Ortstag: heute und morgen
+    highs, lows, by_hour = {}, {}, {}
     for k, vals in hourly.items():
         if not k.startswith("temperature_2m") or not isinstance(vals, list):
             continue
-        per_day = {}
+        per_day, hours = {}, {}
         for t, v in zip(times, vals):
             if v is None:
                 continue
             per_day.setdefault(t[:10], []).append(v)
+            if t[:10] in keep and len(t) >= 13:
+                hours.setdefault(t[:10], [None] * 24)[int(t[11:13])] = round(v, 1)
         for d, vs in per_day.items():
             if len(vs) >= 20:  # nur fast vollständige Tage
                 highs.setdefault(d, []).append(max(vs))
                 lows.setdefault(d, []).append(min(vs))
-    res = (highs, lows)
+        for d, hv in hours.items():
+            by_hour.setdefault(d, []).append(hv)
+    res = (highs, lows, by_hour)
     _cache[key] = (time.time(), res)
     _failed.pop(key, None)
     _blocked.pop(key, None)
     if _store is not None:
         try:
-            _store.kv_set(f"wx:{icao}:{unit}", json.dumps({"t": time.time(), "h": highs, "l": lows}, separators=(",", ":")))
+            _store.kv_set(f"wx:{icao}:{unit}", json.dumps({"t": time.time(), "h": highs, "l": lows, "hr": by_hour}, separators=(",", ":")))
         except Exception:  # noqa: BLE001 – der Zwischenspeicher ist nur eine Abkürzung
             pass
     status[icao] = f"OK – {len(next(iter(highs.values()), []))} Szenarien"
@@ -213,7 +220,91 @@ def bucket_prob(values, lo, hi, spread):
     return s / len(values)
 
 
-def analyze(market, now=None, fetch=get_json):
+def _rng_text(p):
+    u = "°" + p["unit"]
+    return (f"≤ {p['hi'] - 0.5:.0f}{u}" if p["lo"] == -math.inf else f"≥ {p['lo'] + 0.5:.0f}{u}" if p["hi"] == math.inf
+            else f"{p['lo'] + 0.5:.0f}{u}" if p["hi"] - p["lo"] == 1 else f"{p['lo'] + 0.5:.0f}–{p['hi'] - 0.5:.0f}{u}")
+
+
+def _final_prob(kind, obs, r, s, lo, hi):
+    """P(Endwert im Bereich [lo, hi)), wenn bisher `obs` gemessen wurde und der Rest des Tages ~ N(r, s) liegt."""
+    cdf = lambda x: 1.0 if x == math.inf else 0.0 if x == -math.inf else _ncdf((x - r) / s)  # noqa: E731
+    if kind == "high":   # Höchstwert kann nur noch steigen
+        if r is None:
+            return 1.0 if lo <= obs < hi else 0.0
+        if obs >= hi:
+            return 0.0
+        return cdf(hi) if obs >= lo else cdf(hi) - cdf(lo)
+    if r is None:        # Tiefstwert kann nur noch fallen
+        return 1.0 if lo <= obs < hi else 0.0
+    if obs < lo:
+        return 0.0
+    return 1.0 - cdf(lo) if obs < hi else cdf(hi) - cdf(lo)
+
+
+def live_analysis(market, p, icao, day, local_now, hours_by_member, day_vals, fetch, now):
+    """Messtag: bisheriger Höchst-/Tiefstwert aus den METAR-Meldungen + Vorhersage für die restlichen Stunden.
+
+    Die Restvorhersage wird um die aktuelle Abweichung „gemessen minus Modelle“ verschoben (abklingend über ~6 Stunden).
+    Gibt None zurück, wenn Messwerte oder Stundenvorhersage fehlen – dann gilt das bisherige Vorgehen."""
+    if not hours_by_member or len(hours_by_member) < 20:
+        return None
+    if fetch is None:   # Tests mit erfundenen Vorhersagen: keine echten Messwerte holen
+        return None
+    lat, lon, tz = STATIONS[icao]
+    obs = metar.observations(icao, fetch=fetch)
+    ext = metar.day_extremes(obs, tz, day.strftime("%Y-%m-%d"), p["unit"])
+    if not ext or ext["n"] < 2 or now.timestamp() - ext["last_ts"] > 3 * 3600:
+        return None
+    h_now = local_now.hour
+    # aktuelle Abweichung: letzte (bis zu 6) Meldungen gegen den Mittelwert der Szenarien zur selben Stunde
+    diffs = []
+    for t, v in ext["series"][-6:]:
+        hh = datetime.fromtimestamp(t, timezone.utc).astimezone(ZoneInfo(tz)).hour
+        col = [m[hh] for m in hours_by_member if m[hh] is not None]
+        if col:
+            diffs.append(v - sum(col) / len(col))
+    cap = 4.0 if p["unit"] == "C" else 7.0
+    bias = max(-cap, min(cap, sum(diffs) / len(diffs))) if diffs else 0.0
+    base_s = config.WEATHER_SPREAD_C if p["unit"] == "C" else config.WEATHER_SPREAD_C * 1.8
+    O = ext["max"] if p["kind"] == "high" else ext["min"]
+    probs, wide, rests = [], [], []
+    for m in hours_by_member:
+        rest = [v + bias * math.exp(-(hh - h_now) / 6.0) for hh, v in enumerate(m) if hh > h_now and v is not None]
+        r = (max(rest) if p["kind"] == "high" else min(rest)) if rest else None
+        if r is not None:
+            rests.append(r)
+        probs.append(_final_prob(p["kind"], O, r, base_s, p["lo"], p["hi"]))
+        wide.append(_final_prob(p["kind"], O, r, base_s * 2, p["lo"], p["hi"]))
+    prob = sum(probs) / len(probs)
+    pw = sum(wide) / len(wide)
+    # Auch am Messtag bleibt ein Rest Unsicherheit (entschieden wird nach Weather Underground, nicht nach unserem Abruf).
+    # Untergrenze klein, damit die Bereiche eines Tages zusammen weiter etwa 100 % ergeben (Prüfung „Summe“).
+    clamp = lambda v: min(max(v, 0.005), 0.98)  # noqa: E731
+    u = "°" + p["unit"]
+    last_local = datetime.fromtimestamp(ext["last_ts"], timezone.utc).astimezone(ZoneInfo(tz))
+    rest_txt = (f"Rest des Tages laut Modellen {'bis' if p['kind'] == 'high' else 'ab'} {sum(rests) / len(rests):.1f}{u}"
+                if rests else "Tag praktisch vorbei")
+    info = (f"Messtag {icao}: bisher {'Höchst' if p['kind'] == 'high' else 'Tiefst'}wert {O:.1f}{u} gemessen "
+            f"({ext['n']} Meldungen, letzte {last_local:%H:%M} Uhr Ortszeit) · {rest_txt} · Modelle gegen Messung {bias:+.1f}{u} "
+            f"korrigiert · Ziel {_rng_text(p)}")
+    # Keine Variante „weather.ens@2“ hier: sonst würde das aktive Modell der Kategorie die Messwerte überstimmen
+    variants = {"weather.live@1": clamp(prob), "weather.live.wide@1": clamp(pw)}
+    no_obs = bucket_prob(day_vals, p["lo"], p["hi"], base_s) if day_vals and len(day_vals) >= 20 else None
+    fin = lambda v: None if v in (math.inf, -math.inf) else v  # noqa: E731
+    hit = _cache.get((icao, p["unit"]))
+    return {"p_yes": clamp(prob), "model": "Wetter am Messtag (Messwerte + Ensemble)", "model_id": "weather.live@1",
+            "variants": variants, "uncertainty": round(min(0.25, abs(prob - pw)), 4), "info": info,
+            "sources": ["METAR-Meldungen (aviationweather.gov)", "Open-Meteo Ensemble (ECMWF, GFS, ICON)"],
+            "data_ts": min(ext["last_ts"], hit[0]) if hit else ext["last_ts"],
+            "hours": max(0.1, (day + timedelta(days=1) - local_now).total_seconds() / 3600),
+            "features": {"icao": icao, "date": day.strftime("%Y-%m-%d"), "kind": p["kind"], "unit": p["unit"], "obs": round(O, 2),
+                         "n_obs": ext["n"], "bias": round(bias, 2), "p_ohne_messwerte": round(no_obs, 4) if no_obs is not None else None, "local_hour": h_now, "rest_mean": round(sum(rests) / len(rests), 2) if rests else None,
+                         "lo": fin(p["lo"]), "hi": fin(p["hi"])},
+            "group": f"wetter:{icao}:{day:%Y-%m-%d}:{p['kind']}"}
+
+
+def analyze(market, now=None, fetch=get_json, metar_fetch=None):
     now = now or datetime.now(timezone.utc)
     p = parse_question(market["question"])
     if not p:
@@ -231,12 +322,21 @@ def analyze(market, now=None, fetch=get_json):
     except ValueError:
         return {"skip": "Datum ungültig"}
     hours_to_start = (day - local_now).total_seconds() / 3600
-    # Am Tag selbst kennt der Markt die bisher gemessenen Werte, das Modell nicht -> nur bis 6 Uhr Ortszeit
-    if hours_to_start < -6:
-        return {"skip": "Messtag läuft schon"}
+    if hours_to_start <= -24:
+        return {"skip": "Messtag vorbei"}
     if hours_to_start > 24 * config.WEATHER_MAX_DAYS:
         return {"skip": "Wetter: zu weit in der Zukunft"}
-    highs, lows = ensemble(icao, p["unit"], fetch=fetch)
+    res = ensemble(icao, p["unit"], fetch=fetch)
+    highs, lows, by_hour = res if len(res) == 3 else (res[0], res[1], {})
+    if hours_to_start < 0:
+        # Am Messtag kennt der Markt die bisher gemessenen Werte – das Modell nimmt sie jetzt auch (METAR)
+        mf = metar_fetch if metar_fetch is not None else (get_json if fetch is get_json else None)
+        live = live_analysis(market, p, icao, day, local_now, by_hour.get(day.strftime("%Y-%m-%d")),
+                             (highs if p["kind"] == "high" else lows).get(day.strftime("%Y-%m-%d")), mf, now)
+        if live:
+            return live
+        if hours_to_start < -6:
+            return {"skip": "Messtag läuft schon, keine Messwerte"}
     vals = (highs if p["kind"] == "high" else lows).get(day.strftime("%Y-%m-%d"))
     if not vals or len(vals) < 20:
         return {"skip": "keine Vorhersage für den Tag"}
@@ -249,8 +349,7 @@ def analyze(market, now=None, fetch=get_json):
     prob = bucket_prob(vals, p["lo"], p["hi"], spread)
     mean = sum(vals) / len(vals)
     u = "°" + p["unit"]
-    rng = (f"≤ {p['hi'] - 0.5:.0f}{u}" if p["lo"] == -math.inf else f"≥ {p['lo'] + 0.5:.0f}{u}" if p["hi"] == math.inf
-           else f"{p['lo'] + 0.5:.0f}{u}" if p["hi"] - p["lo"] == 1 else f"{p['lo'] + 0.5:.0f}–{p['hi'] - 0.5:.0f}{u}")
+    rng = _rng_text(p)
     info = (f"{'Höchst' if p['kind'] == 'high' else 'Tiefst'}wert {icao} am {day:%d.%m.} · Ziel {rng} · "
             f"Modelle Ø {mean:.1f}{u} (Spanne {min(vals):.0f}–{max(vals):.0f}) · {len(vals)} Szenarien")
     clamp = lambda v: min(max(v, 0.002), 0.998)  # noqa: E731

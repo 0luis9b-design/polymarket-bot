@@ -23,6 +23,8 @@ MODEL_INFO = {
     "weather.ens": "Wetter: Ensemble aus ECMWF, GFS, ICON, enge Verteilung",
     "weather.wide": "Wetter: dasselbe Ensemble, doppelt so breite Verteilung",
     "weather.emp": "Wetter: Ensemble-Mittel + gelernte Stations-Korrektur und gemessene Streuung",
+    "weather.live": "Wetter am Messtag: bisher gemessener Höchst-/Tiefstwert (METAR) + korrigierte Vorhersage für die restlichen Stunden",
+    "weather.live.wide": "Wetter am Messtag: wie oben, doppelt so breite Verteilung",
     "sports.books": "Sport: faire Quote aus Buchmachern (Marge herausgerechnet)",
     "base.calib": "Alle übrigen Märkte: Basisraten – wie oft trat „Ja“ bei Märkten gleicher Art und gleichem Kurs wirklich ein",
     "crypto.v1": "Krypto: Prognosen aus der Zeit vor v2 (Modellstand nicht mitgespeichert)",

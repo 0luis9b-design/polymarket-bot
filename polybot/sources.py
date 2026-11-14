@@ -28,6 +28,8 @@ SOURCES = {
     "open_meteo": {"name": "Open-Meteo Ensemble", "hosts": ["ensemble-api.open-meteo.com"], "use": "Wetter-Vorhersagen",
                    "day_budget": 9000, "minute_budget": 480, "weight": 12, "pause_429": 3600,
                    "limit": "10.000 gewichtete Abrufe/Tag, 600/min"},
+    "aviationweather": {"name": "METAR (aviationweather.gov)", "hosts": ["aviationweather.gov"], "use": "Gemessene Temperaturen am Messtag",
+                        "day_budget": 1500, "minute_budget": 6, "limit": "keine feste Zahl; kleine, seltene Abfragen erbeten"},
     "bbc_rss": {"name": "BBC RSS", "hosts": ["feeds.bbci.co.uk"], "use": "Schlagzeilen", "day_budget": 600, "limit": "öffentlicher Feed"},
     "telegram": {"name": "Telegram", "hosts": ["api.telegram.org"], "use": "Benachrichtigungen", "day_budget": 600, "limit": "frei"},
     "sonstige": {"name": "Sonstige", "hosts": [], "use": "nicht zugeordnete Abrufe", "day_budget": 2000, "limit": "–"},
