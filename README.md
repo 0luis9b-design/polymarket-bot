@@ -63,16 +63,18 @@ Angezeigt werden nur gemessene Werte; fehlt etwas, steht dort „Keine Daten ver
 - Kauf und Verkauf über das echte Orderbuch inkl. Gebühr. Früher Ausstieg, wenn der Verkaufserlös die eigene Wahrscheinlichkeit erreicht.
 - Verluste: −8 % an einem Tag oder −25 % seit Start werden gemeldet, das Konto handelt aber weiter (seit 17.11.; die alte
   Pause lässt sich unter Einstellungen → „RISK_PAUSE“ wieder einschalten).
-- **Spiele** (Sport, E-Sport): höchstens eine Wette je Spiel und Konto – Sieger, Unentschieden, genaues Ergebnis, Karten,
-  Handicap und Über/Unter zählen als ein Spiel. Grund muss ein Buchmacher-Vergleich sein (mind. 3 Buchmacher), keine Basisraten.
-- **Basisraten** handeln nur mit gutem Grund: echte Ja/Nein-Frage, mind. 50 Vergleichsmärkte aus demselben Thema, Muster gilt
+- **Jede Wette** (außer Arbitrage): eigene Gewinnchance der gewählten Seite mindestens 50 % (`MIN_WIN_P`, unter
+  Einstellungen änderbar) und nie ein genaues Ergebnis („Exact Score“).
+- **Spiele** (Sport, E-Sport): höchstens eine Wette je Spiel und Konto – Sieger, Unentschieden, Karten, Handicap und
+  Über/Unter zählen als ein Spiel; nach Spielbeginn keine Basisraten-Wetten mehr.
+- **Basisraten** handeln nur mit gutem Grund: echte Ja/Nein-Frage, mind. 30 Vergleichsmärkte aus demselben Thema, Muster gilt
   in älteren und neueren Märkten, Rohabweichung höchstens 10 Punkte, statistisch gesichert (z ≥ 1,64), und im Thema waren die
   Basisraten bisher nicht schlechter als der Markt (sonst sperrt der Wächter das Thema).
 - Konten (je 1.000 $ Spielgeld): **jede Strategie hat je Thema ein eigenes Konto** – 9 Strategien (Haupt, Schwelle 4/2/7,
   Schwelle 8/4/14, Fest 10 $, Ohne Ausstieg, Viertel-Kelly, Limit-Orders, Außenseiter verkaufen, Nur Arbitrage) × 11 Themen
   (Krypto, Sport, Wetter, E-Sport, Politik, Welt, Wirtschaft, Technik, Wissenschaft, Kultur, Sonstiges); Arbitrage nur in
-  Krypto, Sport und Wetter → 91 Konten. In Krypto und Wetter zählt das eigene Modell (sonst Basisraten), in Sport nur
-  Buchmacher-Quoten, in E-Sport gibt es noch keine Quelle (nur die Außenseiter-Regel), in allen anderen Themen nur Basisraten. Kennungen: `<strategie>_<thema>`, z. B.
+  Krypto, Sport und Wetter → 91 Konten. In Krypto, Sport und Wetter zählt das eigene Modell (sonst Basisraten), in allen
+  anderen Themen (auch E-Sport) nur Basisraten. Kennungen: `<strategie>_<thema>`, z. B.
   `haupt_krypto`, `schwelle4_politik`. Telegram meldet Käufe/Verkäufe der Hauptkonten (`NOTIFY_ACCOUNTS=haupt_*`).
 
 **Wetter-Märkte:** Höchst-/Tiefsttemperatur an ~60 Flughäfen mit dem Open-Meteo-Ensemble (ECMWF, GFS, ICON, ~120 Szenarien).

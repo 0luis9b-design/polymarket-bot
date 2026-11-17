@@ -47,9 +47,9 @@ def test_game_key_joins_all_markets_of_one_game():
 
 def test_only_one_bet_per_game_and_account(tmp_path):
     st, eng = _new(tmp_path)
-    m1 = _game_market("x11", "Exact Score: Faroe Islands 1 - 1 Moldova?", "e-score", "fif-fro-mda-2026-11-16-exact-score")
-    m2 = _game_market("x22", "Exact Score: Faroe Islands 2 - 2 Moldova?", "e-score", "fif-fro-mda-2026-11-16-exact-score")
-    m3 = _game_market("drw", "Will Faroe Islands vs. Moldova end in a draw?", "e-main", "fif-fro-mda-2026-11-16")
+    m1 = _game_market("fro", "Will Faroe Islands win on 2026-11-16?", "e-main", "fif-fro-mda-2026-11-16")
+    m2 = _game_market("mda", "Will Moldova win on 2026-11-16?", "e-main", "fif-fro-mda-2026-11-16")
+    m3 = _game_market("ou", "Faroe Islands vs. Moldova: O/U 4.5", "e-more", "fif-fro-mda-2026-11-16-more-markets")
     acc = engine_mod.ACC["aussenseiter_sport"]
     eng.do_longshots(acc, [m1, m2, m3], NOW)
     held = st.open_positions("aussenseiter_sport")
@@ -60,9 +60,28 @@ def test_only_one_bet_per_game_and_account(tmp_path):
     st.insert_position({"account": "haupt_sport", "market_id": "old", "event_id": "e-main", "category": "sports", "question": "q",
                         "side": 0, "side_name": "Yes", "price": 0.5, "shares": 2, "cost": 1, "fee": 0, "status": "open",
                         "opened_at": "2026-11-15T10:00:00+00:00", "grp": "spiel:e-main"})
-    ev = {"side": 0, "price": 0.28, "fee_ps": 0.0, "eff": 0.28, "q": 0.45, "edge": 0.17}
-    o = {"market": m3, "eval": ev, "group": game_key(m3), "status": {}, "analysis": {"p_yes": 0.45, "lane": "model"}}
+    ev = {"side": 1, "price": 0.40, "fee_ps": 0.0, "eff": 0.40, "q": 0.55, "edge": 0.15}
+    o = {"market": m1, "eval": ev, "group": game_key(m1), "status": {}, "analysis": {"p_yes": 0.45, "lane": "model"}}
     assert eng.open_position(engine_mod.ACC["haupt_sport"], o, 0.03) == "schon eine Wette auf dieses Spiel"
+
+
+def test_never_exact_scores_and_only_likely_outcomes(tmp_path, monkeypatch):
+    monkeypatch.setattr(config, "MIN_WIN_P", 0.5)
+    st, eng = _new(tmp_path)
+    exact = _game_market("x11", "Exact Score: Faroe Islands 1 - 1 Moldova?", "e-score", "fif-fro-mda-2026-11-16-exact-score")
+    assert polymarket.is_exact_score(exact) and not polymarket.is_exact_score({"question": "Will Germany win?"})
+    eng.do_longshots(engine_mod.ACC["aussenseiter_sport"], [exact], NOW)     # auch „Nein“ auf ein genaues Ergebnis nicht
+    assert not st.open_positions("aussenseiter_sport")
+    acc = engine_mod.ACC["haupt_sport"]
+    draw = _game_market("drw", "Will Faroe Islands vs. Moldova end in a draw?", "e-main", "fif-fro-mda-2026-11-16", bid=0.27, ask=0.28)
+    unlikely = {"side": 0, "price": 0.28, "fee_ps": 0.0, "eff": 0.28, "q": 0.45, "edge": 0.17}       # „Ja“ zu 45 %: eher verloren
+    o = {"market": draw, "eval": unlikely, "group": game_key(draw), "status": {}, "analysis": {"p_yes": 0.45, "lane": "base"}}
+    assert eng.open_position(acc, o, 0.03) == "Gewinnchance 45 % – unter 50 %"
+    likely = {"side": 1, "price": 0.62, "fee_ps": 0.0, "eff": 0.62, "q": 0.70, "edge": 0.08}         # „Nein“ zu 70 %
+    o = {**o, "eval": likely, "analysis": {"p_yes": 0.30, "lane": "base"}}
+    assert eng.open_position(acc, o, 0.03) == "eröffnet"
+    o = {"market": exact, "eval": likely, "group": game_key(exact), "status": {}, "analysis": {"p_yes": 0.30, "lane": "model"}}
+    assert eng.open_position(engine_mod.ACC["haupt_wetter"], o, 0.03) == "genaues Ergebnis – wird nie gewettet"
 
 
 def test_accounts_are_not_paused_any_more(tmp_path):

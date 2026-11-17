@@ -70,13 +70,16 @@ WEATHER_ENABLED = os.environ.get("WEATHER_ENABLED", "1") == "1"
 MIN_EDGE_WEATHER = _f("MIN_EDGE_WEATHER", 0.10)
 MIN_EDGE_BASE = _f("MIN_EDGE_BASE", 0.03)        # Basisraten: 3 Punkte Vorsprung nach Gebühren …
 BASE_MIN_Z = _f("BASE_MIN_Z", 1.64)               # … und die Abweichung muss statistisch gesichert sein
-BASE_MIN_N_CAT = _i("BASE_MIN_N_CAT", 50)         # … belegt mit so vielen Vergleichsmärkten aus demselben Thema
-BASE_HALF_MIN_N = _i("BASE_HALF_MIN_N", 20)       # … in der älteren und der neueren Hälfte je mindestens so viele
+BASE_MIN_N_CAT = _i("BASE_MIN_N_CAT", 30)         # … belegt mit so vielen Vergleichsmärkten aus demselben Thema
+BASE_HALF_MIN_N = _i("BASE_HALF_MIN_N", 10)       # … in der älteren und der neueren Hälfte je mindestens so viele
 BASE_MAX_DEV = _f("BASE_MAX_DEV", 0.10)           # größere Rohabweichung = verzerrte Vergleichsdaten -> kein Handel
 BASE_GUARD_MIN_N = _i("BASE_GUARD_MIN_N", 20)     # Wächter: ab so vielen Prognosen mit Ergebnis je Thema prüfen
 # Spiele (eine Partie mit Sieger, Unentschieden, genauem Ergebnis, Karten, Handicap, Über/Unter …):
 # höchstens eine Wette je Spiel und Konto, und nur mit Buchmacher-Quoten als Grund
 GAME_TOPICS = ("sports", "esports")
+# Seit 17.11. abends (Wunsch Luis): viel wetten, aber nur auf Ausgänge, die der Bot für wahrscheinlicher hält als das
+# Gegenteil – so entsteht eine Historie aus gut begründeten Wetten. Nie auf ein genaues Ergebnis („Exact Score“).
+MIN_WIN_P = _f("MIN_WIN_P", 0.50)                 # eigene Gewinnchance der gewählten Seite mindestens so hoch
 TRADE_BASE = os.environ.get("TRADE_BASE", "1") == "1"   # Märkte ohne eigenes Modell ins Paper-Trading
 OTHER_PAGES = _i("OTHER_PAGES", 6)                # je 100 der aktivsten Märkte, die in den nächsten 8 Tagen enden  # Wetter-Modell ist neu -> vorsichtigere Schwelle
 WEATHER_MAX_DAYS = _f("WEATHER_MAX_DAYS", 4)

@@ -1,8 +1,10 @@
 """Versionsstand des Systems. CHANGES wird im Claude-Bericht unter „Neue Funktionen“ gezeigt."""
-VERSION = "2.3.0"
+VERSION = "2.4.0"
 
 # (Datum, Version, Text) – neueste zuerst
 CHANGES = [
+    ("2026-11-17", "2.4.0", "Viel wetten, aber nur auf wahrscheinliche Ausgänge: eigene Gewinnchance mindestens 50 % (Einstellung MIN_WIN_P); nie ein genaues Ergebnis"),
+    ("2026-11-17", "2.4.0", "Spiele (Sport, E-Sport) wieder mit Basisraten – mit Gewinnchance ≥ 50 %, einer Wette je Spiel, nicht mehr nach Spielbeginn; Basisraten schon ab 30 Vergleichsmärkten im Thema"),
     ("2026-11-17", "2.3.0", "Basisraten repariert: keine Spiele mehr (Sport/E-Sport nur mit Buchmacher-Quoten), nur Ja/Nein-Fragen, Belege aus dem eigenen Thema, Muster muss in älteren und neueren Märkten gelten, Rohabweichung höchstens 10 Pkt, Wächter sperrt Themen, in denen die Basisraten schlechter als der Markt waren"),
     ("2026-11-17", "2.3.0", "Höchstens eine Wette je Spiel und Konto (Sieger, Unentschieden, genaues Ergebnis, Karten, Handicap, Über/Unter zählen zusammen)"),
     ("2026-11-17", "2.3.0", "Konten werden nicht mehr pausiert – große Verluste werden nur gemeldet; alle bisherigen Pausen aufgehoben (wieder einschaltbar unter Einstellungen)"),

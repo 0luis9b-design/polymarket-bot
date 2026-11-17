@@ -5,6 +5,7 @@ Wichtig: outcomes, outcomePrices und clobTokenIds kommen als JSON-Text, nicht al
 bestBid / bestAsk gelten für das ERSTE Outcome (bei Ja/Nein also für "Ja").
 """
 import json
+import re
 import logging
 from datetime import datetime, timezone
 
@@ -67,6 +68,15 @@ def fee_rate_for(raw, category):
                 if r is not None and 0 <= r < 1:
                     return r
     return {"crypto": config.FEE_RATE_CRYPTO, "weather": config.FEE_RATE_WEATHER}.get(category, config.FEE_RATE_SPORTS)
+
+
+_EXACT = re.compile(r"exact score|correct score|genaues ergebnis|exact result", re.I)
+
+
+def is_exact_score(m):
+    """Wette auf ein genaues Ergebnis (z. B. „Exact Score: Faroe Islands 1 - 1 Moldova?“) – trifft zu selten, wird nie gewettet."""
+    return bool(_EXACT.search(m.get("question") or "") or _EXACT.search(m.get("event_title") or "")
+                or "exact" in (m.get("sports_market_type") or "").lower() or "correct_score" in (m.get("sports_market_type") or "").lower())
 
 
 def normalize_market(raw, event=None, category="other"):

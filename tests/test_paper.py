@@ -77,10 +77,10 @@ def test_base_rates_need_data_from_the_own_topic_and_shrink(tmp_path):
     st = Store(str(tmp_path / "b.sqlite"))
     br = base_model.BaseRates(st)
     assert br.analyze(_bm(), NOW) == {"skip": "zu wenige Vergleichsmärkte"}
-    _resolved(st, 40, "politics", 0.10, 0)              # genug für „alle Themen“, aber zu wenig im eigenen Thema
+    _resolved(st, 40, "culture", 0.10, 0)               # genug für „alle Themen“, aber nichts im eigenen Thema Politik
     br.refresh(force=True)
     assert br.analyze(_bm(), NOW) == {"skip": "zu wenige Vergleichsmärkte im eigenen Thema"}
-    _resolved(st, 80, "politics", 0.10, 4, start=40)    # jetzt 120 Politik-Märkte, 4 % „Ja“ bei Kurs 10 %
+    _resolved(st, 120, "politics", 0.10, 4)             # jetzt 120 Politik-Märkte, 3,3 % „Ja“ bei Kurs 10 %
     br.refresh(force=True)
     a = br.analyze(_bm(), NOW)
     # Rohabweichung −6,7 Pkt; gestaucht mit 50 gedachten Märkten bleiben −4,7
@@ -92,14 +92,17 @@ def test_base_rates_need_data_from_the_own_topic_and_shrink(tmp_path):
     assert base_model.horizon_col(30) == "p_24h" and base_model.horizon_col(50) == "p_72h" and base_model.horizon_col(0.5) == "p_1h"
 
 
-def test_base_rates_never_for_games(tmp_path):
-    """Live 15./16.11.: E-Sport-Karten und genaue Fußball-Ergebnisse (Färöer – Moldau 1:1 zu 33 % statt 14 %) mit Basisraten."""
+def test_base_rates_for_games_but_never_exact_scores(tmp_path):
+    """Live 15./16.11.: Färöer – Moldau „1:1“ zu 33 % statt 14 % geschätzt. Genaue Ergebnisse treffen zu selten – nie wetten.
+    Spiele selbst sind wieder erlaubt (Wunsch 17.11. abends), aber nicht mehr, wenn sie schon laufen."""
     st = Store(str(tmp_path / "b.sqlite"))
-    _resolved(st, 400, "sports", 0.10, 40)
-    _resolved(st, 400, "esports", 0.10, 40)
+    _resolved(st, 400, "sports", 0.10, 8)
     br = base_model.BaseRates(st)
-    for cat in ("sports", "esports"):
-        assert br.analyze(_bm(cat=cat), NOW)["skip"].startswith("Spiel – Wetten nur mit Buchmacher-Quoten")
+    assert "p_yes" in br.analyze(_bm(cat="sports"), NOW)
+    exact = {**_bm(cat="sports"), "question": "Exact Score: Faroe Islands 1 - 1 Moldova?"}
+    assert br.analyze(exact, NOW) == {"skip": "genaues Ergebnis – wird nie gewettet"}
+    live = {**_bm(cat="sports"), "game_start": NOW - timedelta(minutes=5)}
+    assert br.analyze(live, NOW) == {"skip": "Spiel läuft schon"}
 
 
 def test_base_rates_find_longshot_bias_with_clear_significance(tmp_path):

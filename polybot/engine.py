@@ -683,11 +683,23 @@ class Engine:
         }
         return cols, json.dumps({k: v for k, v in entry.items() if v not in (None, [], {})}, ensure_ascii=False, default=str)
 
+    def refuse(self, acc, o):
+        """Grundregeln für jede Wette (außer Arbitrage): kein genaues Ergebnis, Gewinnchance ≥ MIN_WIN_P, eine Wette je Spiel."""
+        m, ev, aid = o["market"], o["eval"], acc["id"]
+        if polymarket.is_exact_score(m):
+            return "genaues Ergebnis – wird nie gewettet"
+        if ev and ev.get("q") is not None and ev["q"] < config.MIN_WIN_P:
+            return f"Gewinnchance {ev['q'] * 100:.0f} % – unter {config.MIN_WIN_P * 100:.0f} %"
+        if m["category"] in config.GAME_TOPICS and self.store.has_game(aid, o["group"], m.get("event_id")):
+            return "schon eine Wette auf dieses Spiel"
+        return None
+
     def open_position(self, acc, o, min_edge):
         """Gibt den Status zurück ('eröffnet' oder Grund)."""
         m, ev, aid = o["market"], o["eval"], acc["id"]
-        if m["category"] in config.GAME_TOPICS and self.store.has_game(aid, o["group"], m.get("event_id")):
-            return "schon eine Wette auf dieses Spiel"
+        refuse = self.refuse(acc, o)
+        if refuse:
+            return refuse
         pos = self.store.open_positions(aid)
         equity = self.equity(aid, pos)
         cash = self.cash(aid)
@@ -826,13 +838,16 @@ class Engine:
             if o["base"] or self.store.has_position(m["id"], aid) or self.store.has_order(m["id"], aid):
                 o["status"][aid] = "schon gehandelt" if not o["base"] else ", ".join(o["base"])
                 continue
-            if m["category"] in config.GAME_TOPICS and self.store.has_game(aid, o["group"], m.get("event_id")):
-                o["status"][aid] = "schon eine Wette auf dieses Spiel"
+            refuse = self.refuse(acc, {**o, "eval": None})      # Gewinnchance prüft das Gebot selbst (je Seite)
+            if refuse:
+                o["status"][aid] = refuse
                 continue
             p_yes = o["analysis"]["p_yes"]
             best = None
             for side in (0, 1):
                 q = p_yes if side == 0 else 1 - p_yes
+                if q < config.MIN_WIN_P:
+                    continue
                 ask, bid = polymarket.quote(m, side)
                 limit = min(q - config.MAKER_EDGE, ask - 0.001)  # nie über/auf dem Briefkurs (sonst wäre es ein Sofortkauf)
                 limit = math.floor(limit * 1000) / 1000

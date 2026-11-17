@@ -1,7 +1,7 @@
 # Entwicklungs-Roadmap
 
 Priorität: **1** = verhindert Schaden oder ist Voraussetzung · **2** = Kern des Zielsystems · **3** = Ausbau.
-Status: ✅ erledigt (mit Tests belegt) · 🔧 in Arbeit · ⏳ geplant. Stand: 17.11.2026, Version 2.3.0.
+Status: ✅ erledigt (mit Tests belegt) · 🔧 in Arbeit · ⏳ geplant. Stand: 17.11.2026 (abends), Version 2.4.0.
 
 ## Phase 1–2 · Audit und Architektur — ✅
 Dokumente: `PROJECT_AUDIT.md`, `SYSTEM_ARCHITECTURE.md`, `TECHNICAL_DEBT.md`, `RISK_REGISTER.md`, diese Datei.
@@ -96,6 +96,17 @@ Anlass: Am 15./16.11. wetteten die Basisraten auf E-Sport-Karten und genaue Fuß
 | Keine Pausen mehr: große Verluste nur gemeldet; alle bisherigen Pausen aufgehoben; Pause unter Einstellungen wieder einschaltbar | ✅ mit Test |
 | Claude-Bericht: Wächter-Status und auffälligste Vergleichszellen der Basisraten | ✅ |
 | Datensatz ohne Auswahl nach Endvolumen aufbauen (T26) | ⏳ vorgemerkt |
+
+## Version 2.4 · Viel wetten, aber nur wahrscheinliche Ausgänge (Wunsch vom 17.11. abends) — ✅
+| Schritt | Status |
+|---|---|
+| Jede Wette (außer Arbitrage): eigene Gewinnchance ≥ 50 % – so entsteht eine Historie aus gut begründeten Wetten (Einstellung `MIN_WIN_P`) | ✅ mit Test |
+| Nie ein genaues Ergebnis („Exact Score“), auch kein „Nein“ darauf | ✅ mit Test |
+| Spiele wieder mit Basisraten (statt nur Buchmacher-Quoten), aber nicht nach Spielbeginn und weiter nur eine Wette je Spiel | ✅ mit Test |
+| Basisraten schon ab 30 Vergleichsmärkten im Thema (vorher 50), Hälften ab je 10 – mehr Wetten; Deckel 10 Pkt und Wächter bleiben | ✅ |
+
+Lernen braucht keine Wette: Der Bot speichert jede Prognose (auch ohne Kauf) und vergleicht sie mit dem Ergebnis. Die Wetten
+sind die Probe, ob sich die Prognosen in Geld auszahlen.
 
 ## Machbarkeit (geprüft)
 | Ressource | Heute | Mit Ausbau (geschätzt) | Grenze |

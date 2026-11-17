@@ -12,8 +12,8 @@ Rechnung je Markt
      Abweichung mindestens 1,64 Standardfehler groß ist (siehe engine.do_entries).
 
 Ein „guter Grund“ (seit 17.11., nach den Verlusten mit E-Sport und Fußball-Ergebnissen am 15./16.11.) – alles muss stimmen:
-  - nur echte Ja/Nein-Fragen; keine Spiele (Sport, E-Sport): Basisraten wissen nichts über die Mannschaften, dort
-    wettet der Bot nur mit Buchmacher-Quoten
+  - nur echte Ja/Nein-Fragen; nie ein genaues Ergebnis eines Spiels; nicht mehr, wenn das Spiel schon läuft
+  - (17.11. abends, Wunsch Luis: Spiele wieder erlaubt – aber nur mit Gewinnchance ≥ MIN_WIN_P und einer Wette je Spiel)
   - mindestens BASE_MIN_N_CAT Vergleichsmärkte aus demselben Thema (nicht geliehen aus anderen Themen)
   - das Muster gilt in den älteren UND den neueren Vergleichsmärkten (sonst Zufall) und widerspricht nicht allen Themen
   - die Rohabweichung ist höchstens BASE_MAX_DEV groß – mehr ist fast immer ein Fehler in den Vergleichsdaten
@@ -161,8 +161,10 @@ class BaseRates:
         return sorted(rows, key=lambda r: -abs(r["abw"]))[:top]
 
     def analyze(self, m, now):
-        if m.get("category") in config.GAME_TOPICS:
-            return {"skip": "Spiel – Wetten nur mit Buchmacher-Quoten, nicht mit Basisraten"}
+        if polymarket.is_exact_score(m):
+            return {"skip": "genaues Ergebnis – wird nie gewettet"}
+        if m.get("category") in config.GAME_TOPICS and m.get("game_start") and m["game_start"] <= now:
+            return {"skip": "Spiel läuft schon"}
         outs = [str(o).lower() for o in (m.get("outcomes") or [])]
         if len(outs) != 2:
             return {"skip": "nicht genau zwei Ausgänge"}

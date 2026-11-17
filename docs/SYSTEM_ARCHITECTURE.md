@@ -63,8 +63,8 @@
   (die Reihenfolge der Schlagwörter bei Polymarket ist nicht verlässlich). Krypto und Wetter aus der Marktfrage selbst.
   Gespeichert an Katalog (`markets`), Datensatz (`resolved`), Wetten (`positions`) und Kaufgeboten (`orders`).
 - **Zwei Spuren** je Markt: `model` (eigenes Datenmodell: Krypto, Sport, Wetter) und `base` (Basisraten, `base_model.py`).
-  Hat das eigene Modell für einen Markt nichts, bekommt er Basisraten – außer bei Spielen (`config.GAME_TOPICS`: Sport,
-  E-Sport): dort nur Buchmacher-Quoten. Basisraten-Regeln für einen „guten Grund“ stehen oben in `base_model.py`
+  Hat das eigene Modell für einen Markt nichts, bekommt er Basisraten (bei Spielen nur vor Spielbeginn). Jede Wette prüft
+  `Engine.refuse`: nie ein genaues Ergebnis (`polymarket.is_exact_score`), Gewinnchance ≥ `MIN_WIN_P`, eine Wette je Spiel. Basisraten-Regeln für einen „guten Grund“ stehen oben in `base_model.py`
   (eigenes Thema, Stabilität ältere/neuere Hälfte, Plausibilitäts-Deckel, Wächter aus `learn:summary`).
   Spiele: `engine.game_key` fasst alle Märkte einer Partie zusammen (Kürzel bis zum Datum); je Konto höchstens eine
   offene Wette oder ein Gebot je Spiel (`store.has_game`). Jede Wette merkt sich
