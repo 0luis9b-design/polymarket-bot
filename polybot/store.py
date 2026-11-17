@@ -222,6 +222,19 @@ class Store:
         with self.lock:
             return [dict(r) for r in self.db.execute("SELECT * FROM orders ORDER BY id DESC LIMIT ?", (limit,))]
 
+    def has_game(self, account, grp, event_id=None):
+        """Hat das Konto schon eine offene Wette oder ein offenes Gebot auf dieses Spiel (gleiche Gruppe oder Ereignis)?"""
+        cond, args = "grp=?", [grp]
+        if event_id:
+            cond += " OR event_id=?"
+            args.append(str(event_id))
+        with self.lock:
+            for t in ("positions", "orders"):
+                if self.db.execute(f"SELECT 1 FROM {t} WHERE account=? AND status='open' AND ({cond}) LIMIT 1",
+                                   [account] + args).fetchone():
+                    return True
+        return False
+
     def has_order(self, market_id, account):
         with self.lock:
             return self.db.execute("SELECT 1 FROM orders WHERE market_id=? AND account=? AND status='open' LIMIT 1",

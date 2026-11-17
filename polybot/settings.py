@@ -20,6 +20,7 @@ SPEC = {
     "NEWS_ENABLED": ("bool", None, None, "Ressourcen", "Schlagzeilen sammeln und zuordnen"),
     "BACKTEST_ENABLED": ("bool", None, None, "Ressourcen", "Datensatz entschiedener Märkte aufbauen und Strategien testen"),
     "HISTORY_PER_RUN": ("int", 0, 120, "Ressourcen", "Entschiedene Märkte pro Lauf nachladen (Datensatz für Backtests und Basisraten)"),
+    "RISK_PAUSE": ("bool", None, None, "Analyse", "Risikobremse pausiert Konten bei −8 % am Tag / −25 % seit Start (aus = nur Warnung)"),
     "TRADE_BASE": ("bool", None, None, "Kategorien", "Paper-Trading aller übrigen Märkte mit Basisraten (in den Konten des jeweiligen Themas)"),
     "MOVE_ALERT_PTS": ("float", 0.05, 0.50, "Benachrichtigungen", "Kursbewegung in einer Stunde, ab der ein Markt als auffällig gilt"),
     "NOTIFY_MIN_LEVEL": ("choice", LEVELS, None, "Benachrichtigungen", "Telegram ab dieser Stufe"),

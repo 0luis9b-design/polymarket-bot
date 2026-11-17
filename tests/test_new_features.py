@@ -94,7 +94,8 @@ def test_maker_order_placed_then_filled(tmp_path):
     assert store.open_orders("limit_krypto") == []
 
 
-def test_risk_brake_day_loss(tmp_path):
+def test_risk_brake_day_loss(tmp_path, monkeypatch):
+    monkeypatch.setattr(config, "RISK_PAUSE", True)   # Pausen nur noch auf Wunsch (Einstellung)
     now = datetime.now(timezone.utc).replace(microsecond=0)
     end = _end(now)
     store, eng = _eng(tmp_path, {"crypto": [{"id": "e", "markets": [_market("r", 100000, end, 0.20, 0.22)]}]})
@@ -199,7 +200,8 @@ def test_maker_cancels_order_when_market_no_longer_rated(tmp_path):
     assert store.open_orders("limit_krypto") == []
 
 
-def test_resume_after_total_loss_does_not_retrigger(tmp_path):
+def test_resume_after_total_loss_does_not_retrigger(tmp_path, monkeypatch):
+    monkeypatch.setattr(config, "RISK_PAUSE", True)   # Pausen nur noch auf Wunsch (Einstellung)
     now = datetime.now(timezone.utc).replace(microsecond=0)
     store, eng = _eng(tmp_path, {})
     store.add_cash(-300, config.START_BALANCE, "kelly_sport")  # −30 %
@@ -296,7 +298,8 @@ def test_weather_cache_survives_restart(tmp_path):
         wm._cache.clear()
 
 
-def test_known_pause_is_not_reported_again_after_restart(tmp_path):
+def test_known_pause_is_not_reported_again_after_restart(tmp_path, monkeypatch):
+    monkeypatch.setattr(config, "RISK_PAUSE", True)   # Pausen nur noch auf Wunsch (Einstellung)
     """Live-Befund 14.11.: Nach jedem Neustart standen sechs alte Risikobremsen erneut als Fehler im Protokoll."""
     now = datetime.now(timezone.utc).replace(microsecond=0)
     store, eng = _eng(tmp_path, {})

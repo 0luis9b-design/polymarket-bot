@@ -55,7 +55,7 @@
 | Strategy Research | `agents/strategy.py` | baut den Datensatz entschiedener Märkte (Preis vor Schluss + Ergebnis), testet Strategien mit zeitlicher Trennung | alle 30 min eine Portion Datensatz, Tests wenn der Datensatz gewachsen ist |
 | News Research | `agents/news.py` | RSS-Schlagzeilen sammeln, entdoppeln, Märkten zuordnen | 30 min |
 | System Guardian | `agents/guardian.py` | Ressourcen, Quellen-Ausfälle, tägliches Backup, Integrität (Datenbank + Prüfsummen-Kette der Prognosen), Aufräumen. Der Neustart einer hängenden Schleife liegt im Wachhund (`app.py`) | jeder Lauf |
-| Paper Trading | `engine.py` | virtuelle Wetten auf 91 Spielgeld-Konten (Strategie × Thema), Risikobremse, Abrechnung | jeder Lauf |
+| Paper Trading | `engine.py` | virtuelle Wetten auf 91 Spielgeld-Konten (Strategie × Thema), Verlust-Warnung, Abrechnung | jeder Lauf |
 | Berichte | `reports.py` | Claude-Review-Bericht Mi + So (13 Abschnitte, nur gemessene Werte) | Zeitplan |
 
 ## Alle Märkte im Paper-Trading (ab 2.1)
@@ -63,7 +63,11 @@
   (die Reihenfolge der Schlagwörter bei Polymarket ist nicht verlässlich). Krypto und Wetter aus der Marktfrage selbst.
   Gespeichert an Katalog (`markets`), Datensatz (`resolved`), Wetten (`positions`) und Kaufgeboten (`orders`).
 - **Zwei Spuren** je Markt: `model` (eigenes Datenmodell: Krypto, Sport, Wetter) und `base` (Basisraten, `base_model.py`).
-  Hat das eigene Modell für einen Markt nichts (z. B. Spiel in 3 Tagen), bekommt er Basisraten. Jede Wette merkt sich
+  Hat das eigene Modell für einen Markt nichts, bekommt er Basisraten – außer bei Spielen (`config.GAME_TOPICS`: Sport,
+  E-Sport): dort nur Buchmacher-Quoten. Basisraten-Regeln für einen „guten Grund“ stehen oben in `base_model.py`
+  (eigenes Thema, Stabilität ältere/neuere Hälfte, Plausibilitäts-Deckel, Wächter aus `learn:summary`).
+  Spiele: `engine.game_key` fasst alle Märkte einer Partie zusammen (Kürzel bis zum Datum); je Konto höchstens eine
+  offene Wette oder ein Gebot je Spiel (`store.has_game`). Jede Wette merkt sich
   ihre Spur (`lane`), dazu `rule` (Außenseiter-Regel), `arb`, `maker`.
 - **Konten** (seit 2.2): `config.STRATEGIES` × `config.TOPICS` → je Strategie und Thema ein Konto `<strategie>_<thema>`.
   Jedes Konto handelt nur Märkte seines Themas, mit beiden Spuren (`model`, falls es eins gibt, sonst `base` mit z ≥ 1,64);

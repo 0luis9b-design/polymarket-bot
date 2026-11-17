@@ -18,8 +18,8 @@ Ausführlich: [`docs/SYSTEM_ARCHITECTURE.md`](docs/SYSTEM_ARCHITECTURE.md) · [`
 | **News** | BBC-Schlagzeilen, per Stichwort Märkten zugeordnet (mit Quelle und Zeit, ohne Bewertung) |
 | **Guardian** | Ressourcen, Quellen-Ausfälle, tägliches Backup, Integrität, Aufräumen |
 | **Koordinator** | Takt alle 10 min, Zeitbudget, stuft fehlerhafte Agenten zurück, schreibt Mi + So den Claude-Review-Bericht |
-| **Paper Trading** | virtuelle Wetten nach den geprüften Prognosen, Risikobremse je Konto |
-| **Basisraten** | Prognose für alle Märkte ohne eigenes Modell (Politik, Wirtschaft, Kultur, E-Sport, weitere Sportarten …): wie oft trat bei gleichartigen Märkten zum gleichen Kurs „Ja“ ein |
+| **Paper Trading** | virtuelle Wetten nach den geprüften Prognosen, Verlust-Warnung je Konto |
+| **Basisraten** | Prognose für Ja/Nein-Märkte ohne eigenes Modell (Politik, Wirtschaft, Kultur …): wie oft trat bei gleichartigen Märkten desselben Themas zum gleichen Kurs „Ja“ ein – nie für Spiele |
 
 Die „Agenten“ sind Programm-Module, keine Sprachmodelle – das Budget für externe Dienste ist 0 €.
 
@@ -61,12 +61,18 @@ Angezeigt werden nur gemessene Werte; fehlt etwas, steht dort „Keine Daten ver
   und nur, wenn die Prognose die Prüfung bestanden hat.
 - Einsatz 2–6 % des Kontos je nach Sicherheit, höchstens 10 % pro Ereignis/Gruppe, 60 % insgesamt.
 - Kauf und Verkauf über das echte Orderbuch inkl. Gebühr. Früher Ausstieg, wenn der Verkaufserlös die eigene Wahrscheinlichkeit erreicht.
-- Risikobremse: −8 % an einem Tag → Pause bis zum nächsten Tag; −25 % gesamt → Pause bis „Fortsetzen“ im Dashboard.
+- Verluste: −8 % an einem Tag oder −25 % seit Start werden gemeldet, das Konto handelt aber weiter (seit 17.11.; die alte
+  Pause lässt sich unter Einstellungen → „RISK_PAUSE“ wieder einschalten).
+- **Spiele** (Sport, E-Sport): höchstens eine Wette je Spiel und Konto – Sieger, Unentschieden, genaues Ergebnis, Karten,
+  Handicap und Über/Unter zählen als ein Spiel. Grund muss ein Buchmacher-Vergleich sein (mind. 3 Buchmacher), keine Basisraten.
+- **Basisraten** handeln nur mit gutem Grund: echte Ja/Nein-Frage, mind. 50 Vergleichsmärkte aus demselben Thema, Muster gilt
+  in älteren und neueren Märkten, Rohabweichung höchstens 10 Punkte, statistisch gesichert (z ≥ 1,64), und im Thema waren die
+  Basisraten bisher nicht schlechter als der Markt (sonst sperrt der Wächter das Thema).
 - Konten (je 1.000 $ Spielgeld): **jede Strategie hat je Thema ein eigenes Konto** – 9 Strategien (Haupt, Schwelle 4/2/7,
   Schwelle 8/4/14, Fest 10 $, Ohne Ausstieg, Viertel-Kelly, Limit-Orders, Außenseiter verkaufen, Nur Arbitrage) × 11 Themen
   (Krypto, Sport, Wetter, E-Sport, Politik, Welt, Wirtschaft, Technik, Wissenschaft, Kultur, Sonstiges); Arbitrage nur in
-  Krypto, Sport und Wetter → 91 Konten. In Krypto, Sport und Wetter zählt das eigene Modell (sonst Basisraten), in allen
-  anderen Themen nur Basisraten mit statistisch gesicherter Abweichung (z ≥ 1,64). Kennungen: `<strategie>_<thema>`, z. B.
+  Krypto, Sport und Wetter → 91 Konten. In Krypto und Wetter zählt das eigene Modell (sonst Basisraten), in Sport nur
+  Buchmacher-Quoten, in E-Sport gibt es noch keine Quelle (nur die Außenseiter-Regel), in allen anderen Themen nur Basisraten. Kennungen: `<strategie>_<thema>`, z. B.
   `haupt_krypto`, `schwelle4_politik`. Telegram meldet Käufe/Verkäufe der Hauptkonten (`NOTIFY_ACCOUNTS=haupt_*`).
 
 **Wetter-Märkte:** Höchst-/Tiefsttemperatur an ~60 Flughäfen mit dem Open-Meteo-Ensemble (ECMWF, GFS, ICON, ~120 Szenarien).

@@ -11,7 +11,7 @@ import logging
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
-from . import config, events, sources, version
+from . import config, events, sources, taxonomy, version
 
 log = logging.getLogger("polybot.bericht")
 BERLIN = ZoneInfo("Europe/Berlin")
@@ -173,6 +173,18 @@ def build(coord, now, since):
     for s in (err.get("stationen") or [])[:3]:
         if s["brier"] > s["brier_market"]:
             add(f"- Wetter-Station {s['station']}: Modell {s['brier']:.3f} gegen Markt {s['brier_market']:.3f} (n = {s['n']}).")
+            n_pat += 1
+    if eng and getattr(eng, "base", None):
+        for cat, why in sorted(eng.base.blocked.items()):
+            add(f"- Basisraten-Wächter: {taxonomy.NAMES.get(cat, cat)} gesperrt – {why}.")
+            n_pat += 1
+        cells = [c for c in eng.base.cells_report() if abs(c["abw"]) >= 0.05]
+        if cells:
+            add("- Auffälligste Vergleichszellen der Basisraten (große Abweichungen deuten eher auf verzerrte Vergleichsdaten "
+                "als auf echte Chancen; über 10 Pkt wird nicht gehandelt):")
+            for c in cells[:5]:
+                add(f"  - {c['thema']}, {c['stufe'].replace('p_', '')} vor Ende, Kurs {c['kurs']}: eingetreten {c['eingetreten'] * 100:.0f} % "
+                    f"bei Ø Kurs {c['kurs_avg'] * 100:.0f} % (n = {c['n']})")
             n_pat += 1
     lab = (coord.strategy.view() or {}).get("latest") or {}
     for b in lab.get("kalibrierung") or []:

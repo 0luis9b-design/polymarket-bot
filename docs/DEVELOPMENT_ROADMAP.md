@@ -1,7 +1,7 @@
 # Entwicklungs-Roadmap
 
 Priorität: **1** = verhindert Schaden oder ist Voraussetzung · **2** = Kern des Zielsystems · **3** = Ausbau.
-Status: ✅ erledigt (mit Tests belegt) · 🔧 in Arbeit · ⏳ geplant. Stand: 14.11.2026 (spätabends), Version 2.2.0.
+Status: ✅ erledigt (mit Tests belegt) · 🔧 in Arbeit · ⏳ geplant. Stand: 17.11.2026, Version 2.3.0.
 
 ## Phase 1–2 · Audit und Architektur — ✅
 Dokumente: `PROJECT_AUDIT.md`, `SYSTEM_ARCHITECTURE.md`, `TECHNICAL_DEBT.md`, `RISK_REGISTER.md`, diese Datei.
@@ -80,6 +80,22 @@ liegen die Basisraten fast genau auf dem Marktpreis – dann gibt es keinen Vors
 
 Hinweis: Mit 91 Konten gibt es je Konto weniger Wetten – belastbare Vergleiche einzelner Felder brauchen Wochen. Für den Anfang
 sind die Zeilen (Strategie über alle Themen) und Spalten (Thema über alle Strategien) aussagekräftiger als einzelne Felder.
+
+## Version 2.3 · Nur mit gutem Grund wetten (Wunsch vom 17.11.) — ✅
+Anlass: Am 15./16.11. wetteten die Basisraten auf E-Sport-Karten und genaue Fußball-Ergebnisse (Färöer – Moldau: „1:1“ zu
+33 % geschätzt bei 14 % Marktpreis, dazu „Unentschieden“ und „2:2“ im selben Konto – alles verloren).
+
+| Schritt | Status |
+|---|---|
+| Basisraten nie für Spiele (Sport, E-Sport) – dort nur Buchmacher-Quoten als Grund | ✅ mit Test |
+| Basisraten nur für echte Ja/Nein-Fragen, mit mind. 50 Vergleichsmärkten aus demselben Thema (nicht geliehen) | ✅ mit Test |
+| Muster muss in der älteren und der neueren Hälfte der Vergleichsmärkte gelten und darf allen Themen zusammen nicht widersprechen | ✅ mit Test |
+| Rohabweichung über 10 Punkte = verzerrte Vergleichsdaten → kein Handel | ✅ mit Test |
+| Wächter: Thema gesperrt, wenn die Basisraten dort gesichert schlechter als der Markt waren (aus der Prognose-Historie, hebt sich selbst wieder auf) | ✅ mit Test |
+| Höchstens eine Wette je Spiel und Konto (alle Märkte einer Partie zusammen, auch Gebote und Außenseiter-Regel) | ✅ mit Test |
+| Keine Pausen mehr: große Verluste nur gemeldet; alle bisherigen Pausen aufgehoben; Pause unter Einstellungen wieder einschaltbar | ✅ mit Test |
+| Claude-Bericht: Wächter-Status und auffälligste Vergleichszellen der Basisraten | ✅ |
+| Datensatz ohne Auswahl nach Endvolumen aufbauen (T26) | ⏳ vorgemerkt |
 
 ## Machbarkeit (geprüft)
 | Ressource | Heute | Mit Ausbau (geschätzt) | Grenze |

@@ -54,12 +54,16 @@ def test_taxonomy_crypto_weather_and_old_bets_without_tags():
 
 
 # ---------------------------------------------------------------- Basisraten
-def _resolved(st, n, cat, p, yes, col="p_24h", start=0):
+def _resolved(st, n, cat, p, yes, col="p_24h", start=0, spread=True):
+    """n entschiedene Märkte mit Kurs p; `yes` davon mit „Ja“ – gleichmäßig über die Zeit verteilt (spread)
+    oder alle in der älteren Hälfte."""
+    yes_idx = {int(k * n / yes) for k in range(yes)} if (spread and yes) else set(range(yes))
     rows = []
     for i in range(n):
         r = {"p_1h": None, "p_6h": None, "p_24h": None, "p_72h": None, "p_7d": None}
         r[col] = p
-        rows.append((f"r{cat}{col}{start + i}", "q", cat, "2026-10-01T00:00:00+00:00", 1.0 if i < yes else 0.0,
+        end = (datetime(2026, 9, 1, tzinfo=timezone.utc) + timedelta(hours=start + i)).isoformat(timespec="seconds")
+        rows.append((f"r{cat}{col}{start + i}", "q", cat, end, 1.0 if i in yes_idx else 0.0,
                      r["p_1h"], r["p_6h"], r["p_24h"], r["p_72h"], r["p_7d"]))
     st.xmany("INSERT INTO resolved(market_id, question, category, end_date, outcome, p_1h, p_6h, p_24h, p_72h, p_7d) VALUES(?,?,?,?,?,?,?,?,?,?)", rows)
 
@@ -69,19 +73,33 @@ def _bm(mid="pm1", cat="politics", bid=0.09, ask=0.11, hours=20, outcomes=("Yes"
             "end_date": NOW + timedelta(hours=hours), "event_id": "ev1", "liquidity": 20000}
 
 
-def test_base_rates_need_data_and_shrink_small_samples(tmp_path):
+def test_base_rates_need_data_from_the_own_topic_and_shrink(tmp_path):
     st = Store(str(tmp_path / "b.sqlite"))
     br = base_model.BaseRates(st)
     assert br.analyze(_bm(), NOW) == {"skip": "zu wenige Vergleichsmärkte"}
-    _resolved(st, 40, "politics", 0.10, 0)              # wenige Märkte, alle „Nein“
+    _resolved(st, 40, "politics", 0.10, 0)              # genug für „alle Themen“, aber zu wenig im eigenen Thema
+    br.refresh(force=True)
+    assert br.analyze(_bm(), NOW) == {"skip": "zu wenige Vergleichsmärkte im eigenen Thema"}
+    _resolved(st, 80, "politics", 0.10, 4, start=40)    # jetzt 120 Politik-Märkte, 4 % „Ja“ bei Kurs 10 %
     br.refresh(force=True)
     a = br.analyze(_bm(), NOW)
-    # Rohabweichung wäre −10 Pkt; gestaucht mit 50 gedachten Märkten bleibt viel weniger übrig
-    assert 0.03 < a["p_yes"] < 0.08 and a["lane"] == "base" and a["model_id"] == "base.calib@1"
+    # Rohabweichung −6,7 Pkt; gestaucht mit 50 gedachten Märkten bleiben −4,7
+    assert 0.045 < a["p_yes"] < 0.06 and a["lane"] == "base" and a["model_id"] == "base.calib@1"
+    assert a["info"].count("Grund:") == 1 and "ältere Hälfte" in a["info"] and a["features"]["n_cat"] == 120
     assert br.analyze(_bm(hours=24 * 9), NOW)["skip"].startswith("Restlaufzeit über 8 Tage")
     assert br.analyze(_bm(outcomes=("A", "B", "C")), NOW) == {"skip": "nicht genau zwei Ausgänge"}
-    assert "p_yes" in br.analyze(_bm(outcomes=("Bayern", "Paris")), NOW)          # zwei Mannschaften: erster Ausgang wie „Ja“
+    assert br.analyze(_bm(outcomes=("Bayern", "Paris")), NOW) == {"skip": "keine Ja/Nein-Frage"}
     assert base_model.horizon_col(30) == "p_24h" and base_model.horizon_col(50) == "p_72h" and base_model.horizon_col(0.5) == "p_1h"
+
+
+def test_base_rates_never_for_games(tmp_path):
+    """Live 15./16.11.: E-Sport-Karten und genaue Fußball-Ergebnisse (Färöer – Moldau 1:1 zu 33 % statt 14 %) mit Basisraten."""
+    st = Store(str(tmp_path / "b.sqlite"))
+    _resolved(st, 400, "sports", 0.10, 40)
+    _resolved(st, 400, "esports", 0.10, 40)
+    br = base_model.BaseRates(st)
+    for cat in ("sports", "esports"):
+        assert br.analyze(_bm(cat=cat), NOW)["skip"].startswith("Spiel – Wetten nur mit Buchmacher-Quoten")
 
 
 def test_base_rates_find_longshot_bias_with_clear_significance(tmp_path):
@@ -89,11 +107,31 @@ def test_base_rates_find_longshot_bias_with_clear_significance(tmp_path):
     _resolved(st, 400, "politics", 0.10, 8)              # Kurs 10 %, eingetreten nur 2 %
     br = base_model.BaseRates(st)
     a = br.analyze(_bm(), NOW)
-    assert abs(a["p_yes"] - 0.021) < 0.003 and a["z"] < -5
+    assert abs(a["p_yes"] - 0.0289) < 0.002 and a["z"] < -5
     assert a["features"]["n_cat"] == 400 and "eingetreten 2,0 %" in a["info"].replace(".", ",")
-    # andere Kategorie ohne eigene Daten: nur die (gestauchte) Abweichung aller Bereiche
-    b = br.analyze(_bm(cat="culture"), NOW)
-    assert b["features"]["n_cat"] == 0 and a["p_yes"] < b["p_yes"] < 0.10
+    # anderes Thema ohne eigene Daten: keine geliehene Abweichung mehr
+    assert br.analyze(_bm(cat="culture"), NOW) == {"skip": "zu wenige Vergleichsmärkte im eigenen Thema"}
+
+
+def test_base_rates_reject_implausible_unstable_and_failed_topics(tmp_path):
+    st = Store(str(tmp_path / "b.sqlite"))
+    _resolved(st, 600, "politics", 0.10, 18)             # 3 % statt 10 %
+    _resolved(st, 100, "economy", 0.10, 30)              # 30 % statt 10 %: so viel ist fast immer ein Datenfehler
+    _resolved(st, 100, "tech", 0.10, 8, spread=False)    # ältere Märkte +6 Pkt, neuere −10 Pkt: kein verlässliches Muster
+    _resolved(st, 100, "culture", 0.10, 19)              # +9 Pkt – widerspricht allen Themen zusammen (−1,7 Pkt)
+    br = base_model.BaseRates(st)
+    assert br.analyze(_bm(cat="economy"), NOW) == {"skip": "Abweichung unplausibel groß"}
+    assert br.analyze(_bm(cat="tech"), NOW) == {"skip": "Muster nicht stabil"}
+    assert br.analyze(_bm(cat="culture"), NOW) == {"skip": "Muster widerspricht allen anderen Themen"}
+    assert "p_yes" in br.analyze(_bm(), NOW)
+    # Wächter: in der Prognose-Historie waren die Basisraten im Thema Politik gesichert schlechter als der Markt
+    st.kv_set("learn:summary", json.dumps({"modelle": [
+        {"category": "politics", "model": "base.calib@1", "n": 40, "clusters": 12, "z": 2.4, "brier": 0.30, "brier_market": 0.22},
+        {"category": "world", "model": "base.calib@1", "n": 40, "clusters": 12, "z": 0.9, "brier": 0.23, "brier_market": 0.22}]}))
+    br.refresh(force=True)
+    assert br.analyze(_bm(), NOW) == {"skip": "Basisraten in diesem Thema gesperrt (Wächter)"}
+    assert "world" not in br.blocked and "schlechter als der Markt" in br.blocked["politics"]
+    assert br.cells_report()[0]["thema"] == "Wirtschaft"                       # größte Abweichung zuerst (für den Bericht)
 
 
 # ---------------------------------------------------------------- Handel mit allen Märkten
@@ -141,7 +179,7 @@ def test_topic_accounts_trade_base_rates_and_store_entry(tmp_path):
     p = pos[0]
     assert p["side"] == 1 and p["lane"] == "base" and p["model"] == "base.calib@1"
     assert (p["category"], p["sub"]) == ("politics", "USA")
-    assert abs(p["own_p"] - 0.979) < 0.004 and abs(p["p_mid"] - 0.90) < 1e-6 and p["hours_left"] > 19
+    assert abs(p["own_p"] - 0.971) < 0.003 and abs(p["p_mid"] - 0.90) < 1e-6 and p["hours_left"] > 19
     e = json.loads(p["entry"])
     assert e["spur"] == "Basisraten" and abs(e["p_unser_ausgang"] - p["own_p"]) < 1e-3 and e["z"] < -5
     assert e["einordnung"] == "Politik › USA" and "Eigener Datensatz" in e["quellen"][0] and e["kontowert"] == config.START_BALANCE
@@ -160,7 +198,7 @@ def test_topic_accounts_trade_base_rates_and_store_entry(tmp_path):
 def test_base_lane_needs_statistical_support_and_can_be_switched_off(tmp_path, monkeypatch):
     raws = [_raw("p1", ["politics", "elections"])]
     st, eng = _eng(tmp_path, raws)
-    _resolved(st, 60, "politics", 0.10, 3)               # Abweichung da, aber unsicher
+    _resolved(st, 60, "politics", 0.10, 4)               # Abweichung da, aber unsicher
     eng.base.refresh(force=True)
     eng.run_cycle()
     assert not st.open_positions("haupt_politik")

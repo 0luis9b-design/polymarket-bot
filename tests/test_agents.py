@@ -732,7 +732,8 @@ def test_trade_switch_per_category(tmp_path, monkeypatch):
     assert store.open_positions() == [] and store.scalar("SELECT COUNT(*) FROM forecasts") == 2            # Prognosen laufen weiter
 
 
-def test_risk_brake_day_lock_stays_until_next_day(tmp_path):
+def test_risk_brake_day_lock_stays_until_next_day(tmp_path, monkeypatch):
+    monkeypatch.setattr(config, "RISK_PAUSE", True)   # Pausen nur noch auf Wunsch (Einstellung)
     store, eng = _engine(tmp_path, [])
     eng.run_cycle()
     aid = "haupt_krypto"

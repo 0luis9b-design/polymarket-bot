@@ -70,6 +70,13 @@ WEATHER_ENABLED = os.environ.get("WEATHER_ENABLED", "1") == "1"
 MIN_EDGE_WEATHER = _f("MIN_EDGE_WEATHER", 0.10)
 MIN_EDGE_BASE = _f("MIN_EDGE_BASE", 0.03)        # Basisraten: 3 Punkte Vorsprung nach Gebühren …
 BASE_MIN_Z = _f("BASE_MIN_Z", 1.64)               # … und die Abweichung muss statistisch gesichert sein
+BASE_MIN_N_CAT = _i("BASE_MIN_N_CAT", 50)         # … belegt mit so vielen Vergleichsmärkten aus demselben Thema
+BASE_HALF_MIN_N = _i("BASE_HALF_MIN_N", 20)       # … in der älteren und der neueren Hälfte je mindestens so viele
+BASE_MAX_DEV = _f("BASE_MAX_DEV", 0.10)           # größere Rohabweichung = verzerrte Vergleichsdaten -> kein Handel
+BASE_GUARD_MIN_N = _i("BASE_GUARD_MIN_N", 20)     # Wächter: ab so vielen Prognosen mit Ergebnis je Thema prüfen
+# Spiele (eine Partie mit Sieger, Unentschieden, genauem Ergebnis, Karten, Handicap, Über/Unter …):
+# höchstens eine Wette je Spiel und Konto, und nur mit Buchmacher-Quoten als Grund
+GAME_TOPICS = ("sports", "esports")
 TRADE_BASE = os.environ.get("TRADE_BASE", "1") == "1"   # Märkte ohne eigenes Modell ins Paper-Trading
 OTHER_PAGES = _i("OTHER_PAGES", 6)                # je 100 der aktivsten Märkte, die in den nächsten 8 Tagen enden  # Wetter-Modell ist neu -> vorsichtigere Schwelle
 WEATHER_MAX_DAYS = _f("WEATHER_MAX_DAYS", 4)
@@ -78,6 +85,8 @@ WEATHER_SPREAD_C = _f("WEATHER_SPREAD_C", 0.6)  # Grund-Unschärfe je Szenario i
 # --- Risikobremse (pro Konto) ---
 RISK_DAY_LOSS_PCT = _f("RISK_DAY_LOSS_PCT", 0.08)     # −8 % an einem Tag -> Pause bis morgen
 RISK_TOTAL_LOSS_PCT = _f("RISK_TOTAL_LOSS_PCT", 0.25) # −25 % gesamt -> Pause bis „Fortsetzen“ im Dashboard
+# Seit 17.11. (Wunsch Luis): Konten werden nicht mehr pausiert – die Grenzen lösen nur noch eine Warnung aus.
+RISK_PAUSE = os.environ.get("RISK_PAUSE", "0") == "1"
 
 # --- Limit-Orders (Maker, nur Konto „Limit-Orders“) ---
 MAKER_EDGE = _f("MAKER_EDGE", 0.05)          # Gebot so legen, dass mind. 5 Pkt Vorsprung bleiben

@@ -11,6 +11,7 @@ import json
 import logging
 import math
 import os
+import re
 import statistics
 import threading
 import time
@@ -32,6 +33,17 @@ CATS = tuple(config.MODEL_TOPICS)   # Bereiche mit eigenem Datenmodell
 # Hauptkonto je Thema (für den Status in der Analyse und den Umzug alter Konten)
 MAIN_BY_CAT = {a["topic"]: a["id"] for a in config.ACCOUNTS if a.get("strategy") == "haupt" and a.get("topic")}
 LANE_NAMES = {"model": "eigenes Datenmodell", "base": "Basisraten", "rule": "feste Regel", "arb": "Arbitrage", "maker": "Limit-Order"}
+
+
+def game_key(m):
+    """Ein Spiel = ein Schlüssel – für Sieger, Unentschieden, genaues Ergebnis, Karten, Handicap, Über/Unter.
+
+    Polymarket legt Zusatzmärkte eines Spiels teils in eigene Ereignisse; deren Kürzel beginnt aber wie das Hauptereignis
+    und enthält das Datum (z. B. „cs2-tt3-bar2-2026-11-14“). Ohne Datum im Kürzel: das Ereignis selbst.
+    """
+    slug = (m.get("event_slug") or "").lower()
+    hit = re.match(r"^(.+?-\d{4}-\d{2}-\d{2})", slug)
+    return "spiel:" + (hit.group(1) if hit else str(m.get("event_id") or m.get("id")))
 
 
 def acc_cats(acc):
@@ -137,6 +149,7 @@ class Engine:
         self.migrate_split()
         self.migrate_taxonomy()
         self.migrate_strategies()
+        self.migrate_unpause()
         self.state["paused"] = self.store.kv_json("paused_state", {}) or {}
         self.migrate_mix()
         saved = store.kv_json("last_state", {})  # letzte Analyse nach Neustart weiter anzeigen
@@ -544,10 +557,10 @@ class Engine:
                 base.append("zu wenig Liquidität")
             if not getattr(config, f"TRADE_{m['category'].upper()}", True) or (lane == "base" and not config.TRADE_BASE):
                 base.append("Bereich im Paper-Trading ausgeschaltet")
-            if lane == "base" or m["category"] in ("crypto", "weather"):
-                grp = a.get("group") or f"{m['category']}:{m['event_id'] or m['id']}"
+            if m["category"] in config.GAME_TOPICS:
+                grp = game_key(m)       # alle Märkte eines Spiels zählen zusammen (höchstens eine Wette je Konto)
             else:
-                grp = f"spiel:{m['event_id'] or m['id']}"
+                grp = a.get("group") or f"{m['category']}:{m['event_id'] or m['id']}"
             out.append({"market": m, "analysis": a, "eval": ev, "market_p": mkt_p, "base": base,
                         "group": grp, "status": {}})
         self.intel.on_results(out, now)   # Prüfung (sperrt Unplausibles über o["base"]) + Prognose-Historie
@@ -673,6 +686,8 @@ class Engine:
     def open_position(self, acc, o, min_edge):
         """Gibt den Status zurück ('eröffnet' oder Grund)."""
         m, ev, aid = o["market"], o["eval"], acc["id"]
+        if m["category"] in config.GAME_TOPICS and self.store.has_game(aid, o["group"], m.get("event_id")):
+            return "schon eine Wette auf dieses Spiel"
         pos = self.store.open_positions(aid)
         equity = self.equity(aid, pos)
         cash = self.cash(aid)
@@ -740,7 +755,7 @@ class Engine:
             days = (m["end_date"] - now).total_seconds() / 86400
             if days < 0.1 or days > config.LONGSHOT_MAX_DAYS:
                 continue
-            if m["category"] == "sports" and m.get("game_start") and m["game_start"] <= now:
+            if m["category"] in config.GAME_TOPICS and m.get("game_start") and m["game_start"] <= now:
                 continue
             mid = polymarket.mid_yes(m)
             if not (config.LONGSHOT_MIN <= mid <= config.LONGSHOT_MAX):
@@ -754,7 +769,7 @@ class Engine:
                 continue
             fee = fee_per_share(m["fee_rate"], ask_no)
             ev = {"side": 1, "price": ask_no, "fee_ps": fee, "eff": ask_no + fee, "q": 1 - mid, "edge": (1 - mid) - ask_no - fee}
-            grp = (f"{m['category']}:{m['event_id'] or m['id']}")
+            grp = game_key(m) if m["category"] in config.GAME_TOPICS else f"{m['category']}:{m['event_id'] or m['id']}"
             o = {"market": m, "eval": ev, "group": grp, "status": {}, "max_price": min(0.985, ask_no + 0.01),
                  "analysis": {"p_yes": mid, "lane": "rule", "model": "Außenseiter-Regel", "model_id": "rule.longshot@1",
                               "info": f"Außenseiter-Regel: Ja steht bei {mid * 100:.1f} % → Nein gekauft (ohne eigenes Modell: "
@@ -810,6 +825,9 @@ class Engine:
                 continue
             if o["base"] or self.store.has_position(m["id"], aid) or self.store.has_order(m["id"], aid):
                 o["status"][aid] = "schon gehandelt" if not o["base"] else ", ".join(o["base"])
+                continue
+            if m["category"] in config.GAME_TOPICS and self.store.has_game(aid, o["group"], m.get("event_id")):
+                o["status"][aid] = "schon eine Wette auf dieses Spiel"
                 continue
             p_yes = o["analysis"]["p_yes"]
             best = None
@@ -891,6 +909,9 @@ class Engine:
             if saved.get("day") != day:
                 saved = {"day": day, "equity": eq}
                 self.store.kv_set(k, json.dumps(saved))
+            if not config.RISK_PAUSE:
+                self._risk_warn(a, eq, saved)
+                continue
             manual = self.store.kv_get(f"paused:{aid}")
             reason = None
             if manual:
@@ -911,6 +932,44 @@ class Engine:
                 self.store.log(f"[{a['name']}] RISIKOBREMSE: {reason}", "error")
                 events.emit(self.store, "hoch", "risikobremse", f"Risikobremse: {a['name']}", f"{reason} · Kontowert {_usd(eq)}",
                             key=f"bremse:{aid}:{reason[:12]}", agent="trader", telegram=config.notify_account(aid), dedupe_h=20)
+
+    def _risk_warn(self, a, eq, saved):
+        """Ohne Pausen (Standard seit 17.11.): große Verluste nur melden, das Konto handelt weiter."""
+        aid = a["id"]
+        if self.state["paused"].get(aid):
+            self.state["paused"][aid] = None
+        start = float(self.store.kv_get(f"risk_base:{aid}") or config.START_BALANCE)
+        if eq <= start * (1 - config.RISK_TOTAL_LOSS_PCT):
+            what, key = f"−{config.RISK_TOTAL_LOSS_PCT * 100:.0f} % seit Start", "gesamt"
+        elif eq <= saved["equity"] * (1 - config.RISK_DAY_LOSS_PCT):
+            what, key = f"−{config.RISK_DAY_LOSS_PCT * 100:.0f} % heute", "tag"
+        else:
+            return
+        events.emit(self.store, "normal", "risikobremse", f"Großer Verlust: {a['name']}",
+                    f"{what} · Kontowert {_usd(eq)} · Konto handelt weiter (keine Pause eingestellt)",
+                    key=f"verlust:{aid}:{key}:{saved.get('day')}", agent="trader", telegram=False, dedupe_h=20)
+
+    def migrate_unpause(self):
+        """17.11.: Alle Pausen aufheben (Konten werden nicht mehr pausiert). Einmalig."""
+        st = self.store
+        if st.kv_get("unpause_v1") or config.RISK_PAUSE:
+            return
+        n = 0
+        for a in config.ACCOUNTS:
+            if st.kv_get(f"paused:{a['id']}"):
+                st.kv_set(f"paused:{a['id']}", "")
+                n += 1
+            d = st.kv_json(f"daystart:{a['id']}", {}) or {}
+            if d.get("locked"):
+                d.pop("locked")
+                st.kv_set(f"daystart:{a['id']}", json.dumps(d))
+                n += 1
+            # Verlustgrenze für eine spätere Wieder-Einschaltung ab dem jetzigen Stand
+            st.kv_set(f"risk_base:{a['id']}", round(self.equity(a["id"]), 2))
+        st.kv_set("paused_state", json.dumps({}))
+        st.kv_set("unpause_v1", datetime.now(timezone.utc).isoformat(timespec="seconds"))
+        if n:
+            st.log("Alle Pausen aufgehoben – Konten werden nicht mehr pausiert, große Verluste nur noch gemeldet")
 
     def resume(self, aid):
         # neue Bezugsgröße: −25 % zählen ab jetzt, sonst würde die Bremse sofort wieder greifen

@@ -87,8 +87,7 @@ def test_old_accounts_move_to_strategy_topic_accounts_once(tmp_path):
     # Herkunft und Verlustgrenze: neue Konten zählen ab dem übernommenen Wert, der Start bleibt erhalten
     assert store.kv_get("started_at:schwelle4_krypto") == "2026-11-10T09:00:00+00:00"
     assert abs(float(store.kv_get("risk_base:schwelle4_sport")) - 955) < 1e-6
-    assert store.kv_get("risk_base:haupt_krypto") is None
-    assert "kelly" not in store.kv_json("paused_state", {})
+    assert store.kv_json("paused_state", {}) == {}                          # seit 17.11. keine Pausen mehr
     assert os.path.exists(tmp_path / "backups" / "vor-kontoaufteilung.sqlite")
     # zweiter Start: nichts doppelt
     _new(store)

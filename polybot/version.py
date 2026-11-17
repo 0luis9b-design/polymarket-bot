@@ -1,8 +1,11 @@
 """Versionsstand des Systems. CHANGES wird im Claude-Bericht unter „Neue Funktionen“ gezeigt."""
-VERSION = "2.2.0"
+VERSION = "2.3.0"
 
 # (Datum, Version, Text) – neueste zuerst
 CHANGES = [
+    ("2026-11-17", "2.3.0", "Basisraten repariert: keine Spiele mehr (Sport/E-Sport nur mit Buchmacher-Quoten), nur Ja/Nein-Fragen, Belege aus dem eigenen Thema, Muster muss in älteren und neueren Märkten gelten, Rohabweichung höchstens 10 Pkt, Wächter sperrt Themen, in denen die Basisraten schlechter als der Markt waren"),
+    ("2026-11-17", "2.3.0", "Höchstens eine Wette je Spiel und Konto (Sieger, Unentschieden, genaues Ergebnis, Karten, Handicap, Über/Unter zählen zusammen)"),
+    ("2026-11-17", "2.3.0", "Konten werden nicht mehr pausiert – große Verluste werden nur gemeldet; alle bisherigen Pausen aufgehoben (wieder einschaltbar unter Einstellungen)"),
     ("2026-11-14", "2.2.0", "Jede Strategie hat je Thema ein eigenes Konto (9 Strategien × 11 Themen, Arbitrage nur Krypto/Sport/Wetter = 91 Konten); bisherige Wetten nach Thema übernommen"),
     ("2026-11-14", "2.2.0", "Paper-Trading: Tabelle Strategie × Thema, Filter nach Strategie, Liste pausierter Konten; Telegram-Bilanzen je Strategie zusammengefasst"),
     ("2026-11-14", "2.1.0", "Alle Märkte im Paper-Trading: Konto „Haupt · Weitere“ mit Basisraten für Märkte ohne eigenes Modell"),

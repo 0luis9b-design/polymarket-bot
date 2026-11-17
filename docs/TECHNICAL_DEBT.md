@@ -30,4 +30,5 @@ Status wird bei jeder Änderung gepflegt.
 | T23 | N | Nachrichten nur per Stichwort zugeordnet, nur BBC | `agents/news.py` | bewusst – siehe Roadmap „Bewusst nicht gebaut“ |
 | T24 | N | Für Politik, Wirtschaft, Kultur usw. gibt es keine eigenen Prognosen, nur Beobachtung und Backtests | `agents/scanner.py`, `agents/strategy.py` | bewusst – ohne Datenmodell wäre es geraten |
 | T25 | N | Basisraten nur je Bereich und Kursstufe, noch nicht je Unterbereich oder Markttyp | `base_model.py` | bewusst – erst wenn genug Daten da sind (Roadmap „Nächste Schritte“ 6) |
+| T26 | M | Datensatz entschiedener Märkte wird nach dem Endvolumen ausgewählt (≥ 2.000 $). Eingetroffene Außenseiter werden mehr gehandelt und landen eher im Datensatz – verzerrt die Basisraten nach oben | `agents/strategy.py` | abgefedert: keine Spiele, Deckel 10 Pkt, Stabilitäts-Prüfung, Wächter; sauber lösen: Auswahl nach Handel vor dem Messzeitpunkt |
 | T26 | N | Alte Wetten (vor 14.11.) haben keine vollständigen Einstiegs-Daten | `positions` | bewusst – damals nicht gespeichert; die Detailseite sagt das |
