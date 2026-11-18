@@ -22,6 +22,17 @@ from . import Agent
 
 HORIZON_ORDER = ["<6h", "6-24h", "24-72h", ">72h"]
 MIX_WEIGHTS = (0.75, 0.5, 0.25, 0.0)
+
+
+def traded_key(reg):
+    """(Schlüssel der gehandelten Variante, Schlüssel des reinen Modells) für einen Registereintrag – oder (None, None)."""
+    if not reg:
+        return None, None
+    base = f"{reg['model']}@{reg['version']}"
+    w = reg["mix_w"] if reg.get("mix_w") is not None else 1.0
+    if w >= 0.999:
+        return base, base
+    return f"{reg['model']}.mix@{reg['version']}w{int(round(w * 100))}", base
 CAT_NAMES = {"crypto": "Krypto", "sports": "Sport", "weather": "Wetter"}
 
 
@@ -140,9 +151,11 @@ class LearningAgent(Agent):
         out = []
         for (cat, key), rs in sorted(groups.items()):
             s = summarize(rs)
-            base = f"{reg[cat]['model']}@{reg[cat]['version']}" if reg.get(cat) else None
-            active = base and (key == base or key.startswith(f"{reg[cat]['model']}.mix@{reg[cat]['version']}w"))
-            s.update(category=cat, model=key, active=bool(active), gehandelt=sum(1 for r in rs if r["champion"]),
+            traded, base = traded_key(reg.get(cat))
+            # „aktiv“ = genau die Variante, mit der jetzt gehandelt wird. Ist eine Mischung freigegeben, ist das die Mischung
+            # mit dem freigegebenen Anteil; das reine Modell darunter heißt „Grundlage“ (bis 2.4 trugen beide den Stern).
+            s.update(category=cat, model=key, active=key == traded, grundlage=bool(base and key == base and key != traded),
+                     gehandelt=sum(1 for r in rs if r["champion"]),
                      horizonte={h: summarize([r for r in rs if r["horizon"] == h]) for h in HORIZON_ORDER
                                 if any(r["horizon"] == h for r in rs)},
                      nur_gueltig=summarize([r for r in rs if r["valid"]]))
@@ -289,11 +302,21 @@ class LearningAgent(Agent):
 
     # ------------------------------------------------------------------ 4./5. Experimente und Vorschläge
     def experiments(self, rows, now):
+        """Herausforderer gegen das, womit jetzt gehandelt wird.
+
+        Seit 2.5: Ist eine Mischung freigegeben (z. B. 50 % Modell), ist sie der Maßstab – nicht mehr das reine Modell.
+        Bis 2.4 wurde immer gegen das reine Modell gemessen; dann bestand dieselbe Mischung nach ihrer Freigabe sofort
+        wieder und wurde erneut vorgeschlagen (16.–18.11.: neun Wetter-Vorschläge, fünfmal dasselbe Modell aktiviert).
+        """
         out = []
         for cat, reg in self.probability.reg.items():
             champ_key = f"{reg['model']}@{reg['version']}"
+            w_cur = reg["mix_w"] if reg.get("mix_w") is not None else 1.0
+            label = champ_key if w_cur >= 0.999 else f"{champ_key} ({int(round(w_cur * 100))} % Modell)"
             cat_rows = [r for r in rows if r["category"] == cat]
-            champ = {(r["market_id"], r["horizon"]): r for r in cat_rows if r["key"] == champ_key}
+            # gehandelte Prognose = Mischung mit dem freigegebenen Anteil; das reine Modell bleibt unter „p_raw“
+            champ = {(r["market_id"], r["horizon"]): {**r, "p_raw": r["p"], "p": w_cur * r["p"] + (1 - w_cur) * r["market_p"]}
+                     for r in cat_rows if r["key"] == champ_key}
             if len(champ) < 20:
                 continue
             challengers = defaultdict(dict)
@@ -304,14 +327,17 @@ class LearningAgent(Agent):
             for key, rs in challengers.items():
                 pairs = [{**champ[k], "chal": rs[k]["p"]} for k in rs if k in champ]
                 tests.append((key, "modellwechsel", pairs))
-            for w in MIX_WEIGHTS:
-                name = "Marktpreis" if w == 0 else f"Mischung {int(w * 100)} % Modell"
-                tests.append((name, "mischung", [{**r, "chal": w * r["p"] + (1 - w) * r["market_p"], "w": w} for r in champ.values()]))
+            weights = MIX_WEIGHTS + ((1.0,) if w_cur < 0.999 else ())
+            for w in weights:
+                if abs(w - w_cur) < 0.005:
+                    continue                                   # das ist schon freigegeben – nicht gegen sich selbst testen
+                name = "Marktpreis" if w == 0 else ("Reines Modell (ohne Mischung)" if w == 1.0 else f"Mischung {int(w * 100)} % Modell")
+                tests.append((name, "mischung", [{**r, "chal": w * r["p_raw"] + (1 - w) * r["market_p"], "w": w} for r in champ.values()]))
             for key, kind, pairs in tests:
                 if len(pairs) < 20:
                     continue
                 res = self.compare(pairs)
-                res.update(category=cat, champion=champ_key, challenger=key, kind=kind)
+                res.update(category=cat, champion=label, challenger=key, kind=kind)
                 self.store.x(
                     "INSERT INTO experiments(created_at, category, champion, challenger, n_is, n_oos, clusters_oos, brier_champ_oos, "
                     "brier_chal_oos, brier_market_oos, z, passed, detail) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?) "
@@ -319,10 +345,12 @@ class LearningAgent(Agent):
                     "n_oos=excluded.n_oos, clusters_oos=excluded.clusters_oos, brier_champ_oos=excluded.brier_champ_oos, "
                     "brier_chal_oos=excluded.brier_chal_oos, brier_market_oos=excluded.brier_market_oos, z=excluded.z, "
                     "passed=excluded.passed, detail=excluded.detail",
-                    (now.isoformat(timespec="seconds"), cat, champ_key, key, res["n_is"], res["n_oos"], res["clusters_oos"],
+                    (now.isoformat(timespec="seconds"), cat, label, key, res["n_is"], res["n_oos"], res["clusters_oos"],
                      res["brier_champ_oos"], res["brier_chal_oos"], res["brier_market_oos"], res["z"], 1 if res["passed"] else 0,
                      json.dumps(res, ensure_ascii=False)))
                 out.append(res)
+            # Alte Ergebnisse gegen einen früheren Stand (anderes Modell oder anderer Mischanteil) gelten nicht mehr
+            self.store.x("DELETE FROM experiments WHERE category=? AND created_at<?", (cat, now.isoformat(timespec="seconds")))
             # Nur der beste bestandene Herausforderer wird vorgeschlagen (sonst stapeln sich Vorschläge)
             passed = [r for r in out if r["category"] == cat and r["passed"]]
             if passed:
@@ -363,12 +391,24 @@ class LearningAgent(Agent):
         key = f"{res['kind']}:{cat}:{res['challenger']}"
         if self.store.q1("SELECT 1 FROM proposals WHERE key=? AND status='offen'", (key,)):
             return None
+        # Abgelehnt? Dann frühestens nach PROPOSAL_REJECT_DAYS Tagen wieder fragen (bis 2.4: schon in der nächsten Stunde)
+        cut = (now - timedelta(days=config.PROPOSAL_REJECT_DAYS)).isoformat(timespec="seconds")
+        if self.store.q1("SELECT 1 FROM proposals WHERE key=? AND status='abgelehnt' AND decided_at>=?", (key, cut)):
+            return None
+        # Schon freigegeben und seitdem nichts am aktiven Modell geändert? Dann ist es kein neuer Vorschlag.
+        reg = self.probability.reg.get(cat) or {}
+        if res["kind"] == "mischung" and abs((reg.get("mix_w") if reg.get("mix_w") is not None else 1.0) - (res.get("w") or 0)) < 0.005:
+            return None
         name = CAT_NAMES.get(cat, cat)
         gain = f"{res['gain'] * 100:.1f} %"
         if res["kind"] == "mischung" and res["w"] == 0:
             title = f"{name}: Der Marktpreis ist klar genauer als das eigene Modell – Modell für den Handel stilllegen"
+        elif res["kind"] == "mischung" and res["w"] >= 0.999:
+            title = f"{name}: Mischung aufheben – wieder das reine Modell „{res['champion'].split(' (')[0]}“ nutzen"
         elif res["kind"] == "mischung":
-            title = f"{name}: Prognose mit dem Marktpreis mischen ({int(res['w'] * 100)} % Modell)"
+            w_cur = reg.get("mix_w") if reg.get("mix_w") is not None else 1.0
+            now_txt = "" if w_cur >= 0.999 else f", bisher {int(round(w_cur * 100))} %"
+            title = f"{name}: Prognose mit dem Marktpreis mischen ({int(res['w'] * 100)} % Modell{now_txt})"
         else:
             title = f"{name}: Modell „{res['challenger']}“ aktivieren (statt „{res['champion']}“)"
         cur = self.store.x("INSERT INTO proposals(created_at, kind, category, key, title, detail) VALUES(?,?,?,?,?,?)",

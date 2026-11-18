@@ -44,6 +44,73 @@ def _table(head, rows):
     return out
 
 
+LANES = {"model": "eigenes Modell", "base": "Basisraten", "rule": "feste Regel", "maker": "Limit-Order", None: "ohne Angabe"}
+EDGE_STEPS = [(None, 0.10, "unter 10 Pkt"), (0.10, 0.20, "10–20 Pkt"), (0.20, None, "20 Pkt und mehr")]
+
+
+def _bet_stats(rs):
+    done = [r for r in rs if r["status"] in ("won", "lost")]
+    n = len(done)
+    return {"n": n, "own": sum(r["own_p"] or 0 for r in done) / n if n else None,
+            "price": sum(r["market_p"] or 0 for r in done) / n if n else None,
+            "won": sum(1 for r in done if r["status"] == "won") / n if n else None,
+            "gv": sum(r["pnl"] or 0 for r in done), "sold": sum(1 for r in rs if r["status"] == "sold"),
+            "gv_sold": sum(r["pnl"] or 0 for r in rs if r["status"] == "sold")}
+
+
+def bets_review(st, since_iso, min_n=5):
+    """Wetten im Rückblick: Haben die gekauften Wetten so oft gewonnen, wie der Bot beim Kauf erwartet hat?
+
+    Anlass 18.11.: Die Wetter-Prognose ist im Schnitt besser als der Marktpreis, trotzdem stehen alle Wetter-Konten
+    deutlich im Minus. Der Durchschnitt über alle Märkte sagt nichts darüber, ob der Bot ausgerechnet bei den Märkten
+    richtig liegt, auf die er wettet – das sind die, bei denen er am stärksten vom Markt abweicht.
+    Zählt nur abgerechnete Wetten (gewonnen/verloren); vorzeitig verkaufte stehen getrennt daneben. Ohne Arbitrage.
+    """
+    rows = st.q("SELECT category, lane, status, own_p, market_p, edge, pnl, closed_at FROM positions "
+                "WHERE status IN ('won','lost','sold') AND COALESCE(kind,'')!='arb' AND COALESCE(lane,'')!='arb'")
+    L, recs = [], []
+    if not rows:
+        return ["Wetten im Rückblick: Keine Daten.", ""], recs
+    L.append("Wetten im Rückblick – gewinnen die gekauften Wetten so oft, wie der Bot beim Kauf erwartet hat? "
+             "(alle Konten zusammen, seit Start; „erwartet“ = eigene Gewinnchance beim Kauf, „Preis“ = was der Markt dafür verlangte)")
+    L.append("")
+    groups = {}
+    for r in rows:
+        groups.setdefault((r["category"], r["lane"] if r["lane"] in LANES else None), []).append(r)
+    table = []
+    for (cat, lane), rs in sorted(groups.items(), key=lambda kv: (-len(kv[1]), str(kv[0]))):
+        b = _bet_stats(rs)
+        recent = sum(r["pnl"] or 0 for r in rs if (r["closed_at"] or "") >= since_iso)
+        if b["n"] < min_n and not b["sold"]:
+            continue
+        table.append([taxonomy.NAMES.get(cat, cat), LANES[lane], b["n"], _f(b["own"], 0, pct=True), _f(b["price"], 0, pct=True),
+                      _f(b["won"], 0, pct=True), f"{b['gv']:+.0f} $", f"{b['sold']} / {b['gv_sold']:+.0f} $", f"{recent:+.0f} $"])
+        if b["n"] >= 30 and b["own"] - b["won"] >= 0.10:
+            recs.append(f"{taxonomy.NAMES.get(cat, cat)} ({LANES[lane]}): Die Wetten gewinnen deutlich seltener als beim Kauf erwartet "
+                        f"(erwartet Ø {b['own'] * 100:.0f} %, eingetreten {b['won'] * 100:.0f} %, Preis Ø {b['price'] * 100:.0f} %, n = {b['n']}) – "
+                        "der Bot überschätzt genau die Märkte, auf die er wettet. Mindest-Vorsprung erhöhen oder Modell prüfen.")
+    L += _table(["Thema", "Grund", "abgerechnet", "erwartet", "Preis", "gewonnen", "G/V abgerechnet", "verkauft (Anzahl / G/V)",
+                 "G/V im Zeitraum"], table)
+    L.append("")
+    # Nach behauptetem Vorsprung: Stimmen große Vorsprünge? (eigenes Modell und Basisraten)
+    sel = [r for r in rows if r["lane"] in ("model", "base", "maker") and r["edge"] is not None]
+    table = []
+    for cat in sorted({r["category"] for r in sel}):
+        for lo, hi, name in EDGE_STEPS:
+            rs = [r for r in sel if r["category"] == cat and (lo is None or r["edge"] >= lo) and (hi is None or r["edge"] < hi)]
+            b = _bet_stats(rs)
+            if b["n"] >= min_n:
+                table.append([taxonomy.NAMES.get(cat, cat), name, b["n"], _f(b["own"], 0, pct=True), _f(b["price"], 0, pct=True),
+                              _f(b["won"], 0, pct=True), f"{b['gv']:+.0f} $"])
+    if table:
+        L.append("Dieselben Wetten nach dem Vorsprung, den der Bot beim Kauf sah (eigenes Modell, Basisraten, Limit-Orders). "
+                 "Ein echter Vorsprung zeigt sich daran, dass „gewonnen“ über „Preis“ liegt:")
+        L.append("")
+        L += _table(["Thema", "Vorsprung beim Kauf", "abgerechnet", "erwartet", "Preis", "gewonnen", "G/V"], table)
+        L.append("")
+    return L, recs
+
+
 def build(coord, now, since):
     """Gibt (Titel, Markdown, Daten, Empfehlungen) zurück."""
     st, eng = coord.store, coord.engine
@@ -91,10 +158,14 @@ def build(coord, now, since):
         "Vorsprung = wie viel besser als der Marktpreis zum selben Zeitpunkt (negativ = schlechter). "
         "z unter −1,64 = gesichert besser als der Markt, über +1,64 = gesichert schlechter.")
     add("")
-    rows = [[CAT.get(m["category"], m["category"]), m["model"] + (" ★" if m["active"] else ""), m["n"], m["clusters"], _f(m["brier"]),
+    rows = [[CAT.get(m["category"], m["category"]), m["model"] + (" ★" if m["active"] else (" (Grundlage)" if m.get("grundlage") else "")),
+             m["n"], m["clusters"], _f(m["brier"]),
              _f(m["brier_market"]), _f(m["skill"], 1, pct=True, sign=True), _f(m["z"], 2, sign=True), _f(m["hit"], 0, pct=True),
              _f(m["bias"], 1, pct=True, sign=True)] for m in models]
     L += _table(["Bereich", "Modell (★ aktiv)", "n", "Ereignisse", "Brier", "Brier Markt", "Vorsprung", "z", "Treffer", "Verzerrung"], rows)
+    add("")
+    add("★ = damit wird jetzt gehandelt. Ist eine Mischung mit dem Marktpreis freigegeben, trägt die Mischung den Stern; "
+        "das reine Modell darunter steht als „Grundlage“ da und wird nicht direkt gehandelt.")
     add("")
     active = [m for m in models if m["active"]]
     data["modelle"] = [{k: m[k] for k in ("category", "model", "n", "brier", "brier_market", "skill", "z")} for m in active]
@@ -246,6 +317,9 @@ def build(coord, now, since):
             rows.append(line)
         L += _table(["Strategie"] + [n for _, n in topics], rows)
         add("")
+    lines, more = bets_review(st, since_iso)
+    L += lines
+    recs += more
     add(f"Backtests auf entschiedenen Märkten (Datensatz: {(lab.get('datensatz') or {}).get('mit_kurs_24h', 0)} Märkte mit Kursverlauf; nur der spätere Prüfteil zählt):")
     add("")
     rows = [[s["name"], s["is"].get("n", 0), _f(s["is"].get("roi"), 1, pct=True, sign=True), s["oos"].get("n", 0),

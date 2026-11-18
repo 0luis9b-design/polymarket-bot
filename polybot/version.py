@@ -1,8 +1,12 @@
 """Versionsstand des Systems. CHANGES wird im Claude-Bericht unter „Neue Funktionen“ gezeigt."""
-VERSION = "2.4.0"
+VERSION = "2.5.0"
 
 # (Datum, Version, Text) – neueste zuerst
 CHANGES = [
+    ("2026-11-18", "2.5.0", "Basisraten-Wächter sperrt ein Thema schon, wenn die Basisraten dort wahrscheinlich schlechter als der Markt sind (z ≥ 1,0, Einstellung BASE_GUARD_Z) – betrifft jetzt Sport"),
+    ("2026-11-18", "2.5.0", "Lernsystem misst gegen die freigegebene Mischung statt gegen das reine Modell: keine wiederholten gleichen Vorschläge mehr; abgelehnte Vorschläge kommen frühestens nach 7 Tagen wieder"),
+    ("2026-11-18", "2.5.0", "Claude-Bericht: Stern nur noch an der Variante, mit der gehandelt wird (keine falsche Warnung „Handel aussetzen“ mehr); neu „Wetten im Rückblick“ – erwartete gegen tatsächliche Gewinnquote je Thema und nach Vorsprung"),
+    ("2026-11-18", "2.5.0", "Betrieb: Polymarket-Fehler 500 beim Datensatz bricht den Strategie-Agenten nicht mehr ab; Krypto-Kurse zuerst über Binance-Vision (api.binance.com sperrt den US-Server)"),
     ("2026-11-17", "2.4.0", "Viel wetten, aber nur auf wahrscheinliche Ausgänge: eigene Gewinnchance mindestens 50 % (Einstellung MIN_WIN_P); nie ein genaues Ergebnis"),
     ("2026-11-17", "2.4.0", "Spiele (Sport, E-Sport) wieder mit Basisraten – mit Gewinnchance ≥ 50 %, einer Wette je Spiel, nicht mehr nach Spielbeginn; Basisraten schon ab 30 Vergleichsmärkten im Thema"),
     ("2026-11-17", "2.3.0", "Basisraten repariert: keine Spiele mehr (Sport/E-Sport nur mit Buchmacher-Quoten), nur Ja/Nein-Fragen, Belege aus dem eigenen Thema, Muster muss in älteren und neueren Märkten gelten, Rohabweichung höchstens 10 Pkt, Wächter sperrt Themen, in denen die Basisraten schlechter als der Markt waren"),

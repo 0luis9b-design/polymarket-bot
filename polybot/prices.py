@@ -2,6 +2,10 @@
 
 Polymarket entscheidet die Krypto-Märkte mit Binance BTC/USDT. Binance sperrt aber
 US-Server, darum gibt es Ersatzquellen (Coinbase, Kraken). Der Unterschied ist winzig.
+
+Reihenfolge (seit 2.5): zuerst Binance-Vision (data-api.binance.vision, Binances öffentlicher Datenspiegel mit
+denselben Kursen, auch von US-Servern erreichbar). Der Server läuft bei Railway in Kalifornien; dort lehnt
+api.binance.com jeden Abruf ab – bis 2.4 kam deshalb jeder zweite Binance-Abruf als Fehler zurück (Bericht 18.11.: 50 %).
 """
 import logging
 import time
@@ -59,8 +63,8 @@ def hourly_closes(asset):
         return hit[1], hit[2]
     s = SYMBOLS[asset]
     chain = [
-        ("Binance", lambda: _binance("api.binance.com", s["binance"])),
         ("Binance-Vision", lambda: _binance("data-api.binance.vision", s["binance"])),
+        ("Binance", lambda: _binance("api.binance.com", s["binance"])),
         ("Coinbase", lambda: _coinbase(s["coinbase"])),
         ("Kraken", lambda: _kraken(s["kraken"])),
     ]

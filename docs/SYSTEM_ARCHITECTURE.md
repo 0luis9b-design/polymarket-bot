@@ -56,7 +56,7 @@
 | News Research | `agents/news.py` | RSS-Schlagzeilen sammeln, entdoppeln, Märkten zuordnen | 30 min |
 | System Guardian | `agents/guardian.py` | Ressourcen, Quellen-Ausfälle, tägliches Backup, Integrität (Datenbank + Prüfsummen-Kette der Prognosen), Aufräumen. Der Neustart einer hängenden Schleife liegt im Wachhund (`app.py`) | jeder Lauf |
 | Paper Trading | `engine.py` | virtuelle Wetten auf 91 Spielgeld-Konten (Strategie × Thema), Verlust-Warnung, Abrechnung | jeder Lauf |
-| Berichte | `reports.py` | Claude-Review-Bericht Mi + So (13 Abschnitte, nur gemessene Werte) | Zeitplan |
+| Berichte | `reports.py` | Claude-Review-Bericht Mi + So (13 Abschnitte, nur gemessene Werte; in Abschnitt 9 „Wetten im Rückblick“: erwartete gegen tatsächliche Gewinnquote) | Zeitplan |
 
 ## Alle Märkte im Paper-Trading (ab 2.1)
 - **Einordnung** (`taxonomy.py`): Bereich › Unterbereich › Detail aus den Polymarket-Schlagwörtern, in fester Rangfolge
@@ -113,6 +113,9 @@ Prognose-Zeitpunkt. 7. Ist ein Herausforderer an **späteren** Daten klar besser
   Teil nicht schlechter. Pro Bereich wird nur der beste bestandene Herausforderer vorgeschlagen.
 - Rückfall: aktives Modell wird laufend gegen seinen Vorgänger gemessen; ist es klar schlechter, entsteht
   ein Vorschlag „zurückrollen“.
+- Maßstab ist immer die gehandelte Variante: Ist eine Mischung mit dem Marktpreis freigegeben (z. B. 25 % Modell), messen sich
+  Herausforderer und andere Mischanteile an dieser Mischung (seit 2.5; vorher am reinen Modell, was dieselben Vorschläge
+  wiederholte). Ein abgelehnter Vorschlag kommt frühestens nach 7 Tagen wieder.
 
 ## Kosten- und Ressourcen-Steuerung
 - Jede Quelle hat Tagesbudget, Mindestabstand und Fehler-Pause (`sources.py`). Ist das Budget leer,

@@ -15,12 +15,14 @@ Backtests
   Einsatz immer 1 $ je Wette. Sicherheit eines Ergebnisses über Tages-Gruppen (Wetten desselben Tages hängen zusammen).
 """
 import json
+import logging
 import math
 import statistics
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 
 from .. import config, events, polymarket, taxonomy
+from ..http import HttpError
 from . import Agent
 from .scanner import CATEGORY_NAMES, CATEGORY_TAGS
 
@@ -29,6 +31,7 @@ FEE = {"crypto": 0.07}
 FEE_DEFAULT = 0.05
 HALF_SPREAD = 0.01
 MIN_BETS = 30
+log = logging.getLogger("polybot.strategy")
 
 
 def price_at(history, ts, tolerance=3 * 3600):
@@ -220,13 +223,30 @@ class StrategyAgent(Agent):
         end_max = (oldest_dt or now).strftime("%Y-%m-%dT%H:%M:%SZ")
         backfill = bool(oldest_dt)
         added = skipped = gaps = seen = 0
+        stop = None
         # Krypto: die zuletzt beendeten Märkte sind fast nur 5-Minuten-Märkte („Up or Down“) – deshalb mehrere Seiten
         for page in range(HISTORY_MAX_PAGES):
             if added >= limit or self.time_left(deadline) < 8:
                 break
-            raws = self.fetch_markets({"tag_id": tag_id, "related_tags": "true", "closed": "true", "order": "endDate", "include_tag": "true",
-                                       "ascending": "false", "end_date_max": end_max, "volume_num_min": config.HISTORY_MIN_VOLUME,
-                                       "limit": 100, "offset": page * 100})
+            params = {"tag_id": tag_id, "related_tags": "true", "closed": "true", "order": "endDate", "include_tag": "true",
+                      "ascending": "false", "end_date_max": end_max, "volume_num_min": config.HISTORY_MIN_VOLUME,
+                      "limit": 100, "offset": page * 100}
+            try:
+                raws = self.fetch_markets(params)
+            except HttpError as e:
+                # Live-Befund 17./18.11.: Polymarket antwortet bei manchen Abfragen mit „HTTP 500“ (Fehler auf deren Seite).
+                # Dann diese Portion beenden statt den ganzen Agenten abbrechen – was schon gespeichert ist, bleibt, und
+                # die Backtests laufen trotzdem. Die Abfrage wird mitgeschrieben, damit sich die Ursache eingrenzen lässt.
+                if e.status is None or e.status < 500:
+                    raise
+                stop = (f"Polymarket-Fehler {e.status} bei Seite {page + 1} ({CATEGORY_NAMES.get(cat, cat)}, "
+                        f"{'ältere' if backfill else 'neueste'} Märkte)")
+                log.warning("Datensatz: %s · Abfrage %s", stop, {k: v for k, v in params.items() if k != "include_tag"})
+                fails = self.store.kv_json("hist:gamma_fail", {})
+                k = f"{cat}|{'alt' if backfill else 'neu'}|{page}"
+                fails[k] = fails.get(k, 0) + 1
+                self.store.kv_set("hist:gamma_fail", json.dumps(fails))
+                break
             seen += len(raws)
             ids = [str(r.get("id")) for r in raws]
             have = set()
@@ -271,8 +291,11 @@ class StrategyAgent(Agent):
                 added += 1
             if len(raws) < 100:
                 break
-        return {"kategorie": CATEGORY_NAMES.get(cat, cat), "richtung": "ältere" if backfill else "neueste", "geprüft": seen,
-                "neu": added, "übersprungen": skipped, "ohne_kurse": gaps}
+        out = {"kategorie": CATEGORY_NAMES.get(cat, cat), "richtung": "ältere" if backfill else "neueste", "geprüft": seen,
+               "neu": added, "übersprungen": skipped, "ohne_kurse": gaps}
+        if stop:
+            out["abgebrochen"] = stop
+        return out
 
     # ------------------------------------------------------------------ Backtests
     def dataset(self):

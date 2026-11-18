@@ -1,7 +1,7 @@
 # Entwicklungs-Roadmap
 
 Priorität: **1** = verhindert Schaden oder ist Voraussetzung · **2** = Kern des Zielsystems · **3** = Ausbau.
-Status: ✅ erledigt (mit Tests belegt) · 🔧 in Arbeit · ⏳ geplant. Stand: 17.11.2026 (abends), Version 2.4.0.
+Status: ✅ erledigt (mit Tests belegt) · 🔧 in Arbeit · ⏳ geplant. Stand: 18.11.2026 (abends), Version 2.5.0.
 
 ## Phase 1–2 · Audit und Architektur — ✅
 Dokumente: `PROJECT_AUDIT.md`, `SYSTEM_ARCHITECTURE.md`, `TECHNICAL_DEBT.md`, `RISK_REGISTER.md`, diese Datei.
@@ -105,6 +105,17 @@ Anlass: Am 15./16.11. wetteten die Basisraten auf E-Sport-Karten und genaue Fuß
 | Spiele wieder mit Basisraten (statt nur Buchmacher-Quoten), aber nicht nach Spielbeginn und weiter nur eine Wette je Spiel | ✅ mit Test |
 | Basisraten schon ab 30 Vergleichsmärkten im Thema (vorher 50), Hälften ab je 10 – mehr Wetten; Deckel 10 Pkt und Wächter bleiben | ✅ |
 
+## Version 2.5 · Befunde aus dem Claude-Review vom 18.11. (Freigabe Luis) — ✅
+| Schritt | Status |
+|---|---|
+| Wächter sperrt Basisraten eines Themas schon bei „wahrscheinlich schlechter als der Markt“ (z ≥ 1,0, Einstellung `BASE_GUARD_Z`); Anlass: Sport lag mit z = 1,64 genau auf der alten Grenze | ✅ mit Test |
+| Lernsystem misst Herausforderer gegen die freigegebene Mischung (nicht mehr gegen das reine Modell) – dieselbe Mischung wird nach der Freigabe nicht erneut vorgeschlagen; „zurück zum reinen Modell“ wird mitgeprüft; alte Testergebnisse gegen einen früheren Stand werden gelöscht | ✅ mit Test |
+| Abgelehnte Vorschläge kommen frühestens nach 7 Tagen wieder (`PROPOSAL_REJECT_DAYS`) | ✅ mit Test |
+| Bericht und Dashboard: Stern nur an der gehandelten Variante, reines Modell als „Grundlage“ – damit entfällt die falsche Warnung „Wetter: Handel aussetzen“ | ✅ mit Test |
+| Bericht „Wetten im Rückblick“: erwartete Gewinnchance beim Kauf gegen Preis und tatsächliche Gewinnquote, je Thema/Grund und nach Vorsprung beim Kauf – beantwortet, warum Wetter-Konten trotz guter Prognose verlieren | ✅ mit Test |
+| Strategie-Agent: Polymarket-Fehler 500 beendet nur die Portion (Gespeichertes bleibt, Backtests laufen), Abfrage wird mitgeschrieben (`hist:gamma_fail`, Log `polybot.strategy`) | ✅ mit Test |
+| Krypto-Kurse zuerst über Binance-Vision; api.binance.com nur noch als Ersatz (sperrt US-Server, Fehlerquote 50 %) | ✅ mit Test |
+
 Lernen braucht keine Wette: Der Bot speichert jede Prognose (auch ohne Kauf) und vergleicht sie mit dem Ergebnis. Die Wetten
 sind die Probe, ob sich die Prognosen in Geld auszahlen.
 
@@ -140,6 +151,8 @@ Ergebnis: alles läuft auf dem vorhandenen Railway-Dienst ohne Zusatzkosten.
 6. **Basisraten verfeinern**, sobald je Bereich einige Hundert entschiedene Märkte da sind: nach Unterbereich (z. B. Fußball
    getrennt von NBA) und nach Markttyp (Sieger, Handicap, Über/Unter).
 7. **`engine.py` weiter zerlegen** (T9) – erst wenn das neue System zwei Wochen stabil läuft.
+8. **Ursache der Polymarket-Fehler 500 eingrenzen**, sobald `hist:gamma_fail` ein paar Tage gezählt hat (welches Thema, welche Richtung, welche Seite).
+9. **Wetter: Mindest-Vorsprung oder Modell prüfen**, falls „Wetten im Rückblick“ zeigt, dass die Wetten seltener gewinnen als erwartet.
 
 ## Vorgemerkt (aus früheren Absprachen)
 Wetter am Messtag mit Live-Messwerten (METAR) · Export als Tabelle · Auswertung nach Quelle

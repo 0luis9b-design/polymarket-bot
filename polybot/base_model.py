@@ -18,7 +18,8 @@ Ein „guter Grund“ (seit 17.11., nach den Verlusten mit E-Sport und Fußball-
   - das Muster gilt in den älteren UND den neueren Vergleichsmärkten (sonst Zufall) und widerspricht nicht allen Themen
   - die Rohabweichung ist höchstens BASE_MAX_DEV groß – mehr ist fast immer ein Fehler in den Vergleichsdaten
     (Beispiel: ein genaues Fußball-Ergebnis, das eintrifft, wird viel mehr gehandelt und landet eher im Datensatz)
-  - im Thema haben sich die Basisraten bisher nicht als schlechter als der Markt erwiesen (Wächter, aus der Prognose-Historie)
+  - im Thema haben sich die Basisraten bisher nicht als schlechter als der Markt erwiesen (Wächter, aus der Prognose-Historie;
+    seit 2.5 sperrt er schon bei „wahrscheinlich schlechter“, z ≥ BASE_GUARD_Z = 1,0, und gibt das Thema selbst wieder frei)
 
 Ohne Blick in die Zukunft: Der Datensatz enthält nur Märkte, die vor dem jetzigen Zeitpunkt entschieden wurden, und
 deren Kurse zu festen Zeitpunkten vor dem geplanten Ende.
@@ -98,9 +99,11 @@ class BaseRates:
             if m.get("model") != MODEL_ID or (m.get("n") or 0) < config.BASE_GUARD_MIN_N:
                 continue
             z, ev = m.get("z"), m.get("clusters") or 0
-            if z is not None and z >= config.BASE_MIN_Z and ev >= 5:
-                out[m["category"]] = (f"Basisraten waren in diesem Thema bisher schlechter als der Markt "
-                                      f"(Brier {m.get('brier', 0):.3f} gegen {m.get('brier_market', 0):.3f}, {m['n']} Prognosen)")
+            worse = (m.get("brier") or 0) > (m.get("brier_market") or 0)
+            if z is not None and z >= config.BASE_GUARD_Z and worse and ev >= 5:
+                sure = "gesichert" if z >= config.BASE_MIN_Z else "wahrscheinlich"
+                out[m["category"]] = (f"Basisraten waren in diesem Thema bisher {sure} schlechter als der Markt "
+                                      f"(Brier {m.get('brier', 0):.3f} gegen {m.get('brier_market', 0):.3f}, z = {z:+.2f}, {m['n']} Prognosen)")
         return out
 
     def cell(self, cat, col, b, half=None):

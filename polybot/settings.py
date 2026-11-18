@@ -20,6 +20,7 @@ SPEC = {
     "NEWS_ENABLED": ("bool", None, None, "Ressourcen", "Schlagzeilen sammeln und zuordnen"),
     "BACKTEST_ENABLED": ("bool", None, None, "Ressourcen", "Datensatz entschiedener Märkte aufbauen und Strategien testen"),
     "HISTORY_PER_RUN": ("int", 0, 120, "Ressourcen", "Entschiedene Märkte pro Lauf nachladen (Datensatz für Backtests und Basisraten)"),
+    "BASE_GUARD_Z": ("float", 0.5, 3.0, "Analyse", "Basisraten-Wächter: Thema sperren ab diesem z-Wert gegen den Markt (1,0 = wahrscheinlich schlechter, 1,64 = gesichert schlechter)"),
     "MIN_WIN_P": ("float", 0.0, 0.9, "Analyse", "Mindest-Gewinnchance der gewählten Seite (0,5 = nur Wetten, die eher gewinnen als verlieren)"),
     "RISK_PAUSE": ("bool", None, None, "Analyse", "Risikobremse pausiert Konten bei −8 % am Tag / −25 % seit Start (aus = nur Warnung)"),
     "TRADE_BASE": ("bool", None, None, "Kategorien", "Paper-Trading aller übrigen Märkte mit Basisraten (in den Konten des jeweiligen Themas)"),

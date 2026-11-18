@@ -16,7 +16,7 @@
   }
   function modelCols(max) {
     return [
-      { label: "Modell", get: function (m) { return h("span", { class: "nowrap" }, m.model, m.active ? " " : "", m.active ? PB.chip("aktiv", "acc") : null); } },
+      { label: "Modell", get: function (m) { return h("span", { class: "nowrap" }, m.model, m.active || m.grundlage ? " " : "", m.active ? PB.chip("aktiv", "acc") : m.grundlage ? PB.chip("Grundlage") : null); } },
       { label: "Prognosen", num: true, get: function (m) { return F.num(m.n); } },
       { label: "Ereignisse", num: true, cls: "hide-s", get: function (m) { return F.num(m.clusters); } },
       { label: "Brier", num: true, get: function (m) { return F.num(m.brier, 3); } },

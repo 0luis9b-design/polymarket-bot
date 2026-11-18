@@ -74,6 +74,9 @@ BASE_MIN_N_CAT = _i("BASE_MIN_N_CAT", 30)         # … belegt mit so vielen Ver
 BASE_HALF_MIN_N = _i("BASE_HALF_MIN_N", 10)       # … in der älteren und der neueren Hälfte je mindestens so viele
 BASE_MAX_DEV = _f("BASE_MAX_DEV", 0.10)           # größere Rohabweichung = verzerrte Vergleichsdaten -> kein Handel
 BASE_GUARD_MIN_N = _i("BASE_GUARD_MIN_N", 20)     # Wächter: ab so vielen Prognosen mit Ergebnis je Thema prüfen
+# Wächter sperrt ein Thema schon, wenn die Basisraten dort wahrscheinlich schlechter als der Markt sind (z ≥ 1,0),
+# nicht erst, wenn es gesichert ist (1,64). Anlass 18.11.: Sport lag mit z = 1,64 genau auf der Grenze und wettete weiter.
+BASE_GUARD_Z = _f("BASE_GUARD_Z", 1.0)
 # Spiele (eine Partie mit Sieger, Unentschieden, genauem Ergebnis, Karten, Handicap, Über/Unter …):
 # höchstens eine Wette je Spiel und Konto, und nur mit Buchmacher-Quoten als Grund
 GAME_TOPICS = ("sports", "esports")
@@ -226,6 +229,7 @@ EXPERIMENT_MIN_OOS = _i("EXPERIMENT_MIN_OOS", 100)    # Mindestzahl späterer Pr
 EXPERIMENT_MIN_CLUSTERS = _i("EXPERIMENT_MIN_CLUSTERS", 30)
 EXPERIMENT_MIN_GAIN = _f("EXPERIMENT_MIN_GAIN", 0.02) # Brier mindestens 2 % besser
 EXPERIMENT_MIN_Z = _f("EXPERIMENT_MIN_Z", 1.64)
+PROPOSAL_REJECT_DAYS = _i("PROPOSAL_REJECT_DAYS", 7)  # abgelehnter Vorschlag kommt frühestens nach so vielen Tagen wieder
 REPORT_DAYS = [int(x) for x in os.environ.get("REPORT_DAYS", "2,6").split(",") if x.strip().isdigit()]  # 0=Mo … 6=So
 REPORT_HOUR = _i("REPORT_HOUR", 17)
 BACKUP_KEEP = _i("BACKUP_KEEP", 7)
