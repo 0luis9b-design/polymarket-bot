@@ -1,7 +1,7 @@
 # Entwicklungs-Roadmap
 
 Priorität: **1** = verhindert Schaden oder ist Voraussetzung · **2** = Kern des Zielsystems · **3** = Ausbau.
-Status: ✅ erledigt (mit Tests belegt) · 🔧 in Arbeit · ⏳ geplant. Stand: 18.11.2026 (abends), Version 2.5.0.
+Status: ✅ erledigt (mit Tests belegt) · 🔧 in Arbeit · ⏳ geplant. Stand: 18.11.2026 (abends), Version 2.5.1.
 
 ## Phase 1–2 · Audit und Architektur — ✅
 Dokumente: `PROJECT_AUDIT.md`, `SYSTEM_ARCHITECTURE.md`, `TECHNICAL_DEBT.md`, `RISK_REGISTER.md`, diese Datei.
@@ -115,6 +115,7 @@ Anlass: Am 15./16.11. wetteten die Basisraten auf E-Sport-Karten und genaue Fuß
 | Bericht „Wetten im Rückblick“: erwartete Gewinnchance beim Kauf gegen Preis und tatsächliche Gewinnquote, je Thema/Grund und nach Vorsprung beim Kauf – beantwortet, warum Wetter-Konten trotz guter Prognose verlieren | ✅ mit Test |
 | Strategie-Agent: Polymarket-Fehler 500 beendet nur die Portion (Gespeichertes bleibt, Backtests laufen), Abfrage wird mitgeschrieben (`hist:gamma_fail`, Log `polybot.strategy`) | ✅ mit Test |
 | Krypto-Kurse zuerst über Binance-Vision; api.binance.com nur noch als Ersatz (sperrt US-Server, Fehlerquote 50 %) | ✅ mit Test |
+| 2.5.1: METAR-Budget-Meldungen als eine Sammelzeile alle 10 Minuten statt über 1.000 Zeilen nach jedem Neustart | ✅ mit Test |
 
 Lernen braucht keine Wette: Der Bot speichert jede Prognose (auch ohne Kauf) und vergleicht sie mit dem Ergebnis. Die Wetten
 sind die Probe, ob sich die Prognosen in Geld auszahlen.

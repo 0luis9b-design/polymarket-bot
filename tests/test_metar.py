@@ -94,3 +94,20 @@ def test_measurement_day_uses_observations_and_corrects_models():
     # Tests ohne METAR-Abruf holen nie echte Daten
     assert wm.analyze(m(13), now=now, fetch=fetch_ens)["skip"].startswith("Messtag läuft schon")
     assert wm.analyze(m(13), now=now + timedelta(days=1), fetch=fetch_ens)["skip"] == "Messtag vorbei"
+
+
+def test_budget_hold_back_logs_once_not_per_station(caplog):
+    """Live 18.11.: Nach dem Neustart je Station und Markt eine Zeile (über 1.000) – Railway verwarf Log-Meldungen."""
+    from polybot.http import HttpError
+    metar.reset()
+
+    def blocked(url, params=None, **kw):
+        raise HttpError("METAR (aviationweather.gov): Minuten-Limit", blocked=True)
+    t0 = 1_800_000_000.0
+    with caplog.at_level("INFO", logger="polybot.metar"):
+        for k in range(300):
+            assert metar.observations(f"S{k % 60:03d}", fetch=blocked, now=t0 + k) is None
+        assert len(caplog.records) == 1
+        metar.observations("S001", fetch=blocked, now=t0 + 700)                     # nach 10 Minuten eine Sammelzeile
+    assert len(caplog.records) == 2 and "300 Abruf(e)" in caplog.records[1].message
+    assert not metar._failed                                                      # eigenes Budget ist kein Stationsfehler

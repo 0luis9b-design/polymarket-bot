@@ -36,3 +36,4 @@ Status wird bei jeder Änderung gepflegt.
 | T28 | N | Bericht markierte reines Modell und alle Mischungen als „aktiv“ und warnte deshalb „Handel aussetzen“ für ein Modell, das gar nicht direkt gehandelt wurde | Bericht 18.11. | erledigt 2.5 – Stern nur an der gehandelten Variante |
 | T29 | M | Strategie-Agent brach bei Polymarket-Fehler 500 ganz ab (31 von 137 Läufen) | Logs 15.–18.11. | abgefedert 2.5 – Portion endet, Rest läuft; Ursache noch offen (Abfragen werden gezählt) |
 | T30 | N | Krypto-Kurse fragten zuerst api.binance.com (sperrt US-Server) – jeder zweite Abruf ein Fehler | Bericht 18.11.: 50 % | erledigt 2.5 – Binance-Vision zuerst |
+| T31 | N | Nach jedem Neustart über 1.000 gleiche METAR-Zeilen („Minuten-Limit“) in einer Sekunde – Railway verwarf Log-Meldungen, darunter hätten auch Berichtszeilen sein können | Logs 18.11. 23:02: 169 verworfen | erledigt 2.5.1 – eine Sammelzeile alle 10 Minuten |

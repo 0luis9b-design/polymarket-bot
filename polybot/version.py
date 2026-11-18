@@ -1,8 +1,9 @@
 """Versionsstand des Systems. CHANGES wird im Claude-Bericht unter „Neue Funktionen“ gezeigt."""
-VERSION = "2.5.0"
+VERSION = "2.5.1"
 
 # (Datum, Version, Text) – neueste zuerst
 CHANGES = [
+    ("2026-11-18", "2.5.1", "Log: vom eigenen Budget zurückgehaltene METAR-Abrufe nur noch als eine Sammelzeile alle 10 Minuten (nach Neustarts waren es über 1.000 Zeilen, Railway verwarf Meldungen)"),
     ("2026-11-18", "2.5.0", "Basisraten-Wächter sperrt ein Thema schon, wenn die Basisraten dort wahrscheinlich schlechter als der Markt sind (z ≥ 1,0, Einstellung BASE_GUARD_Z) – betrifft jetzt Sport"),
     ("2026-11-18", "2.5.0", "Lernsystem misst gegen die freigegebene Mischung statt gegen das reine Modell: keine wiederholten gleichen Vorschläge mehr; abgelehnte Vorschläge kommen frühestens nach 7 Tagen wieder"),
     ("2026-11-18", "2.5.0", "Claude-Bericht: Stern nur noch an der Variante, mit der gehandelt wird (keine falsche Warnung „Handel aussetzen“ mehr); neu „Wetten im Rückblick“ – erwartete gegen tatsächliche Gewinnquote je Thema und nach Vorsprung"),

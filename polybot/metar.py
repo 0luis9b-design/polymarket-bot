@@ -18,6 +18,8 @@ BATCH = 5
 _cache = {}      # icao -> (abgerufen, [(zeit, temp_c)])
 _wanted = {}     # icao -> zuletzt angefragt (für gebündelte Abrufe)
 _failed = {}
+_quiet = {"n": 0, "last": 0.0}   # vom eigenen Budget zurückgehaltene Abrufe seit der letzten Log-Meldung
+QUIET_LOG_SEC = 10 * 60
 
 
 def _fetch(icaos, fetch):
@@ -46,9 +48,17 @@ def observations(icao, fetch=get_json, now=None):
     try:
         res = _fetch(batch, fetch)
     except HttpError as e:
-        if not getattr(e, "blocked", False):
-            for i in batch:
-                _failed[i] = now
+        if getattr(e, "blocked", False):
+            # Eigenes Budget (Minuten-Limit) hält den Abruf zurück – das ist gewollt und kein Fehler. Bis 2.5 stand hier
+            # je Station und Markt eine Log-Zeile: nach jedem Neustart über 1.000 Zeilen in einer Sekunde, Railway verwarf
+            # dabei Meldungen (18.11.: 169). Jetzt höchstens eine Sammelzeile alle 10 Minuten.
+            _quiet["n"] += 1
+            if now - _quiet["last"] >= QUIET_LOG_SEC:
+                log.info("METAR: %d Abruf(e) wegen des eigenen Budgets verschoben (%s) – weiter im nächsten Lauf", _quiet["n"], e)
+                _quiet.update(n=0, last=now)
+            return hit[1] if hit else None
+        for i in batch:
+            _failed[i] = now
         log.info("METAR nicht abrufbar (%s): %s", ",".join(batch), e)
         return hit[1] if hit else None
     for i, obs in res.items():
@@ -76,3 +86,4 @@ def reset():
     _cache.clear()
     _wanted.clear()
     _failed.clear()
+    _quiet.update(n=0, last=0.0)
