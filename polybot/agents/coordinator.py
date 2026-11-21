@@ -72,6 +72,11 @@ class Coordinator:
         self.last_tick = {}
         self.contradictions = []
         self.started = time.time()
+        try:
+            from .. import reports
+            reports.tidy_once(store)
+        except Exception:  # noqa: BLE001 – Aufräumen darf den Start nie verhindern
+            log.exception("Empfehlungen aufräumen fehlgeschlagen")
 
     # ------------------------------------------------------------------ Teilschritte im Handels-Lauf
     def on_markets(self, markets, now):

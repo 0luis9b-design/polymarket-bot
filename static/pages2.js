@@ -397,7 +397,7 @@
         } } }, "Bericht jetzt erstellen")));
       function recRow(x) {
         var btn = function (label, status) { return h("button", { class: "btn small", on: { click: function () { act(api("/api/recommendation/" + x.id, { status: status, note: x.note || "" }), "Gespeichert"); } } }, label); };
-        return h("div", { class: "rec" }, h("div", null, x.text, h("div", { class: "dim2", style: { "font-size": "12.5px" } }, "aus Bericht " + x.report_id + (x.status !== "offen" ? " · " + x.status + " " + (F.ago(x.updated_at) || "") : ""))),
+        return h("div", { class: "rec" }, h("div", null, x.text, h("div", { class: "dim2", style: { "font-size": "12.5px" } }, "aus Bericht " + x.report_id + (x.status !== "offen" ? " · " + x.status + " " + (F.ago(x.updated_at) || "") + (x.note ? " · " + x.note : "") : ""))),
                  h("div", { class: "row" }, x.status === "offen" ? [btn("Erledigt", "erledigt"), btn("Verwerfen", "verworfen")] : btn("Wieder öffnen", "offen")));
       }
       out.push(PB.panel("Offene Empfehlungen", openRecs.length ? openRecs.length + " offen" : "", openRecs.length ? h("div", null, openRecs.map(recRow))

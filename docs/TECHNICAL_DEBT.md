@@ -37,3 +37,5 @@ Status wird bei jeder Änderung gepflegt.
 | T29 | M | Strategie-Agent brach bei Polymarket-Fehler 500 ganz ab (31 von 137 Läufen) | Logs 15.–18.11. | abgefedert 2.5 – Portion endet, Rest läuft; Ursache noch offen (Abfragen werden gezählt) |
 | T30 | N | Krypto-Kurse fragten zuerst api.binance.com (sperrt US-Server) – jeder zweite Abruf ein Fehler | Bericht 18.11.: 50 % | erledigt 2.5 – Binance-Vision zuerst |
 | T31 | N | Nach jedem Neustart über 1.000 gleiche METAR-Zeilen („Minuten-Limit“) in einer Sekunde – Railway verwarf Log-Meldungen, darunter hätten auch Berichtszeilen sein können | Logs 18.11. 23:02: 169 verworfen | erledigt 2.5.1 – eine Sammelzeile alle 10 Minuten |
+| T32 | M | Summen-Prüfung lief auch bei Kurs-Leitern („Bitcoin über 64k / 66k / 68k“), weil `enableNegRisk` am Ereignis als „genau eine trifft zu“ galt – 653 gute Prognosen gesperrt; dieselbe Angabe hätte auch Schein-Arbitrage erzeugen können | Bericht 18.11. | erledigt 2.6 – Angabe am Markt, Prüfung nur bei Marktsumme ≈ 100 % |
+| T33 | N | Empfehlungen sammelten sich an (19 offen, meist veraltet oder doppelt) | Dashboard 21.11. | erledigt 2.6 – Abgleich nach jedem Bericht |

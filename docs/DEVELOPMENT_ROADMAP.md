@@ -1,7 +1,7 @@
 # Entwicklungs-Roadmap
 
 Priorität: **1** = verhindert Schaden oder ist Voraussetzung · **2** = Kern des Zielsystems · **3** = Ausbau.
-Status: ✅ erledigt (mit Tests belegt) · 🔧 in Arbeit · ⏳ geplant. Stand: 18.11.2026 (abends), Version 2.5.1.
+Status: ✅ erledigt (mit Tests belegt) · 🔧 in Arbeit · ⏳ geplant. Stand: 21.11.2026, Version 2.6.0.
 
 ## Phase 1–2 · Audit und Architektur — ✅
 Dokumente: `PROJECT_AUDIT.md`, `SYSTEM_ARCHITECTURE.md`, `TECHNICAL_DEBT.md`, `RISK_REGISTER.md`, diese Datei.
@@ -119,6 +119,13 @@ Anlass: Am 15./16.11. wetteten die Basisraten auf E-Sport-Karten und genaue Fuß
 
 Lernen braucht keine Wette: Der Bot speichert jede Prognose (auch ohne Kauf) und vergleicht sie mit dem Ergebnis. Die Wetten
 sind die Probe, ob sich die Prognosen in Geld auszahlen.
+
+## Version 2.6 · Aufgeräumte Empfehlungen, Summen-Prüfung repariert (Wunsch vom 21.11.) — ✅
+| Schritt | Status |
+|---|---|
+| Empfehlungen gleichen sich nach jedem Bericht ab: gleiches Thema mit neuen Zahlen ersetzt das alte (`reports.rec_key`), was der neue Bericht nicht mehr nennt, wird automatisch erledigt, Verworfenes kommt 7 Tage nicht wieder; im Dashboard steht der Grund dabei | ✅ mit Test |
+| Einmaliger Abgleich der bisherigen 19 offenen Empfehlungen mit dem neuesten Bericht (kv `recs_tidy_v1`) | ✅ mit Test |
+| Summen-Prüfung nur, wenn auch die Marktkurse zusammen etwa 100 % ergeben; „genau eine trifft zu“ kommt aus der Angabe am Markt (`negRisk`), nicht mehr aus `enableNegRisk` am Ereignis. Anlass: Bericht 18.11. – 653 gesperrte Krypto-Prognosen (Kurs-Leitern), Modell dort besser als der Markt (Brier 0,080 gegen 0,112) | ✅ mit Test |
 
 ## Machbarkeit (geprüft)
 | Ressource | Heute | Mit Ausbau (geschätzt) | Grenze |

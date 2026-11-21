@@ -8,7 +8,7 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
-from polybot import config, events, migrations, notify, reports, settings, sources
+from polybot import config, events, migrations, notify, polymarket, reports, settings, sources
 from polybot.agents import Agent, Registry
 from polybot.agents import learning as L
 from polybot.agents import news as N
@@ -313,14 +313,33 @@ def test_validation_rules(tmp_path, monkeypatch):
     assert dict(ok["analysis"]["checks"]) == {"wert": True, "ende": True, "frische": True, "abweichung": True}
 
 
+def _excl(prefix, eid, prices, n=None):
+    """Märkte eines Ereignisses mit Kursen, die zusammen etwa 100 % ergeben (echte „genau eine trifft zu“-Frage)."""
+    return [_m(f"{prefix}{i}", event_id=eid, neg_risk=True, event_n_markets=n or len(prices), bid=p - 0.01, ask=p + 0.01)
+            for i, p in enumerate(prices)]
+
+
 def test_validation_sum_check_for_exclusive_events(tmp_path):
     va = ValidationAgent(_store(tmp_path))
-    good = [_o(_m(f"g{i}", event_id="E1", neg_risk=True, event_n_markets=3), p) for i, p in enumerate((0.5, 0.3, 0.2))]
-    bad = [_o(_m(f"b{i}", event_id="E2", neg_risk=True, event_n_markets=3), p) for i, p in enumerate((0.6, 0.5, 0.4))]
-    part = [_o(_m(f"p{i}", event_id="E3", neg_risk=True, event_n_markets=5), p) for i, p in enumerate((0.6, 0.5, 0.4))]
+    good = [_o(m, p) for m, p in zip(_excl("g", "E1", (0.45, 0.35, 0.2)), (0.5, 0.3, 0.2))]
+    bad = [_o(m, p) for m, p in zip(_excl("b", "E2", (0.45, 0.35, 0.2)), (0.6, 0.5, 0.4))]
+    part = [_o(m, p) for m, p in zip(_excl("p", "E3", (0.3, 0.3, 0.2), n=5), (0.6, 0.5, 0.4))]
     va.check(good + bad + part, NOW)
     assert all(o["analysis"]["valid"] for o in good + part)                     # unvollständiges Ereignis: keine Aussage
     assert all(o["analysis"]["valid"] is False and "Summe" in o["analysis"]["reject"] for o in bad)
+
+
+def test_validation_sum_check_skips_price_ladders(tmp_path):
+    """Live-Befund 18.11.: „Bitcoin über 64k / 66k / 68k“ – mehrere Antworten können eintreffen, die Kurse ergeben zusammen
+    weit über 100 %. Die Summen-Regel sperrte dort 653 Prognosen, bei denen das Modell besser lag als der Markt."""
+    va = ValidationAgent(_store(tmp_path))
+    ladder = [_o(m, p) for m, p in zip(_excl("l", "E4", (0.90, 0.62, 0.30)), (0.95, 0.70, 0.25))]   # Markt 182 %, Modell 190 %
+    out = va.check(ladder, NOW)
+    assert out["gültig"] == 3 and all(o["analysis"]["valid"] for o in ladder)
+    raw = {"id": "1", "question": "Will the price of Bitcoin be above $66,000 on November 15?", "outcomes": '["Yes","No"]',
+           "outcomePrices": '["0.6","0.4"]', "clobTokenIds": '["a","b"]', "negRisk": False, "active": True, "closed": False}
+    assert polymarket.normalize_market(raw, {"id": "e", "enableNegRisk": True, "markets": [raw, raw]}, "crypto")["neg_risk"] is False
+    assert polymarket.normalize_market({**raw, "negRisk": True}, {"id": "e"}, "crypto")["neg_risk"] is True
 
 
 def test_select_keeps_raw_model_value_next_to_the_mixed_one(tmp_path):
@@ -334,7 +353,8 @@ def test_select_keeps_raw_model_value_next_to_the_mixed_one(tmp_path):
 def test_validation_sum_check_uses_raw_model_value_not_the_mix(tmp_path):
     """Live-Befund 14.11.: Nach einer Mischung mit dem Marktpreis wurde die Summe der Marktkurse geprüft (517 Ablehnungen)."""
     va = ValidationAgent(_store(tmp_path))
-    ms = [_m(f"s{i}", cat="weather", bid=0.48, ask=0.52, neg_risk=True, event_id="ev", event_n_markets=3) for i in range(3)]
+    ms = [_m(f"s{i}", cat="weather", bid=p - 0.01, ask=p + 0.01, neg_risk=True, event_id="ev", event_n_markets=3)
+          for i, p in enumerate((0.3, 0.3, 0.4))]
     mixed = [_o(m, 0.5, p_model=p) for m, p in zip(ms, (0.2, 0.3, 0.5))]       # gehandelter Wert 3 × 50 %, Modell selbst stimmig
     out = va.check(mixed, NOW)
     assert out["gültig"] == 3

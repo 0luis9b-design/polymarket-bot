@@ -1,8 +1,10 @@
 """Versionsstand des Systems. CHANGES wird im Claude-Bericht unter „Neue Funktionen“ gezeigt."""
-VERSION = "2.5.1"
+VERSION = "2.6.0"
 
 # (Datum, Version, Text) – neueste zuerst
 CHANGES = [
+    ("2026-11-21", "2.6.0", "Empfehlungen räumen sich selbst auf: ein neuer Bericht ersetzt gleiche Empfehlungen mit alten Zahlen und schließt, was nicht mehr zutrifft; Verworfenes kommt 7 Tage nicht wieder; einmaliger Abgleich der bisherigen Liste"),
+    ("2026-11-21", "2.6.0", "Summen-Prüfung nur noch bei echten „genau eine trifft zu“-Fragen (Marktkurse zusammen ≈ 100 %, Angabe am Markt statt am Ereignis) – sperrte bei Kurs-Leitern 653 Prognosen, bei denen das Modell besser lag"),
     ("2026-11-18", "2.5.1", "Log: vom eigenen Budget zurückgehaltene METAR-Abrufe nur noch als eine Sammelzeile alle 10 Minuten (nach Neustarts waren es über 1.000 Zeilen, Railway verwarf Meldungen)"),
     ("2026-11-18", "2.5.0", "Basisraten-Wächter sperrt ein Thema schon, wenn die Basisraten dort wahrscheinlich schlechter als der Markt sind (z ≥ 1,0, Einstellung BASE_GUARD_Z) – betrifft jetzt Sport"),
     ("2026-11-18", "2.5.0", "Lernsystem misst gegen die freigegebene Mischung statt gegen das reine Modell: keine wiederholten gleichen Vorschläge mehr; abgelehnte Vorschläge kommen frühestens nach 7 Tagen wieder"),

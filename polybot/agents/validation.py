@@ -74,6 +74,13 @@ class ValidationAgent(Agent):
             n = group[0]["market"].get("event_n_markets") or 0
             if n < 2 or len(group) != n:
                 continue
+            # Nur prüfen, wenn auch der Markt die Antworten als „genau eine trifft zu“ behandelt (Kurse zusammen ≈ 100 %).
+            # Live-Befund 18./21.11.: Polymarket markiert auch Kurs-Leitern („Bitcoin über 64k / 66k / 68k“, „Was erreicht
+            # Bitcoin?“) als zusammengehörig. Dort können mehrere Antworten eintreffen – die Summe liegt weit über 100 %.
+            # Die Regel sperrte 653 Prognosen, bei denen das Modell besser lag als der Markt (Brier 0,080 gegen 0,112).
+            mkt = [o.get("market_p") for o in group]
+            if any(x is None for x in mkt) or not (0.85 <= sum(mkt) <= 1.20):
+                continue
             # am reinen Modellwert gemessen: nach einer freigegebenen Mischung mit dem Marktpreis würde sonst die
             # (oft ungenaue) Summe der Marktkurse geprüft statt die Stimmigkeit des Modells
             total = sum(o["analysis"].get("p_model", o["analysis"]["p_yes"]) for o in group)

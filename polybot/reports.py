@@ -8,6 +8,7 @@ Jede Zahl stammt aus der Datenbank. Wo nichts gemessen wurde, steht „keine Dat
 """
 import json
 import logging
+import re
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
@@ -404,6 +405,73 @@ def build(coord, now, since):
     return title, "\n".join(L), data, recs
 
 
+def rec_key(text):
+    """Worum geht es in einer Empfehlung – ohne die Zahlen, die sich von Bericht zu Bericht ändern.
+
+    „Datenquelle Binance: Fehlerquote 50 % bei 968 Abrufen“ und „… bei 4032 Abrufen“ sind dieselbe Empfehlung;
+    Vorschlags-Nummern bleiben erhalten (#8 und #9 sind verschiedene Vorschläge)."""
+    t = re.sub(r"(?<!Vorschlag #)(?<![\d#])[+−-]?\d+(?:[.,]\d+)?", "#", text or "")
+    return re.sub(r"\s+", " ", t).strip().lower()[:300]
+
+
+def sync_recommendations(st, rid, recs, now):
+    """Empfehlungen nach einem neuen Bericht abgleichen (seit 21.11.):
+    - gleiche Empfehlung mit neuen Zahlen: die alte wird geschlossen, die neue steht da („ersetzt durch Bericht #…“)
+    - offene Empfehlung, die der neue Bericht nicht mehr nennt: trifft nicht mehr zu → automatisch erledigt
+    - vom Nutzer in den letzten 7 Tagen verworfen: kommt nicht sofort wieder
+    Gibt (neu, ersetzt, erledigt) zurück."""
+    iso = now.isoformat(timespec="seconds")
+    new = {}
+    for r in recs:
+        new.setdefault(rec_key(r), r)                       # doppelte Zeilen im selben Bericht nur einmal
+    kept, n_repl, n_done = set(), 0, 0
+    for row in st.q("SELECT id, text FROM recommendations WHERE status='offen'"):
+        k = rec_key(row["text"])
+        if k in new and new[k] == row["text"] and k not in kept:
+            kept.add(k)
+            continue
+        if k in new:
+            note, n_repl = f"automatisch: ersetzt durch Bericht #{rid}", n_repl + 1
+        else:
+            note, n_done = f"automatisch: trifft im Bericht #{rid} nicht mehr zu", n_done + 1
+        st.x("UPDATE recommendations SET status='erledigt', note=?, updated_at=? WHERE id=?", (note, iso, row["id"]))
+    week = (now - timedelta(days=7)).isoformat(timespec="seconds")
+    dismissed = {rec_key(r["text"]) for r in st.q("SELECT text FROM recommendations WHERE status='verworfen' AND updated_at>=?", (week,))}
+    n_new = 0
+    for k, r in new.items():
+        if k in kept or k in dismissed:
+            continue
+        st.x("INSERT INTO recommendations(report_id, text, updated_at) VALUES(?,?,?)", (rid, r, iso))
+        n_new += 1
+    return n_new, n_repl, n_done
+
+
+def recs_from_markdown(md):
+    """Die Empfehlungen eines gespeicherten Berichts (Abschnitt 12) – für den einmaligen Abgleich alter Einträge."""
+    out, inside = [], False
+    for line in (md or "").split("\n"):
+        if line.startswith("## "):
+            inside = line.startswith("## 12.")
+            continue
+        if inside and line.startswith("- "):
+            out.append(line[2:].strip())
+    return out
+
+
+def tidy_once(st, now=None):
+    """21.11.: einmalig die bisher aufgelaufenen Empfehlungen mit dem neuesten Bericht abgleichen."""
+    if st.kv_get("recs_tidy_v1"):
+        return
+    now = now or datetime.now(timezone.utc)
+    last = st.q1("SELECT id, markdown FROM reports ORDER BY id DESC LIMIT 1")
+    if last:
+        recs = [r for r in recs_from_markdown(last["markdown"]) if not r.startswith("Keine ")]
+        _new, n_repl, n_done = sync_recommendations(st, last["id"], recs, now)
+        if n_repl or n_done:
+            st.log(f"Empfehlungen aufgeräumt: {n_repl} durch neuere ersetzt, {n_done} treffen nicht mehr zu (Stand Bericht #{last['id']})")
+    st.kv_set("recs_tidy_v1", now.isoformat(timespec="seconds"))
+
+
 def generate(coord, now=None, kind="geplant"):
     st = coord.store
     now = now or datetime.now(timezone.utc)
@@ -419,10 +487,7 @@ def generate(coord, now=None, kind="geplant"):
                (now.isoformat(timespec="seconds"), kind, since.isoformat(timespec="seconds"), now.isoformat(timespec="seconds"),
                 title, md, json.dumps(data, ensure_ascii=False)))
     rid = cur.lastrowid
-    open_texts = {r["text"] for r in st.q("SELECT text FROM recommendations WHERE status='offen'")}
-    for r in recs:
-        if r not in open_texts:
-            st.x("INSERT INTO recommendations(report_id, text, updated_at) VALUES(?,?,?)", (rid, r, now.isoformat(timespec="seconds")))
+    sync_recommendations(st, rid, recs, now)
     st.kv_set("report:last_day", now.astimezone(BERLIN).strftime("%Y-%m-%d"))
     log.info("%s#%d| BEGINN %s", PREFIX, rid, title)
     for line in md.split("\n"):

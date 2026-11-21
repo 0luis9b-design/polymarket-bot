@@ -120,7 +120,8 @@ def normalize_market(raw, event=None, category="other"):
         "volume24h": _num(raw.get("volume24hr"), 0.0),
         "created": parse_dt(raw.get("createdAt")),
         "token_ids": [str(t) for t in _loads(raw.get("clobTokenIds"), [])],
-        "neg_risk": bool(ev.get("negRisk") or ev.get("enableNegRisk")),
+        # „Genau eine Antwort trifft zu“: die Angabe am Markt zählt (enableNegRisk am Ereignis steht auch bei Kurs-Leitern)
+        "neg_risk": bool(raw["negRisk"]) if "negRisk" in raw else bool(ev.get("negRisk")),
         "event_n_markets": len(ev.get("markets") or []),
         "min_size": _num(raw.get("orderMinSize"), 5.0),
     }
