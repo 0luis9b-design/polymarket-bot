@@ -363,7 +363,7 @@ def api_overview():
                      "bestanden": store.scalar("SELECT COUNT(*) FROM experiments WHERE passed=1"),
                      "offene_vorschläge": store.scalar("SELECT COUNT(*) FROM proposals WHERE status='offen'"),
                      "modellversionen": store.scalar("SELECT COUNT(*) FROM model_versions"),
-                     "datensatz": store.scalar("SELECT COUNT(*) FROM resolved")},
+                     "datensatz": store.scalar("SELECT COUNT(*) FROM resolved WHERE sel=?", (config.DATASET_SEL,))},
         "activity": {"movers": [m for m in movers if abs(m["move_1h"]) >= 0.02],
                      "neu_24h": store.scalar("SELECT COUNT(*) FROM markets WHERE first_seen>=?", (day,)),
                      "volumen_24h": store.scalar("SELECT SUM(volume24h) FROM markets WHERE status='open'"),
@@ -678,6 +678,11 @@ def api_bet(pid):
 @app.route("/api/calendar")
 def api_calendar():
     return jsonify(paperview.calendar(store, _paper_args()))
+
+
+@app.route("/api/breakdown")
+def api_breakdown():
+    return jsonify(paperview.breakdown(store, _paper_args()))
 
 
 @app.route("/api/account/<aid>/resume", methods=["POST"])

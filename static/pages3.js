@@ -82,7 +82,7 @@
   /* Kleine Navigation zwischen den drei Paper-Seiten, Filter bleibt erhalten */
   function subnav(cur, q) {
     var f = filterQs(q);
-    return h("nav", { class: "subnav", "aria-label": "Paper-Trading" }, [["paper", "Konten und Lage"], ["wetten", "Wetten"], ["kalender", "Kalender"]].map(function (x) {
+    return h("nav", { class: "subnav", "aria-label": "Paper-Trading" }, [["paper", "Konten und Lage"], ["wetten", "Wetten"], ["kalender", "Kalender"], ["auswertung", "Auswertung"]].map(function (x) {
       return h("a", { href: "#/" + x[0] + f, class: x[0] === cur ? "on" : null, "aria-current": x[0] === cur ? "page" : null }, x[1]);
     }));
   }
@@ -421,6 +421,41 @@
     var a = Math.abs(v);
     return (v >= 0 ? "+" : "−") + (a >= 100 ? F.num(a, 0) : F.num(a, a >= 10 ? 1 : 2));
   }
+  // ================================================================ Auswertung nach Quelle
+  /* Wo verdient der Bot wirklich? Abgeschlossene Wetten nach Liga/Stadt/Coin, Art der Wette, Seite, Grund und Gewinnchance.
+     Entscheidend ist „gewonnen“ gegen „Preis“: Nur wenn die Wetten öfter gewinnen, als der Preis beim Kauf sagte, steckt ein
+     echter Vorsprung dahinter. */
+  PB.pages.auswertung = {
+    title: "Auswertung", sub: "Wo verdient der Bot wirklich? Abgeschlossene Wetten nach Liga, Stadt, Art der Wette und Grund", live: true,
+    load: function (r) { return api("/api/breakdown?" + qs(pick(r.q, FILTER_KEYS))); },
+    render: function (d, r) {
+      var q = r.q, s = d.summe, out = [subnav("auswertung", q), filterBar(d, r)];
+      var pc = function (v) { return v == null ? "–" : F.pct(v); };
+      out.push(PB.panel("Gewählte Wetten", null, [h("div", { class: "sumline" },
+        h("span", null, "G/V ", signed(s.gv)),
+        h("span", null, F.num(s.n) + " entschieden, davon " + F.num(s.gewonnen) + " gewonnen" + (s.verkauft ? ", " + F.num(s.verkauft) + " vorher verkauft" : "")),
+        h("span", null, "Treffer " + pc(s.treffer) + " · erwartet " + pc(s.erwartet) + " · Preis " + pc(s.preis)),
+        h("span", null, "Rendite " + (s.roi == null ? "–" : F.pct(s.roi, 1)) + " auf " + F.usd(s.einsatz) + " Einsatz")),
+        h("p", { class: "note", style: { margin: "8px 0 0" } }, "„Preis“ = was der Markt beim Kauf für unsere Seite verlangte, „erwartet“ = was der Bot selbst erwartete. ",
+          "Ein echter Vorsprung zeigt sich nur, wenn „Treffer“ über „Preis“ liegt – und das bei genug Wetten (ab etwa 30).")]));
+      ["quelle", "wettart", "seite", "grund", "chance"].forEach(function (k) {
+        var g = d.gruppen[k];
+        if (!g || !g.zeilen.length) return;
+        out.push(PB.panel(g.titel, F.num(g.zeilen.length) + (g.zeilen.length === 1 ? " Gruppe" : " Gruppen"), PB.table([
+          { label: g.titel, get: function (x) { return h("div", { class: "q" }, x.name); } },
+          { label: "Wetten", num: true, get: function (x) { return h("span", null, F.num(x.n), x.verkauft ? h("small", { class: "dim2" }, " +" + x.verkauft + " verk.") : null); } },
+          { label: "Treffer", num: true, get: function (x) { return h("span", { class: x.treffer != null && x.preis != null && x.n >= 30 ? (x.treffer > x.preis ? "pos" : "neg") : null }, pc(x.treffer)); } },
+          { label: "Preis", num: true, cls: "hide-s", get: function (x) { return pc(x.preis); } },
+          { label: "erwartet", num: true, cls: "hide-s", get: function (x) { return pc(x.erwartet); } },
+          { label: "G/V", num: true, get: function (x) { return signed(x.gv); } },
+          { label: "Rendite", num: true, cls: "hide-s", get: function (x) { return x.roi == null ? "–" : F.pct(x.roi, 1); } }
+        ], g.zeilen.slice(0, k === "quelle" ? 40 : 30)), true));
+      });
+      if (!s.n && !s.verkauft) out.push(PB.panel("Keine Wetten", null, PB.empty("Für diese Auswahl gibt es noch keine abgeschlossene Wette.")));
+      return out;
+    }
+  };
+
   PB.pages.kalender = {
     title: "Kalender", sub: "Gewinn und Verlust je Tag – gezählt am Tag, an dem eine Wette entschieden oder verkauft wurde", live: true,
     load: function (r) { return api("/api/calendar?" + qs(pick(r.q, FILTER_KEYS.concat(["monat", "tag"])))); },

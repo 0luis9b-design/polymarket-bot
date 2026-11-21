@@ -110,6 +110,12 @@ MIGRATIONS = [
         "ALTER TABLE resolved ADD COLUMN sub TEXT",
         "ALTER TABLE resolved ADD COLUMN detail TEXT",
     ]),
+    (10, "Vergleichsdaten ohne Auswahl nach Endvolumen (sel = 2)", [
+        # sel 1 = bis 21.11. gesammelt: nur Märkte mit ≥ 2.000 $ Endvolumen – das bevorzugt eingetroffene Außenseiter
+        # sel 2 = ohne Volumen-Auswahl; ein Kurs zählt nur, wenn der Markt vor dem Messzeitpunkt gehandelt wurde
+        "ALTER TABLE resolved ADD COLUMN sel INTEGER DEFAULT 1",
+        "CREATE INDEX idx_resolved_sel ON resolved(sel, category, end_date)",
+    ]),
 ]
 LATEST = MIGRATIONS[-1][0]
 

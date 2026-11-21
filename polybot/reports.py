@@ -59,6 +59,32 @@ def _bet_stats(rs):
             "gv_sold": sum(r["pnl"] or 0 for r in rs if r["status"] == "sold")}
 
 
+def source_review(st, min_n=10, top=5):
+    """Auswertung nach Quelle (seit 21.11.): wo verdient der Bot wirklich – nach Liga/Stadt/Coin und nach Art der Wette."""
+    from . import paperview
+    g = paperview.breakdown(st, {})["gruppen"]
+    L = []
+    q = [x for x in g["quelle"]["zeilen"] if x["n"] >= min_n]
+    if q:
+        L.append(f"Auswertung nach Quelle (alle Konten, seit Start, je mindestens {min_n} entschiedene Wetten; Treffer über Preis = echter Vorsprung):")
+        L.append("")
+        best = sorted(q, key=lambda x: -x["gv"])[:top]
+        worst = [x for x in sorted(q, key=lambda x: x["gv"]) if x not in best][:top]
+        L += _table(["Liga, Stadt oder Coin", "entschieden", "Treffer", "Preis", "G/V"],
+                    [[x["name"], x["n"], _f(x["treffer"], 0, pct=True), _f(x["preis"], 0, pct=True), f"{x['gv']:+.0f} $"]
+                     for x in best + worst])
+        L.append("")
+    t = [x for x in g["wettart"]["zeilen"] if x["n"] >= min_n]
+    if t:
+        L.append("Nach Art der Wette:")
+        L.append("")
+        L += _table(["Art der Wette", "entschieden", "Treffer", "Preis", "erwartet", "G/V"],
+                    [[x["name"], x["n"], _f(x["treffer"], 0, pct=True), _f(x["preis"], 0, pct=True), _f(x["erwartet"], 0, pct=True),
+                      f"{x['gv']:+.0f} $"] for x in t[:12]])
+        L.append("")
+    return L
+
+
 def bets_review(st, since_iso, min_n=5):
     """Wetten im Rückblick: Haben die gekauften Wetten so oft gewonnen, wie der Bot beim Kauf erwartet hat?
 
@@ -321,6 +347,13 @@ def build(coord, now, since):
     lines, more = bets_review(st, since_iso)
     L += lines
     recs += more
+    L += source_review(st)
+    n_new = st.scalar("SELECT COUNT(*) FROM resolved WHERE sel=?", (config.DATASET_SEL,)) or 0
+    n_old = st.scalar("SELECT COUNT(*) FROM resolved WHERE sel<>?", (config.DATASET_SEL,)) or 0
+    if n_old:
+        add(f"Vergleichsdaten im Neuaufbau (seit 21.11. ohne Auswahl nach Endvolumen, nur Kurse aus gehandelten Märkten): "
+            f"{n_new} neue Märkte; {n_old} alte werden nicht mehr genutzt und nach und nach neu berechnet.")
+        add("")
     add(f"Backtests auf entschiedenen Märkten (Datensatz: {(lab.get('datensatz') or {}).get('mit_kurs_24h', 0)} Märkte mit Kursverlauf; nur der spätere Prüfteil zählt):")
     add("")
     rows = [[s["name"], s["is"].get("n", 0), _f(s["is"].get("roi"), 1, pct=True, sign=True), s["oos"].get("n", 0),

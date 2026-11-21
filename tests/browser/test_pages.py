@@ -18,7 +18,7 @@ sync_api = pytest.importorskip("playwright.sync_api")
 
 PAGES = ["", "maerkte", "markt/w1", "prognosen", "agenten", "lernen", "strategie", "performance", "daten", "system", "berichte",
          "einstellungen", "paper", "paper?cat=sports", "paper?account=haupt_sport", "paper?strat=haupt", "paper?strat=schwelle4&cat=politics", "paper?strat=kelly&cat=sports", "wetten", "wetten?cat=sports&sub=Fu%C3%9Fball",
-         "wetten?status=verloren&sort=gv&dir=asc", "wetten?strat=schwelle4", "kalender?strat=haupt&cat=sports", "wette/1", "wette/2", "kalender", "kalender?tag=" + time.strftime("%Y-%m-%d")]
+         "wetten?status=verloren&sort=gv&dir=asc", "wetten?strat=schwelle4", "kalender?strat=haupt&cat=sports", "auswertung", "auswertung?strat=haupt&cat=weather", "wette/1", "wette/2", "kalender", "kalender?tag=" + time.strftime("%Y-%m-%d")]
 
 
 @pytest.fixture(scope="module")

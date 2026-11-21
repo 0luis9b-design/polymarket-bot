@@ -13,7 +13,7 @@
       a.classList.toggle("on", on);
       if (on) a.setAttribute("aria-current", "page"); else a.removeAttribute("aria-current");
     });
-    var inTabs = ["", "maerkte", "prognosen", "paper", "wetten", "kalender"].indexOf(cur) >= 0;
+    var inTabs = ["", "maerkte", "prognosen", "paper", "wetten", "kalender", "auswertung"].indexOf(cur) >= 0;
     if (more) more.classList.toggle("on", !inTabs);
   }
   function close() { document.body.classList.remove("sh-open"); if (more) more.setAttribute("aria-expanded", "false"); }

@@ -595,7 +595,7 @@ def test_strategy_collect_builds_dataset(tmp_path):
             {**base, "id": "2", "question": "Will B resign by date?", "outcomePrices": '["0","1"]', "closedTime": (end - timedelta(hours=30)).isoformat()},
             {**base, "id": "3", "question": "Ethereum Up or Down - 1 hour", "outcomePrices": '["1","0"]'},
             {**base, "id": "4", "question": "Unklar?", "outcomePrices": '["0.5","0.5"]'}]
-    hist = [(int(end.timestamp()) - h * 3600, 0.5) for h in range(200, 0, -1)]
+    hist = [(int(end.timestamp()) - h * 3600, 0.5 + 0.001 * (h % 3)) for h in range(200, 0, -1)]   # gehandelt: Kurs bewegt sich
     asked = []
 
     def fetch_history(token, a, b):
@@ -605,9 +605,37 @@ def test_strategy_collect_builds_dataset(tmp_path):
     out = sa.collect(NOW, time.time() + 60)
     assert out["neu"] == 2 and asked == ["tokY", "tokY"]
     r1, r2 = st.q("SELECT * FROM resolved ORDER BY market_id")
-    assert (r1["outcome"], r1["early"], r1["p_24h"], r1["p_1h"]) == (1.0, 0, 0.5, 0.5)
-    assert (r2["outcome"], r2["early"], r2["p_72h"], r2["p_24h"], r2["p_1h"]) == (0.0, 1, 0.5, None, None)
+    assert (r1["outcome"], r1["early"], r1["sel"]) == (1.0, 0, 2) and abs(r1["p_24h"] - 0.5) < 0.005 and abs(r1["p_1h"] - 0.5) < 0.005
+    assert (r2["outcome"], r2["early"], r2["p_24h"], r2["p_1h"]) == (0.0, 1, None, None) and abs(r2["p_72h"] - 0.5) < 0.005
     assert sa.collect(NOW, time.time() + 60)["neu"] == 0                                       # keine Duplikate
+
+
+def test_strategy_collect_ignores_end_volume_and_dead_prices(tmp_path):
+    """T26 (21.11.): Das Endvolumen entsteht erst nach dem Messzeitpunkt – eingetroffene Außenseiter werden mehr gehandelt.
+    Deshalb keine Auswahl nach Volumen; ein Kurs zählt nur, wenn der Markt davor wirklich gehandelt wurde."""
+    st = _store(tmp_path)
+    end = NOW - timedelta(days=1)
+    e = int(end.timestamp())
+    base = {"outcomes": '["Yes","No"]', "closed": True, "umaResolutionStatus": "resolved", "volumeNum": 120, "outcomePrices": '["0","1"]',
+            "endDate": end.strftime("%Y-%m-%dT%H:%M:%SZ"), "clobTokenIds": '["tokY","tokN"]', "question": "Will X happen?"}
+    params_seen = []
+
+    def fetch_markets(params):
+        params_seen.append(params)
+        return [{**base, "id": "live"}, {**base, "id": "dead"}, {**base, "id": "old"}] if params["offset"] == 0 else []
+    hists = {"live": [(e - h * 3600, 0.2 + 0.01 * (h % 4)) for h in range(190, 0, -1)],
+             "dead": [(e - h * 3600, 0.2) for h in range(190, 0, -1)]}
+    hists["old"] = hists["live"]
+    order = iter(["live", "dead", "old"])
+    st.x("INSERT INTO resolved(market_id, question, category, end_date, outcome, p_24h, sel) VALUES('old','q','politics',?,0,0.9,1)",
+         (end.isoformat(),))
+    sa = S.StrategyAgent(st, fetch_markets=fetch_markets, fetch_history=lambda t, a, b: list(hists[next(order)]))
+    out = sa.collect(NOW, time.time() + 60)
+    assert "volume_num_min" not in params_seen[0] and out["neu"] == 3
+    rows = {r["market_id"]: r for r in st.q("SELECT * FROM resolved")}
+    assert rows["live"]["p_24h"] is not None and rows["dead"]["p_24h"] is None       # Kurs stand still: kein Messwert
+    assert rows["old"]["sel"] == 2 and abs(rows["old"]["p_24h"] - 0.2) < 0.05       # alte Zeile neu berechnet und ersetzt
+    assert len(sa.dataset()) == 3
 
 
 def test_strategy_collect_pages_past_minute_markets(tmp_path):

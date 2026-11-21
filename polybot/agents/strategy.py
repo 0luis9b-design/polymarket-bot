@@ -47,12 +47,22 @@ def price_at(history, ts, tolerance=3 * 3600):
     return best[1]
 
 
-def horizon_prices(history, end_ts, closed_ts=None):
-    """Kurse zu den festen Abständen vor dem geplanten Ende. Kein Kurs, wenn der Markt da schon geschlossen war."""
+def alive(history, ts, window_h=None, min_distinct=None):
+    """Wurde der Markt vor dem Zeitpunkt `ts` wirklich gehandelt? Mindestens `min_distinct` verschiedene Kurse in den
+    `window_h` Stunden davor. Nutzt nur, was zu diesem Zeitpunkt schon bekannt war – keine Auswahl nach dem Ausgang."""
+    window = (window_h if window_h is not None else config.ALIVE_WINDOW_H) * 3600
+    need = min_distinct if min_distinct is not None else config.ALIVE_MIN_DISTINCT
+    return len({round(p, 3) for t, p in history if ts - window <= t <= ts}) >= need
+
+
+def horizon_prices(history, end_ts, closed_ts=None, alive_check=False):
+    """Kurse zu den festen Abständen vor dem geplanten Ende. Kein Kurs, wenn der Markt da schon geschlossen war
+    oder (mit alive_check) vorher kaum gehandelt wurde."""
     out = {}
     for col, hours in HORIZONS:
         ts = end_ts - hours * 3600
-        out[col] = None if (closed_ts is not None and ts >= closed_ts) else price_at(history, ts)
+        p = None if (closed_ts is not None and ts >= closed_ts) else price_at(history, ts)
+        out[col] = p if (p is None or not alive_check or alive(history, ts)) else None
     return out
 
 
@@ -217,7 +227,7 @@ class StrategyAgent(Agent):
         self.store.kv_set("hist:rot", idx + 1)
         tag_id = next(t for c, t in CATEGORY_TAGS if c == cat)
         # abwechselnd: frisch entschiedene Märkte / weiter zurück in die Vergangenheit
-        oldest = self.store.scalar("SELECT MIN(end_date) FROM resolved WHERE category=?", (cat,))
+        oldest = self.store.scalar("SELECT MIN(end_date) FROM resolved WHERE category=? AND sel=?", (cat, config.DATASET_SEL))
         backfill = bool(oldest) and (idx // len(cats)) % 2 == 1
         oldest_dt = polymarket.parse_dt(oldest) if backfill else None
         end_max = (oldest_dt or now).strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -229,8 +239,9 @@ class StrategyAgent(Agent):
             if added >= limit or self.time_left(deadline) < 8:
                 break
             params = {"tag_id": tag_id, "related_tags": "true", "closed": "true", "order": "endDate", "include_tag": "true",
-                      "ascending": "false", "end_date_max": end_max, "volume_num_min": config.HISTORY_MIN_VOLUME,
-                      "limit": 100, "offset": page * 100}
+                      "ascending": "false", "end_date_max": end_max, "limit": 100, "offset": page * 100}
+            if config.HISTORY_MIN_VOLUME > 0:
+                params["volume_num_min"] = config.HISTORY_MIN_VOLUME
             try:
                 raws = self.fetch_markets(params)
             except HttpError as e:
@@ -251,7 +262,9 @@ class StrategyAgent(Agent):
             ids = [str(r.get("id")) for r in raws]
             have = set()
             if ids:
-                have = {r["market_id"] for r in self.store.q("SELECT market_id FROM resolved WHERE market_id IN (%s)" % ",".join("?" * len(ids)), ids)}
+                # schon sauber gesammelt (sel 2) = überspringen; alte Zeilen (sel 1) werden neu berechnet und ersetzt
+                have = {r["market_id"] for r in self.store.q("SELECT market_id FROM resolved WHERE sel=? AND market_id IN (%s)"
+                                                             % ",".join("?" * len(ids)), [config.DATASET_SEL] + ids)}
             for raw in raws:
                 if added >= limit or self.time_left(deadline) < 6:
                     break
@@ -272,7 +285,7 @@ class StrategyAgent(Agent):
                     skipped += 1
                     continue
                 hist.sort()
-                ps = horizon_prices(hist, end.timestamp(), closed.timestamp() if closed else None)
+                ps = horizon_prices(hist, end.timestamp(), closed.timestamp() if closed else None, alive_check=True)
                 if all(v is None for v in ps.values()):
                     gaps += 1
                 early = 1 if (closed and closed < end - timedelta(hours=1)) else 0
@@ -282,12 +295,13 @@ class StrategyAgent(Agent):
                 c = taxonomy.classify(nm)
                 if c["category"] == "other":
                     c = taxonomy.classify(nm, cat)
-                self.store.x("INSERT OR IGNORE INTO resolved(market_id, question, category, sub, detail, end_date, closed_at, outcome, volume, "
-                             "early, p_1h, p_6h, p_24h, p_72h, p_7d, n_points, fetched_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                self.store.x("INSERT OR REPLACE INTO resolved(market_id, question, category, sub, detail, end_date, closed_at, outcome, volume, "
+                             "early, p_1h, p_6h, p_24h, p_72h, p_7d, n_points, fetched_at, sel) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                              (mid, q[:300], c["category"], c["sub"], c["detail"], end.isoformat(timespec="seconds"),
                               closed.isoformat(timespec="seconds") if closed else None,
                               1.0 if res == 0 else 0.0, polymarket._num(raw.get("volumeNum"), 0.0), early,
-                              ps["p_1h"], ps["p_6h"], ps["p_24h"], ps["p_72h"], ps["p_7d"], len(hist), now.isoformat(timespec="seconds")))
+                              ps["p_1h"], ps["p_6h"], ps["p_24h"], ps["p_72h"], ps["p_7d"], len(hist), now.isoformat(timespec="seconds"),
+                              config.DATASET_SEL))
                 added += 1
             if len(raws) < 100:
                 break
@@ -299,7 +313,7 @@ class StrategyAgent(Agent):
 
     # ------------------------------------------------------------------ Backtests
     def dataset(self):
-        return self.store.q("SELECT * FROM resolved ORDER BY end_date")
+        return self.store.q("SELECT * FROM resolved WHERE sel=? ORDER BY end_date", (config.DATASET_SEL,))
 
     def backtest(self, now, rows=None):
         rows = self.dataset() if rows is None else rows
@@ -361,7 +375,7 @@ class StrategyAgent(Agent):
         if not config.BACKTEST_ENABLED:
             return {"aus": True}
         out = self.collect(now, deadline)
-        n = self.store.scalar("SELECT COUNT(*) FROM resolved") or 0
+        n = self.store.scalar("SELECT COUNT(*) FROM resolved WHERE sel=?", (config.DATASET_SEL,)) or 0
         last = self.store.kv_json("strategy:last_bt", {})
         day = now.strftime("%Y-%m-%d")
         if n and (last.get("day") != day or n >= last.get("n", 0) * 1.25 + 20) and self.time_left(deadline) > 5:
@@ -373,7 +387,8 @@ class StrategyAgent(Agent):
 
     def view(self):
         return {"latest": self.store.kv_json("strategy:latest", None),
-                "datensatz": self.store.scalar("SELECT COUNT(*) FROM resolved") or 0,
+                "datensatz": self.store.scalar("SELECT COUNT(*) FROM resolved WHERE sel=?", (config.DATASET_SEL,)) or 0,
+                "datensatz_alt": self.store.scalar("SELECT COUNT(*) FROM resolved WHERE sel<>?", (config.DATASET_SEL,)) or 0,
                 "läufe": [dict(id=b["id"], created_at=b["created_at"], strategy=b["strategy"], dataset=json.loads(b["dataset"] or "{}"),
                                result=json.loads(b["result"] or "{}"))
                           for b in self.store.q("SELECT * FROM backtests ORDER BY id DESC LIMIT 60")]}

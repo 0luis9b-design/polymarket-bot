@@ -6,7 +6,7 @@ from datetime import datetime, timedelta, timezone
 
 os.environ.setdefault("AUTOSTART", "0")
 
-from polybot import base_model, config, paperview, taxonomy  # noqa: E402
+from polybot import base_model, config, paperview, reports, taxonomy  # noqa: E402
 from polybot.engine import Engine  # noqa: E402
 from polybot.sports_model import OddsClient  # noqa: E402
 from polybot.store import Store  # noqa: E402
@@ -54,7 +54,7 @@ def test_taxonomy_crypto_weather_and_old_bets_without_tags():
 
 
 # ---------------------------------------------------------------- Basisraten
-def _resolved(st, n, cat, p, yes, col="p_24h", start=0, spread=True):
+def _resolved(st, n, cat, p, yes, col="p_24h", start=0, spread=True, sel=2):
     """n entschiedene Märkte mit Kurs p; `yes` davon mit „Ja“ – gleichmäßig über die Zeit verteilt (spread)
     oder alle in der älteren Hälfte."""
     yes_idx = {int(k * n / yes) for k in range(yes)} if (spread and yes) else set(range(yes))
@@ -65,7 +65,8 @@ def _resolved(st, n, cat, p, yes, col="p_24h", start=0, spread=True):
         end = (datetime(2026, 9, 1, tzinfo=timezone.utc) + timedelta(hours=start + i)).isoformat(timespec="seconds")
         rows.append((f"r{cat}{col}{start + i}", "q", cat, end, 1.0 if i in yes_idx else 0.0,
                      r["p_1h"], r["p_6h"], r["p_24h"], r["p_72h"], r["p_7d"]))
-    st.xmany("INSERT INTO resolved(market_id, question, category, end_date, outcome, p_1h, p_6h, p_24h, p_72h, p_7d) VALUES(?,?,?,?,?,?,?,?,?,?)", rows)
+    st.xmany("INSERT INTO resolved(market_id, question, category, end_date, outcome, p_1h, p_6h, p_24h, p_72h, p_7d, sel) "
+             "VALUES(?,?,?,?,?,?,?,?,?,?,?)", [r + (sel,) for r in rows])
 
 
 def _bm(mid="pm1", cat="politics", bid=0.09, ask=0.11, hours=20, outcomes=("Yes", "No")):
@@ -108,6 +109,7 @@ def test_base_rates_for_games_but_never_exact_scores(tmp_path):
 def test_base_rates_find_longshot_bias_with_clear_significance(tmp_path):
     st = Store(str(tmp_path / "b.sqlite"))
     _resolved(st, 400, "politics", 0.10, 8)              # Kurs 10 %, eingetreten nur 2 %
+    _resolved(st, 400, "politics", 0.10, 200, start=400, sel=1)   # alte, nach Endvolumen ausgewählte Zeilen zählen nicht
     br = base_model.BaseRates(st)
     a = br.analyze(_bm(), NOW)
     assert abs(a["p_yes"] - 0.0289) < 0.002 and a["z"] < -5
@@ -292,3 +294,47 @@ def test_old_bets_get_classified_once(tmp_path):
     assert (rows["old"]["sub"], rows["old"]["detail"], rows["old"]["lane"]) == ("Fußball", "Premier League", "model")
     assert (rows["old2"]["sub"], rows["old2"]["detail"]) == ("Europa", "Paris")
     assert st.kv_get("taxonomy_v1")
+
+
+# ---------------------------------------------------------------- Auswertung nach Quelle (21.11.)
+def test_bet_type_in_words():
+    bt = taxonomy.bet_type
+    assert bt("Will Faroe Islands vs. Moldova end in a draw?", "sports") == "Unentschieden"
+    assert bt("Wales vs. Portugal: O/U 2.5", "sports") == "Über/Unter"
+    assert bt("Spread: Zenit St. Petersburg (-1.5)", "sports") == "Handicap"
+    assert bt("Counter-Strike: Spirit vs FURIA - Map 3 Winner", "esports") == "Einzelne Karte/Runde"
+    assert bt("Will Leicester City FC win on 2026-11-21?", "sports") == "Sieger"
+    assert bt("Exact Score: Faroe Islands 1 - 1 Moldova?", "sports") == "Genaues Ergebnis"
+    assert bt("Will the highest temperature in Munich be 12°C on November 16?", "weather") == "Genauer Wert (1 Grad)"
+    assert bt("Will the highest temperature in Dallas be between 66-67°F on November 18?", "weather") == "Spanne (2 Grad)"
+    assert bt("Will the highest temperature in Paris be 15°C or higher on November 18?", "weather") == "Randbereich oben"
+    assert bt("Will X happen?", "politics") == "Ja/Nein-Frage"
+
+
+def test_breakdown_by_source(tmp_path):
+    st = Store(str(tmp_path / "q.sqlite"))
+    base = {"account": "haupt_wetter", "market_id": "m", "event_id": "e", "category": "weather", "sub": "Europa", "detail": "Munich",
+            "question": "Will the highest temperature in Munich be 12°C on November 16?", "side": 1, "side_name": "No", "shares": 20,
+            "price": 0.5, "cost": 10, "fee": 0, "own_p": 0.75, "market_p": 0.5, "lane": "model", "opened_at": "2026-11-15T10:00:00+00:00",
+            "closed_at": "2026-11-16T20:00:00+00:00"}
+    st.insert_position({**base, "market_id": "a", "status": "won", "pnl": 10.0, "payout": 20})
+    st.insert_position({**base, "market_id": "b", "status": "lost", "pnl": -10.0, "payout": 0})
+    st.insert_position({**base, "market_id": "c", "status": "lost", "pnl": -10.0, "payout": 0, "detail": "Paris", "own_p": 0.55})
+    st.insert_position({**base, "market_id": "d", "status": "sold", "pnl": 2.0, "payout": 12})
+    st.insert_position({**base, "market_id": "e", "status": "open"})
+    st.insert_position({**base, "market_id": "f", "status": "won", "pnl": 5.0, "payout": 15, "kind": "arb", "lane": "arb"})
+    st.insert_position({**base, "account": "haupt_sport", "market_id": "g", "category": "sports", "sub": "Fußball", "detail": "Premier League",
+                        "question": "Arsenal vs. Chelsea: O/U 2.5", "side_name": "Over", "status": "won", "pnl": 8.0, "payout": 18})
+    d = paperview.breakdown(st, {})
+    g = {k: {x["name"]: x for x in v["zeilen"]} for k, v in d["gruppen"].items()}
+    munich = g["quelle"]["Wetter › Europa › Munich"]
+    assert (munich["n"], munich["gewonnen"], munich["verkauft"], munich["gv"]) == (2, 1, 1, 2.0) and munich["treffer"] == 0.5
+    assert g["wettart"]["Wetter · Genauer Wert (1 Grad)"]["n"] == 3 and g["wettart"]["Sport · Über/Unter"]["gv"] == 8.0
+    assert set(g["seite"]) == {"Nein gekauft", "Mannschaft/Name gekauft"} and g["grund"]["eigenes Modell"]["n"] == 4
+    assert g["chance"]["70–80 %"]["n"] == 3 and g["chance"]["50–60 %"]["n"] == 1
+    assert [x["name"] for x in d["gruppen"]["chance"]["zeilen"]] == ["50–60 %", "70–80 %"]
+    assert d["summe"]["n"] == 4 and abs(d["summe"]["gv"] - 0.0) < 1e-9                  # ohne Arbitrage und ohne offene
+    only = paperview.breakdown(st, {"cat": "sports"})
+    assert only["summe"]["n"] == 1 and list(only["gruppen"]["quelle"]["zeilen"][0]["name"].split(" › "))[-1] == "Premier League"
+    md = "\n".join(reports.source_review(st, min_n=1))
+    assert "Auswertung nach Quelle" in md and "Wetter › Europa › Munich" in md and "Sport · Über/Unter" in md

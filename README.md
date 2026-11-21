@@ -30,7 +30,8 @@ Modell zurückholen) · Strategie-Labor · Performance · Daten · System · Cla
 **Paper-Trading:** „Konten und Lage“ (Kennzahlen, Kurve, Tabelle Strategie × Thema, pausierte Konten, offene Wetten, was der Bot
 gerade sieht) · „Wetten“ (alle Wetten, filterbar nach Strategie und Bereich › Unterbereich › Detail, z. B. Sport › Fußball › Champions League, nach Ergebnis, Art, Zeitraum)
 · Detailseite je Wette (Wahrscheinlichkeit für den eigenen Tipp beim Einstieg, Markt, Modell, Begründung, Prüfung, Verlauf, Ausgang)
-· „Kalender“ (Gewinn/Verlust je Tag, gleicher Filter).
+· „Kalender“ (Gewinn/Verlust je Tag, gleicher Filter) · „Auswertung“ (wo verdient der Bot: nach Liga, Stadt, Coin,
+Art der Wette, Seite, Grund und Gewinnchance beim Kauf – Treffer gegen Preis).
 Angezeigt werden nur gemessene Werte; fehlt etwas, steht dort „Keine Daten verfügbar“.
 
 ## Regeln, die im Code fest verankert sind

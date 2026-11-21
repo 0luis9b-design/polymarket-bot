@@ -297,3 +297,66 @@ def overview(store, engine, args):
             "konten": accounts, "strategien": strategies, "konto": next((a for a in accounts if a["id"] == acc), None) if acc else None,
             "chancen": chances[:25], "tree": tree(store, args), **choices(), "start": config.START_BALANCE,
             "letzter_lauf": engine.state.get("last_scan") if engine else None}
+
+
+# ---------------------------------------------------------------- Auswertung nach Quelle (seit 21.11.)
+LANE_TEXT = {"model": "eigenes Modell", "base": "Basisraten", "rule": "feste Regel", "maker": "Limit-Order"}
+CHANCE_STEPS = [(0.0, 0.5, "unter 50 %"), (0.5, 0.6, "50–60 %"), (0.6, 0.7, "60–70 %"), (0.7, 0.8, "70–80 %"),
+                (0.8, 0.9, "80–90 %"), (0.9, 1.01, "90 % und mehr")]
+
+
+def _group_stats(rs):
+    done = [r for r in rs if r["status"] in ("won", "lost")]
+    n = len(done)
+    staked = sum(r["cost"] or 0 for r in rs)
+    gv = sum(r["pnl"] or 0 for r in rs)
+    return {"n": n, "verkauft": sum(1 for r in rs if r["status"] == "sold"), "gewonnen": sum(1 for r in done if r["status"] == "won"),
+            "treffer": (sum(1 for r in done if r["status"] == "won") / n) if n else None,
+            "erwartet": (sum(r["own_p"] or 0 for r in done) / n) if n else None,
+            "preis": (sum(r["market_p"] or 0 for r in done) / n) if n else None,
+            "gv": round(gv, 2), "einsatz": round(staked, 2), "roi": (gv / staked) if staked else None}
+
+
+def breakdown(store, args, min_n=1):
+    """Wo verdient der Bot wirklich? Abgeschlossene Wetten (ohne Arbitrage) gruppiert nach Liga/Stadt/Coin, Art der Wette,
+    gekaufter Seite, Grund und Gewinnchance beim Kauf. Filter wie überall (Strategie, Konto, Bereich, Zeitraum)."""
+    w, p = where({**args, "status": None}, status=False)
+    joiner = " AND " if w else " WHERE "
+    rows = store.q("SELECT category, sub, detail, question, side, side_name, lane, own_p, market_p, pnl, cost, status FROM positions "
+                   f"{w}{joiner}status IN ('won','lost','sold') AND COALESCE(kind,'')!='arb' AND COALESCE(lane,'')!='arb'", p)
+
+    def side_of(r):
+        sn = (r["side_name"] or "").lower()
+        if sn in ("yes", "ja"):
+            return "Ja gekauft"
+        if sn in ("no", "nein"):
+            return "Nein gekauft"
+        return "Mannschaft/Name gekauft"
+
+    def chance_of(r):
+        v = r["own_p"]
+        return next((name for lo, hi, name in CHANCE_STEPS if v is not None and lo <= v < hi), "ohne Angabe")
+
+    dims = {
+        "quelle": ("Liga, Stadt oder Coin", lambda r: f"{taxonomy.NAMES.get(r['category'], r['category'])} › {r['sub'] or '–'} › {r['detail'] or '–'}"),
+        "wettart": ("Art der Wette", lambda r: f"{taxonomy.NAMES.get(r['category'], r['category'])} · "
+                                               f"{taxonomy.bet_type(r['question'], r['category'], r['detail'])}"),
+        "seite": ("Gekaufte Seite", side_of),
+        "grund": ("Grund der Wette", lambda r: LANE_TEXT.get(r["lane"], "ohne Angabe")),
+        "chance": ("Eigene Gewinnchance beim Kauf", chance_of),
+    }
+    out = {}
+    for key, (title, fn) in dims.items():
+        groups = defaultdict(list)
+        for r in rows:
+            groups[fn(r)].append(r)
+        lst = [{"name": k, **_group_stats(v)} for k, v in groups.items()]
+        lst = [x for x in lst if x["n"] + x["verkauft"] >= min_n]
+        if key == "chance":
+            order = [n for _, _, n in CHANCE_STEPS] + ["ohne Angabe"]
+            lst.sort(key=lambda x: order.index(x["name"]) if x["name"] in order else 99)
+        else:
+            lst.sort(key=lambda x: (-(x["n"] + x["verkauft"]), x["name"]))
+        out[key] = {"titel": title, "zeilen": lst}
+    total = _group_stats(rows)
+    return {"gruppen": out, "summe": total, "tree": tree(store, args), **choices()}

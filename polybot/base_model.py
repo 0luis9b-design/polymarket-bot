@@ -68,7 +68,7 @@ class BaseRates:
             return
         cells = {}
         rows = self.store.q("SELECT category, outcome, p_1h, p_6h, p_24h, p_72h, p_7d FROM resolved WHERE outcome IS NOT NULL "
-                            "ORDER BY end_date, market_id")
+                            "AND sel=? ORDER BY end_date, market_id", (config.DATASET_SEL,))
         total = {}
         for r in rows:
             total[r["category"]] = total.get(r["category"], 0) + 1

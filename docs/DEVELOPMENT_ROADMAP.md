@@ -1,7 +1,7 @@
 # Entwicklungs-Roadmap
 
 Priorität: **1** = verhindert Schaden oder ist Voraussetzung · **2** = Kern des Zielsystems · **3** = Ausbau.
-Status: ✅ erledigt (mit Tests belegt) · 🔧 in Arbeit · ⏳ geplant. Stand: 21.11.2026, Version 2.6.0.
+Status: ✅ erledigt (mit Tests belegt) · 🔧 in Arbeit · ⏳ geplant. Stand: 21.11.2026, Version 2.7.0.
 
 ## Phase 1–2 · Audit und Architektur — ✅
 Dokumente: `PROJECT_AUDIT.md`, `SYSTEM_ARCHITECTURE.md`, `TECHNICAL_DEBT.md`, `RISK_REGISTER.md`, diese Datei.
@@ -95,7 +95,7 @@ Anlass: Am 15./16.11. wetteten die Basisraten auf E-Sport-Karten und genaue Fuß
 | Höchstens eine Wette je Spiel und Konto (alle Märkte einer Partie zusammen, auch Gebote und Außenseiter-Regel) | ✅ mit Test |
 | Keine Pausen mehr: große Verluste nur gemeldet; alle bisherigen Pausen aufgehoben; Pause unter Einstellungen wieder einschaltbar | ✅ mit Test |
 | Claude-Bericht: Wächter-Status und auffälligste Vergleichszellen der Basisraten | ✅ |
-| Datensatz ohne Auswahl nach Endvolumen aufbauen (T26) | ⏳ vorgemerkt |
+| Datensatz ohne Auswahl nach Endvolumen aufbauen (T26) | ✅ 2.7 |
 
 ## Version 2.4 · Viel wetten, aber nur wahrscheinliche Ausgänge (Wunsch vom 17.11. abends) — ✅
 | Schritt | Status |
@@ -126,6 +126,18 @@ sind die Probe, ob sich die Prognosen in Geld auszahlen.
 | Empfehlungen gleichen sich nach jedem Bericht ab: gleiches Thema mit neuen Zahlen ersetzt das alte (`reports.rec_key`), was der neue Bericht nicht mehr nennt, wird automatisch erledigt, Verworfenes kommt 7 Tage nicht wieder; im Dashboard steht der Grund dabei | ✅ mit Test |
 | Einmaliger Abgleich der bisherigen 19 offenen Empfehlungen mit dem neuesten Bericht (kv `recs_tidy_v1`) | ✅ mit Test |
 | Summen-Prüfung nur, wenn auch die Marktkurse zusammen etwa 100 % ergeben; „genau eine trifft zu“ kommt aus der Angabe am Markt (`negRisk`), nicht mehr aus `enableNegRisk` am Ereignis. Anlass: Bericht 18.11. – 653 gesperrte Krypto-Prognosen (Kurs-Leitern), Modell dort besser als der Markt (Brier 0,080 gegen 0,112) | ✅ mit Test |
+
+## Version 2.7 · Saubere Vergleichsdaten, Auswertung nach Quelle (Wunsch vom 21.11.) — ✅
+| Schritt | Status |
+|---|---|
+| Vergleichsdaten ohne Auswahl nach Endvolumen (`HISTORY_MIN_VOLUME` = 0): Das Endvolumen entsteht erst nach dem Messzeitpunkt, eingetroffene Außenseiter wurden deshalb bevorzugt gesammelt (T26) | ✅ mit Test |
+| Ein Kurs zählt nur, wenn sich der Preis in den 48 h davor bewegt hat (mind. 3 verschiedene Kurse) – nutzt nur, was damals schon bekannt war | ✅ mit Test |
+| Neue Zeilen tragen `sel = 2`; Basisraten, Backtests und Kalibrierung nutzen nur diese; alte Zeilen werden beim Sammeln nach und nach neu berechnet; 120 statt 60 Märkte je Lauf, damit der Neuaufbau schneller geht | ✅ mit Test |
+| Seite „Auswertung“: abgeschlossene Wetten nach Liga/Stadt/Coin, Art der Wette (Sieger, Unentschieden, Über/Unter, Handicap, Karte; Wetter genauer Wert/Spanne/Randbereich), gekaufter Seite, Grund und Gewinnchance beim Kauf – mit Treffer gegen Preis; filterbar wie alle Paper-Seiten | ✅ Test + Browser-Test |
+| Claude-Bericht: beste und schwächste Quellen, Arten der Wette, Stand des Neuaufbaus der Vergleichsdaten | ✅ mit Test |
+
+Übergang: Bis genug neue Vergleichsdaten da sind (je Thema und Kursstufe mindestens 30 Märkte), wetten die Basisraten kaum –
+bei Wetter, Krypto und Sport voraussichtlich nach wenigen Tagen, bei kleinen Themen später. Die eigenen Modelle sind nicht betroffen.
 
 ## Machbarkeit (geprüft)
 | Ressource | Heute | Mit Ausbau (geschätzt) | Grenze |
@@ -163,5 +175,5 @@ Ergebnis: alles läuft auf dem vorhandenen Railway-Dienst ohne Zusatzkosten.
 9. **Wetter: Mindest-Vorsprung oder Modell prüfen**, falls „Wetten im Rückblick“ zeigt, dass die Wetten seltener gewinnen als erwartet.
 
 ## Vorgemerkt (aus früheren Absprachen)
-Wetter am Messtag mit Live-Messwerten (METAR) · Export als Tabelle · Auswertung nach Quelle
-(Liga, Stadt, Markt-Typ) · weitere RSS-Quellen nach Prüfung.
+~~Wetter am Messtag mit Live-Messwerten (METAR)~~ ✅ · Export als Tabelle · ~~Auswertung nach Quelle (Liga, Stadt, Markt-Typ)~~ ✅ 2.7 ·
+weitere RSS-Quellen nach Prüfung.

@@ -250,3 +250,34 @@ def path(c):
     """Lesbarer Pfad, z. B. „Sport › Fußball › Champions League“."""
     parts = [NAMES.get(c.get("category"), c.get("category") or "?"), c.get("sub"), c.get("detail")]
     return " › ".join(p for p in parts if p and p != OTHER)
+
+
+# ---------------------------------------------------------------- Art der Wette (für die Auswertung nach Quelle)
+_BT = [
+    (re.compile(r"exact score|correct score", re.I), "Genaues Ergebnis"),
+    (re.compile(r"end in a draw|\bdraw\b", re.I), "Unentschieden"),
+    (re.compile(r"\bo/u\b|over/under|total|\bover\b|\bunder\b", re.I), "Über/Unter"),
+    (re.compile(r"spread|handicap|\([+-]\d", re.I), "Handicap"),
+    (re.compile(r"(map|game|set|round)\s*\d+\s*winner", re.I), "Einzelne Karte/Runde"),
+    (re.compile(r"\bwin\b|\bvs\.?\b|winner|beat", re.I), "Sieger"),
+]
+
+
+def bet_type(question, category, detail=None):
+    """Art der Wette in Worten: bei Spielen Sieger/Unentschieden/Über-Unter/Handicap/Karte, bei Wetter genauer Wert,
+    Spanne oder Randbereich, bei Krypto die Art des Kursziels, sonst „Ja/Nein-Frage“."""
+    q = question or ""
+    if category in ("sports", "esports"):
+        return next((name for rx, name in _BT if rx.search(q)), "Sonstiges")
+    if category == "weather":
+        low = q.lower()
+        if "or higher" in low or "or above" in low or "or more" in low:
+            return "Randbereich oben"
+        if "or below" in low or "or lower" in low or "or less" in low:
+            return "Randbereich unten"
+        if "between" in low or re.search(r"\d+\s*-\s*\d+\s*°", q):
+            return "Spanne (2 Grad)"
+        return "Genauer Wert (1 Grad)"
+    if category == "crypto":
+        return detail or "Sonstiges"
+    return "Ja/Nein-Frage"

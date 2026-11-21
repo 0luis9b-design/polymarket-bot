@@ -205,7 +205,7 @@ class Coordinator:
                 "prognosen_märkte": st.scalar("SELECT COUNT(DISTINCT market_id) FROM forecasts"),
                 "ergebnisse": st.scalar("SELECT COUNT(*) FROM outcomes"),
                 "prognosen_mit_ergebnis": st.scalar("SELECT COUNT(*) FROM forecasts f JOIN outcomes o ON o.market_id=f.market_id WHERE f.champion=1"),
-                "entschiedene_märkte_datensatz": st.scalar("SELECT COUNT(*) FROM resolved"),
+                "entschiedene_märkte_datensatz": st.scalar("SELECT COUNT(*) FROM resolved WHERE sel=?", (config.DATASET_SEL,)),
                 "nachrichten": st.scalar("SELECT COUNT(*) FROM news"),
                 "berichte": st.scalar("SELECT COUNT(*) FROM reports")}
 

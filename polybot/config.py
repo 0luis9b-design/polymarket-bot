@@ -217,8 +217,13 @@ NEWS_FEEDS = [  # (Name, Adresse) – alle am 14.11.2026 als Standard-RSS geprü
     ("BBC Sport", "https://feeds.bbci.co.uk/sport/rss.xml"),
 ]
 BACKTEST_ENABLED = os.environ.get("BACKTEST_ENABLED", "1") == "1"
-HISTORY_PER_RUN = _i("HISTORY_PER_RUN", 60)           # entschiedene Märkte pro Lauf nachladen (je 1 Abruf Preisverlauf)
-HISTORY_MIN_VOLUME = _f("HISTORY_MIN_VOLUME", 2000)
+HISTORY_PER_RUN = _i("HISTORY_PER_RUN", 120)           # entschiedene Märkte pro Lauf nachladen (je 1 Abruf Preisverlauf)
+# 0 = keine Auswahl nach Endvolumen (seit 21.11.): Das Endvolumen entsteht erst NACH dem Messzeitpunkt – eingetroffene
+# Außenseiter werden viel mehr gehandelt und landeten dadurch bevorzugt im Datensatz (T26)
+HISTORY_MIN_VOLUME = _f("HISTORY_MIN_VOLUME", 0)
+DATASET_SEL = 2                                     # Basisraten und Backtests nutzen nur so gesammelte Zeilen
+ALIVE_WINDOW_H = _f("ALIVE_WINDOW_H", 48)           # ein Kurs zählt nur, wenn sich der Preis in den Stunden davor bewegt hat …
+ALIVE_MIN_DISTINCT = _i("ALIVE_MIN_DISTINCT", 3)    # … mindestens so viele verschiedene Kurse (Markt wurde wirklich gehandelt)
 MOVE_ALERT_PTS = _f("MOVE_ALERT_PTS", 0.10)
 NOTIFY_MIN_LEVEL = os.environ.get("NOTIFY_MIN_LEVEL", "normal")
 NOTIFY_DAILY_CAP = _i("NOTIFY_DAILY_CAP", 40)
