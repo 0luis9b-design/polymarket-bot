@@ -18,6 +18,10 @@ from collections import Counter, defaultdict
 from .. import config
 from . import Agent
 
+# Wann eine Prüfregel zuletzt geändert wurde. Die Auswertung „War die Ablehnung berechtigt?“ zählt nur Ablehnungen ab
+# diesem Zeitpunkt – sonst bleibt eine Empfehlung zu einer längst geänderten Regel offen (Bericht #4: 659 alte Fälle).
+RULE_SINCE = {"Summe der Antworten": "2026-11-21T15:00:00+00:00"}   # 2.6: nur noch bei Summe 85–120 %
+
 MAX_AGE = {"crypto": 20 * 60, "sports": 8 * 3600, "weather": 8 * 3600}
 
 

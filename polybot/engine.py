@@ -20,7 +20,7 @@ from collections import Counter, defaultdict
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
-from . import base_model, config, crypto_model, events, notify, polymarket, sports_model, taxonomy, weather_model
+from . import base_model, config, crypto_model, events, hindsight, notify, polymarket, sports_model, taxonomy, weather_model
 from .agents.coordinator import Coordinator
 from .prices import hourly_closes, source_status
 from .sources import redact
@@ -692,7 +692,25 @@ class Engine:
             return f"Gewinnchance {ev['q'] * 100:.0f} % – unter {config.MIN_WIN_P * 100:.0f} %"
         if m["category"] in config.GAME_TOPICS and self.store.has_game(aid, o["group"], m.get("event_id")):
             return "schon eine Wette auf dieses Spiel"
+        if ev and ev.get("side") is not None:
+            return self.hindsight_block(o, ev["side"] == 0)
         return None
+
+    def hindsight_table(self):
+        """Rückblick-Tabelle (rechnet der Lern-Agent stündlich), höchstens alle 5 Minuten neu gelesen."""
+        now = time.monotonic()
+        if getattr(self, "_hs", None) is None or now - self._hs[0] > 300:
+            self._hs = (now, hindsight.Table(hindsight.load(self.store)))
+        return self._hs[1]
+
+    def hindsight_block(self, o, side_yes):
+        """Nur Modell-Wetten: Hätten Wetten in diesem Bereich nachweislich verloren? Dann Grund als Text."""
+        a, m = o.get("analysis") or {}, o["market"]
+        if a.get("lane", "model") != "model" or a.get("p_yes") is None or o.get("market_p") is None:
+            return None
+        diff = (a["p_yes"] - o["market_p"]) if side_yes else (o["market_p"] - a["p_yes"])
+        bt = taxonomy.bet_type(m.get("question"), m["category"], m.get("detail"))
+        return self.hindsight_table().block(m["category"], bt, side_yes, diff)
 
     def open_position(self, acc, o, min_edge):
         """Gibt den Status zurück ('eröffnet' oder Grund)."""
@@ -844,9 +862,14 @@ class Engine:
                 continue
             p_yes = o["analysis"]["p_yes"]
             best = None
+            hs_reason = None
             for side in (0, 1):
                 q = p_yes if side == 0 else 1 - p_yes
                 if q < config.MIN_WIN_P:
+                    continue
+                hs = self.hindsight_block(o, side == 0)
+                if hs:
+                    hs_reason = hs
                     continue
                 ask, bid = polymarket.quote(m, side)
                 limit = min(q - config.MAKER_EDGE, ask - 0.001)  # nie über/auf dem Briefkurs (sonst wäre es ein Sofortkauf)
@@ -856,7 +879,7 @@ class Engine:
                 if best is None or q - limit > best[2]:
                     best = (side, limit, q - limit, q)
             if not best:
-                o["status"][aid] = "kein sinnvolles Gebot"
+                o["status"][aid] = hs_reason or "kein sinnvolles Gebot"
                 continue
             side, limit, edge, q = best
             conf = confidence(q, edge, config.MAKER_EDGE)

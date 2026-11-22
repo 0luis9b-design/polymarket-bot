@@ -17,8 +17,9 @@ import statistics
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 
-from .. import config, events
+from .. import config, events, hindsight
 from . import Agent
+from .validation import RULE_SINCE
 
 HORIZON_ORDER = ["<6h", "6-24h", "24-72h", ">72h"]
 MIX_WEIGHTS = (0.75, 0.5, 0.25, 0.0)
@@ -136,8 +137,30 @@ class LearningAgent(Agent):
         exps = self.experiments(rows, now) if self.time_left(deadline) > 5 else []
         summary["experimente"] = len(exps)
         self.store.kv_set("learn:summary", json.dumps(summary, ensure_ascii=False))
+        blocked = self.hindsight(now)
         return {"prognosen_mit_ergebnis": len(rows), "experimente": len(exps), "neue_wetter_parameter": new_version,
+                "rückblick_gesperrt": blocked,
                 "offene_vorschläge": self.store.scalar("SELECT COUNT(*) FROM proposals WHERE status='offen'")}
+
+    def hindsight(self, now):
+        """Rückblick neu rechnen; Änderungen an den gesperrten Bereichen als Ereignis melden (ohne Telegram)."""
+        before = hindsight.load(self.store) or {}
+        key = lambda c: (c["thema"], c["wettart"], c["seite"], c["abweichung"])  # noqa: E731
+        old = {key(c) for c in before.get("bereiche", []) if c["gesperrt"]}
+        res = hindsight.compute(self.store, now)
+        new = {key(c): c for c in res["bereiche"] if c["gesperrt"]}
+        for k in set(new) - old:
+            c = new[k]
+            events.emit(self.store, "info", "rueckblick",
+                        f"Rückblick sperrt: {config.TOPIC_NAME.get(k[0], k[0])} · {k[1]} · „{k[2]}“ · {k[3]}",
+                        f"{c['gewonnen'] * 100:.0f} % gewonnen bei {c['preis'] * 100:.0f} % Preis ({c['ereignisse']} Ereignisse)",
+                        key=f"rueckblick:{'|'.join(k)}:{now.date()}", agent=self.id, telegram=False)
+        for k in old - set(new):
+            events.emit(self.store, "info", "rueckblick",
+                        f"Rückblick gibt wieder frei: {config.TOPIC_NAME.get(k[0], k[0])} · {k[1]} · „{k[2]}“ · {k[3]}",
+                        "Der Verlust in diesem Bereich ist nicht mehr gesichert.",
+                        key=f"rueckblick-frei:{'|'.join(k)}:{now.date()}", agent=self.id, telegram=False)
+        return len(new)
 
     def summary(self):
         return self.store.kv_json("learn:summary", None)
@@ -237,9 +260,12 @@ class LearningAgent(Agent):
         rej = defaultdict(list)
         for r in champ:
             if not r["valid"]:
-                rej[(r["reject_reason"] or "ohne Grund").split(" (")[0].split(" =")[0]].append(r)
+                reason = (r["reject_reason"] or "ohne Grund").split(" (")[0].split(" =")[0]
+                if r["created_at"] >= RULE_SINCE.get(reason, ""):     # nur Ablehnungen nach der letzten Regeländerung
+                    rej[reason].append(r)
         for reason, rs in sorted(rej.items(), key=lambda x: -len(x[1])):
-            out["validierung"].append({"grund": reason, "n": len(rs), "brier": brier(rs), "brier_market": brier(rs, "market_p")})
+            out["validierung"].append({"grund": reason, "n": len(rs), "brier": brier(rs), "brier_market": brier(rs, "market_p"),
+                                       "seit": RULE_SINCE.get(reason)})
         return out
 
     # ------------------------------------------------------------------ 3. Wetter-Parameter lernen

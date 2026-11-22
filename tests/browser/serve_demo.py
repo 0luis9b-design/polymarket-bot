@@ -35,5 +35,13 @@ for i in range(24):
                         "opened_at": opened.isoformat(timespec="seconds"), "closed_at": (opened + timedelta(hours=20)).isoformat(timespec="seconds") if done else None,
                         "end_date": (opened + timedelta(hours=24)).isoformat(timespec="seconds"), "kind": "model", "lane": lane, "mark": 0.45,
                         "entry": json.dumps({"p_unser_ausgang": 0.55, "begruendung": "Beispiel", "pruefung": [["wert", True]]})})
+from polybot import hindsight  # noqa: E402
+for i in range(25):   # Rückblick (2.8): ein verlierender und ein gewinnender Bereich
+    for mid, p, mkt, out in ((f"hn{i}", 0.25, 0.45, 1 if i % 5 else 0), (f"hy{i}", 0.55, 0.50, 1 if i % 3 else 0)):
+        st.x("INSERT INTO markets(id, question, category) VALUES(?,?,?)", (mid, f"Will the highest temperature in City{i} be 13°C on November 20?", "weather"))
+        st.x("INSERT INTO forecasts(market_id, category, model, version, horizon, created_at, p, market_p, champion, valid, cluster) "
+             "VALUES(?,?,?,?,?,?,?,?,1,1,?)", (mid, "weather", "weather.live", "1", "6-24h", (now - timedelta(days=2)).isoformat(), p, mkt, f"{mid}c"))
+        st.add_outcome(mid, float(out))
+hindsight.compute(st, now)
 A.engine.state["paused"]["kelly_sport"] = "−8 % heute – pausiert bis morgen"   # damit die Liste „Pausierte Konten“ sichtbar ist
 A.app.run(host="127.0.0.1", port=int(sys.argv[2]), use_reloader=False)

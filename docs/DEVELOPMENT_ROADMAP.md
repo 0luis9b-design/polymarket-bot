@@ -139,6 +139,21 @@ sind die Probe, ob sich die Prognosen in Geld auszahlen.
 Übergang: Bis genug neue Vergleichsdaten da sind (je Thema und Kursstufe mindestens 30 Märkte), wetten die Basisraten kaum –
 bei Wetter, Krypto und Sport voraussichtlich nach wenigen Tagen, bei kleinen Themen später. Die eigenen Modelle sind nicht betroffen.
 
+## Version 2.8 · Rückblick: nur dort wetten, wo es sich gelohnt hätte (Bericht #4 vom 22.11.) — ✅
+Befund: Wetter- und Krypto-Prognosen sind im Schnitt genauer als der Markt, die Wetten darauf verlieren trotzdem
+(Wetter 19 % gewonnen bei 40 % Preis, n = 298; Krypto 41 % bei 60 %, n = 184). In den Logs: fast nur „Nein“ auf den
+Temperatur-Bereich, den der Markt für den wahrscheinlichsten hält (15–22 Pkt Abweichung) und „Nein“ auf „Fällt Bitcoin auf …“
+(2 von 21 gewonnen bei 48 % Preis). Gewettet wird, wo Modell und Markt weit auseinanderliegen – dort lag meist der Markt richtig.
+
+| Schritt | Status |
+|---|---|
+| `hindsight.py`: stündlich (Lern-Agent) für alle entschiedenen Prognosen der letzten 30 Tage nachrechnen, ob eine Wette auf die Seite des Modells zum damaligen Marktpreis gewonnen hätte – je Thema · Wettart · Seite · Abweichung (3–8 / 8–15 / 15–25 / über 25 Pkt), Sicherheit über unabhängige Ereignisse | ✅ mit Test |
+| Engine: keine Modell-Wette und kein Limit-Gebot in Bereichen mit gesichertem Verlust (z ≤ −1,64, ≥ 20 Ereignisse); genauester Bereich mit genug Daten entscheidet; Basisraten, feste Regeln und Arbitrage unberührt; gibt sich von selbst wieder frei | ✅ mit Test |
+| Einstellungen `HINDSIGHT` (an/aus) und `HINDSIGHT_Z`; Änderungen als Ereignis „rueckblick“ (ohne Telegram) | ✅ |
+| Seite „Auswertung“: Tabelle „Rückblick“; Claude-Bericht Abschnitt 7 | ✅ Test + Browser-Test |
+| Bericht: Empfehlung „Wetten gewinnen seltener als erwartet“ nur noch aus Wetten seit dem Rückblick (höchstens 14 Tage alt); Prüfregel-Auswertung zählt nur Ablehnungen nach der letzten Regeländerung (Summen-Prüfung seit 21.11.) | ✅ mit Test |
+| Export als Tabelle: Knopf „Als Tabelle herunterladen“ auf der Seite „Wetten“ (gleiche Auswahl, öffnet in Excel, Marktfragen gegen Formel-Einschleusung geschützt) | ✅ mit Test |
+
 ## Machbarkeit (geprüft)
 | Ressource | Heute | Mit Ausbau (geschätzt) | Grenze |
 |---|---|---|---|
@@ -172,8 +187,9 @@ Ergebnis: alles läuft auf dem vorhandenen Railway-Dienst ohne Zusatzkosten.
    getrennt von NBA) und nach Markttyp (Sieger, Handicap, Über/Unter).
 7. **`engine.py` weiter zerlegen** (T9) – erst wenn das neue System zwei Wochen stabil läuft.
 8. **Ursache der Polymarket-Fehler 500 eingrenzen**, sobald `hist:gamma_fail` ein paar Tage gezählt hat (welches Thema, welche Richtung, welche Seite).
-9. **Wetter: Mindest-Vorsprung oder Modell prüfen**, falls „Wetten im Rückblick“ zeigt, dass die Wetten seltener gewinnen als erwartet.
+9. ~~Wetter: Mindest-Vorsprung oder Modell prüfen~~ → 2.8 Rückblick sperrt verlierende Bereiche automatisch. Offen: Warum liegt das
+   Wetter-Modell gerade beim Favoriten-Bereich daneben (Streuung zu breit?) – prüfen, sobald der Rückblick ein paar Tage läuft.
 
 ## Vorgemerkt (aus früheren Absprachen)
-~~Wetter am Messtag mit Live-Messwerten (METAR)~~ ✅ · Export als Tabelle · ~~Auswertung nach Quelle (Liga, Stadt, Markt-Typ)~~ ✅ 2.7 ·
+~~Wetter am Messtag mit Live-Messwerten (METAR)~~ ✅ · ~~Export als Tabelle~~ ✅ 2.8 · ~~Auswertung nach Quelle (Liga, Stadt, Markt-Typ)~~ ✅ 2.7 ·
 weitere RSS-Quellen nach Prüfung.

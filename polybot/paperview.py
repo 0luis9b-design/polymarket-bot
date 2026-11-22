@@ -163,6 +163,48 @@ def bets(store, args):
             **choices()}
 
 
+CSV_MAX = 20000
+_CSV_STATUS = {"open": "offen", "won": "gewonnen", "lost": "verloren", "sold": "verkauft"}
+
+
+def _cell(v):
+    """Ein Feld für Excel: Zahlen mit Komma, Text gegen Formel-Einschleusung geschützt (Marktfragen sind fremde Daten)."""
+    if v is None:
+        return ""
+    if isinstance(v, bool):
+        return "ja" if v else "nein"
+    if isinstance(v, (int, float)):
+        return (f"{v:.4f}".rstrip("0").rstrip(".") if isinstance(v, float) else str(v)).replace(".", ",")
+    t = str(v).replace("\r", " ").replace("\n", " ")
+    if t[:1] in ("=", "+", "-", "@", "\t"):
+        t = "'" + t
+    if any(c in t for c in ';"'):
+        t = '"' + t.replace('"', '""') + '"'
+    return t
+
+
+def bets_csv(store, args):
+    """Alle Wetten der aktuellen Auswahl als Tabelle (Semikolon, Komma als Dezimalzeichen – öffnet direkt in Excel)."""
+    w, p = where(args)
+    rows = store.q(f"SELECT {LIST_COLS} FROM positions{w} ORDER BY opened_at DESC, id DESC LIMIT ?", p + [CSV_MAX])
+    head = ["Nr", "Konto", "Thema", "Einordnung", "Frage", "Seite", "Grund", "Eröffnet", "Abgeschlossen", "Marktende",
+            "Kaufkurs", "Eigene Wahrscheinlichkeit", "Marktpreis Mitte", "Vorsprung", "Einsatz $", "Anteile", "Ergebnis", "G/V $",
+            "Polymarket"]
+    berlin = lambda iso: datetime.fromisoformat(iso).astimezone(BERLIN).strftime("%d.%m.%Y %H:%M") if iso else None  # noqa: E731
+    lines = [";".join(head)]
+    for r in rows:
+        r = _decorate(r)
+        gv = r["pnl"] if r["status"] != "open" else r.get("gv_offen")
+        lines.append(";".join(_cell(v) for v in (
+            r["id"], r["account_name"], taxonomy.NAMES.get(r["category"], r["category"]), r["pfad"], r["question"], r["side_name"],
+            LANE_TEXT.get(r.get("lane") or "model", r.get("lane")) if r.get("kind") != "arb" else "Arbitrage",
+            berlin(r["opened_at"]), berlin(r["closed_at"]), berlin(r["end_date"]), r["price"], r["own_p"], r["p_mid"], r["edge"],
+            round(r["cost"] or 0, 2), round(r["shares"] or 0, 2), _CSV_STATUS.get(r["status"], r["status"]),
+            round(gv, 2) if gv is not None else None,
+            f"https://polymarket.com/event/{r['event_slug']}" if r.get("event_slug") else None)))
+    return "\ufeff" + "\r\n".join(lines) + "\r\n", len(rows)
+
+
 def bet_detail(store, pid, opportunities=None):
     r = store.q1("SELECT * FROM positions WHERE id=?", (pid,))
     if not r:

@@ -1,8 +1,11 @@
 """Versionsstand des Systems. CHANGES wird im Claude-Bericht unter „Neue Funktionen“ gezeigt."""
-VERSION = "2.7.0"
+VERSION = "2.8.0"
 
 # (Datum, Version, Text) – neueste zuerst
 CHANGES = [
+    ("2026-11-22", "2.8.0", "Rückblick: Für alle entschiedenen Prognosen wird nachgerechnet, ob eine Wette Geld gebracht hätte (je Thema, Wettart, Seite und Abweichung vom Markt). In Bereichen mit gesichertem Verlust keine Modell-Wetten mehr – gibt sich von selbst wieder frei; Tabelle auf der Seite „Auswertung“ und im Bericht"),
+    ("2026-11-22", "2.8.0", "Export: Wetten der aktuellen Auswahl als Tabelle herunterladen (öffnet in Excel)"),
+    ("2026-11-22", "2.8.0", "Bericht: Empfehlungen zu Wetten und Prüfregeln nur noch aus Daten unter den aktuellen Regeln – alte Fälle halten erledigte Empfehlungen nicht mehr offen"),
     ("2026-11-21", "2.7.0", "Vergleichsdaten ohne Auswahl nach Endvolumen neu aufgebaut: eingetroffene Außenseiter werden nicht mehr bevorzugt; ein Kurs zählt nur, wenn der Markt davor gehandelt wurde; Basisraten und Backtests nutzen nur die neuen Daten"),
     ("2026-11-21", "2.7.0", "Neue Seite „Auswertung“ (Paper-Trading): Wetten nach Liga, Stadt, Coin, Art der Wette, gekaufter Seite, Grund und Gewinnchance beim Kauf – auch im Claude-Bericht"),
     ("2026-11-21", "2.6.0", "Empfehlungen räumen sich selbst auf: ein neuer Bericht ersetzt gleiche Empfehlungen mit alten Zahlen und schließt, was nicht mehr zutrifft; Verworfenes kommt 7 Tage nicht wieder; einmaliger Abgleich der bisherigen Liste"),

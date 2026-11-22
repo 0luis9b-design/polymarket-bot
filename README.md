@@ -31,7 +31,8 @@ Modell zurückholen) · Strategie-Labor · Performance · Daten · System · Cla
 gerade sieht) · „Wetten“ (alle Wetten, filterbar nach Strategie und Bereich › Unterbereich › Detail, z. B. Sport › Fußball › Champions League, nach Ergebnis, Art, Zeitraum)
 · Detailseite je Wette (Wahrscheinlichkeit für den eigenen Tipp beim Einstieg, Markt, Modell, Begründung, Prüfung, Verlauf, Ausgang)
 · „Kalender“ (Gewinn/Verlust je Tag, gleicher Filter) · „Auswertung“ (wo verdient der Bot: nach Liga, Stadt, Coin,
-Art der Wette, Seite, Grund und Gewinnchance beim Kauf – Treffer gegen Preis).
+Art der Wette, Seite, Grund und Gewinnchance beim Kauf – Treffer gegen Preis; dazu der Rückblick je Abweichungsbereich).
+„Wetten“ lässt sich als Tabelle herunterladen (öffnet in Excel).
 Angezeigt werden nur gemessene Werte; fehlt etwas, steht dort „Keine Daten verfügbar“.
 
 ## Regeln, die im Code fest verankert sind
@@ -71,6 +72,9 @@ Angezeigt werden nur gemessene Werte; fehlt etwas, steht dort „Keine Daten ver
 - **Basisraten** handeln nur mit gutem Grund: echte Ja/Nein-Frage, mind. 30 Vergleichsmärkte aus demselben Thema, Muster gilt
   in älteren und neueren Märkten, Rohabweichung höchstens 10 Punkte, statistisch gesichert (z ≥ 1,64), und im Thema waren die
   Basisraten bisher nicht schlechter als der Markt (sonst sperrt der Wächter das Thema).
+- **Rückblick** (eigene Modelle): Für alle entschiedenen Prognosen der letzten 30 Tage wird nachgerechnet, ob eine Wette auf
+  die Seite des Modells Geld gebracht hätte – je Thema, Wettart, Seite und Abweichung vom Markt. Wo das gesichert nicht der
+  Fall war, wettet der Bot dort nicht (Einstellung `HINDSIGHT`); wird der Bereich besser, ist er von selbst wieder offen.
 - Konten (je 1.000 $ Spielgeld): **jede Strategie hat je Thema ein eigenes Konto** – 9 Strategien (Haupt, Schwelle 4/2/7,
   Schwelle 8/4/14, Fest 10 $, Ohne Ausstieg, Viertel-Kelly, Limit-Orders, Außenseiter verkaufen, Nur Arbitrage) × 11 Themen
   (Krypto, Sport, Wetter, E-Sport, Politik, Welt, Wirtschaft, Technik, Wissenschaft, Kultur, Sonstiges); Arbitrage nur in

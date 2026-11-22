@@ -23,6 +23,8 @@ SPEC = {
     "BASE_GUARD_Z": ("float", 0.5, 3.0, "Analyse", "Basisraten-Wächter: Thema sperren ab diesem z-Wert gegen den Markt (1,0 = wahrscheinlich schlechter, 1,64 = gesichert schlechter)"),
     "MIN_WIN_P": ("float", 0.0, 0.9, "Analyse", "Mindest-Gewinnchance der gewählten Seite (0,5 = nur Wetten, die eher gewinnen als verlieren)"),
     "RISK_PAUSE": ("bool", None, None, "Analyse", "Risikobremse pausiert Konten bei −8 % am Tag / −25 % seit Start (aus = nur Warnung)"),
+    "HINDSIGHT": ("bool", None, None, "Analyse", "Rückblick: keine Modell-Wetten in Bereichen, in denen solche Wetten nachweislich Geld verloren hätten"),
+    "HINDSIGHT_Z": ("float", 1.0, 3.0, "Analyse", "Rückblick sperrt ab diesem z-Wert (1,64 = Verlust gesichert)"),
     "TRADE_BASE": ("bool", None, None, "Kategorien", "Paper-Trading aller übrigen Märkte mit Basisraten (in den Konten des jeweiligen Themas)"),
     "MOVE_ALERT_PTS": ("float", 0.05, 0.50, "Benachrichtigungen", "Kursbewegung in einer Stunde, ab der ein Markt als auffällig gilt"),
     "NOTIFY_MIN_LEVEL": ("choice", LEVELS, None, "Benachrichtigungen", "Telegram ab dieser Stufe"),

@@ -220,6 +220,17 @@ def test_paper_endpoints_history_detail_calendar(mod):
     d = c.get("/api/bets?cat=sports&sub=Fu%C3%9Fball&detail=Champions%20League").get_json()
     assert d["total"] == 1 and d["rows"][0]["id"] == pid and d["tree"]["sports"]["subs"]["Fußball"]["n"] == 1
     assert c.get("/api/bets?cat=politics").get_json()["total"] == 0
+    # Export als Tabelle (2.8): gleicher Filter, Excel-Format, Marktfragen gegen Formel-Einschleusung geschützt
+    st.insert_position({"account": "haupt_sport", "market_id": "s2", "category": "sports", "question": "=HYPERLINK(\"x\");Bayern?",
+                        "side": 1, "side_name": "No", "price": 0.4, "shares": 10, "cost": 4, "fee": 0, "status": "open",
+                        "opened_at": "2026-11-12T10:00:00+00:00", "lane": "model"})
+    r = c.get("/api/bets.csv?cat=sports&sub=Fu%C3%9Fball")
+    assert r.status_code == 200 and r.mimetype == "text/csv" and "attachment" in r.headers["Content-Disposition"]
+    rows = r.get_data(as_text=True).lstrip("\ufeff").splitlines()
+    assert len(rows) == 2 and rows[0].startswith("Nr;Konto;Thema") and ";Will Bayern win?;Yes;eigenes Modell;10.11.2026 11:00;" in rows[1]
+    assert ";0,5;0,62;0,49;0,12;10;20;gewonnen;10;" in rows[1]
+    alle = c.get("/api/bets.csv?cat=sports").get_data(as_text=True)
+    assert '"\'=HYPERLINK(""x"");Bayern?"' in alle and ";offen;" in alle
     b = c.get(f"/api/bet/{pid}").get_json()
     assert b["bet"]["entry"]["begruendung"] == "Buchmacher 62 %" and b["bet"]["pfad"] == "Sport › Fußball › Champions League"
     assert c.get("/api/bet/999999").status_code == 404 and c.get("/api/bet/abc").status_code == 404

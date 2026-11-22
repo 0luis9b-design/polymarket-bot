@@ -21,7 +21,7 @@ import secrets
 
 from flask import Flask, Response, jsonify, redirect, render_template, request
 
-from polybot import config, events, notify, paperview, reports, settings, sources, version, weather_model
+from polybot import config, events, hindsight, notify, paperview, reports, settings, sources, version, weather_model
 from polybot.agents.coordinator import Coordinator
 from polybot.agents.scanner import CATEGORY_NAMES
 from polybot.engine import Engine
@@ -667,6 +667,15 @@ def api_bets():
     return jsonify(paperview.bets(store, _paper_args()))
 
 
+@app.route("/api/bets.csv")
+def api_bets_csv():
+    """Wetten der aktuellen Auswahl als Tabelle zum Herunterladen (öffnet in Excel)."""
+    text, n = paperview.bets_csv(store, _paper_args())
+    name = f"wetten-{datetime.now(paperview.BERLIN).strftime('%Y-%m-%d')}.csv"
+    return Response(text, mimetype="text/csv", headers={"Content-Disposition": f'attachment; filename="{name}"',
+                                                        "Cache-Control": "no-store", "X-Anzahl": str(n)})
+
+
 @app.route("/api/bet/<int:pid>")
 def api_bet(pid):
     d = paperview.bet_detail(store, pid, engine.state.get("opportunities"))
@@ -682,7 +691,13 @@ def api_calendar():
 
 @app.route("/api/breakdown")
 def api_breakdown():
-    return jsonify(paperview.breakdown(store, _paper_args()))
+    d = paperview.breakdown(store, _paper_args())
+    hs = hindsight.load(store) or {}
+    d["rueckblick"] = {"stand": hs.get("stand"), "tage": hs.get("tage"), "aktiv": config.HINDSIGHT,
+                       "bereiche": [dict(c, thema_name=config.TOPIC_NAME.get(c["thema"], c["thema"]))
+                                    for c in hs.get("bereiche", [])
+                                    if c["ereignisse"] >= 5 and (c["wettart"] == hindsight.ALL or c["gesperrt"])]}
+    return jsonify(d)
 
 
 @app.route("/api/account/<aid>/resume", methods=["POST"])

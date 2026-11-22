@@ -94,6 +94,18 @@ RISK_TOTAL_LOSS_PCT = _f("RISK_TOTAL_LOSS_PCT", 0.25) # −25 % gesamt -> Pause 
 # Seit 17.11. (Wunsch Luis): Konten werden nicht mehr pausiert – die Grenzen lösen nur noch eine Warnung aus.
 RISK_PAUSE = os.environ.get("RISK_PAUSE", "0") == "1"
 
+# --- Rückblick (seit 2.8, 22.11.) ---
+# Bericht #4: Wetter- und Krypto-Prognosen sind im Schnitt besser als der Markt, die Wetten darauf verlieren trotzdem
+# (Wetter 19 % gewonnen bei 40 % Preis). Grund: Gewettet wird genau dort, wo Modell und Markt weit auseinanderliegen –
+# und dort lag meist der Markt richtig. Der Rückblick rechnet für alle entschiedenen Prognosen aus, ob eine Wette in
+# diesem Bereich (Thema · Wettart · Seite · Abweichung) Geld gebracht hätte, und sperrt nur Bereiche, die gesichert
+# verlieren. Prognosen werden weiter aufgezeichnet – wird ein Bereich wieder besser, ist er von selbst wieder offen.
+HINDSIGHT = os.environ.get("HINDSIGHT", "1") == "1"
+HINDSIGHT_DAYS = _i("HINDSIGHT_DAYS", 30)              # nur Prognosen der letzten 30 Tage (das Modell ändert sich)
+HINDSIGHT_MIN_CLUSTERS = _i("HINDSIGHT_MIN_CLUSTERS", 20)  # mindestens so viele unabhängige Ereignisse je Bereich
+HINDSIGHT_Z = _f("HINDSIGHT_Z", 1.64)                 # gesperrt erst, wenn der Verlust statistisch gesichert ist
+HINDSIGHT_MIN_DIFF = 0.03                              # darunter wäre ohnehin nicht gewettet worden
+
 # --- Limit-Orders (Maker, nur Konto „Limit-Orders“) ---
 MAKER_EDGE = _f("MAKER_EDGE", 0.05)          # Gebot so legen, dass mind. 5 Pkt Vorsprung bleiben
 MAKER_MAX_HOURS = _f("MAKER_MAX_HOURS", 6)    # Gebot nach 6 h zurückziehen

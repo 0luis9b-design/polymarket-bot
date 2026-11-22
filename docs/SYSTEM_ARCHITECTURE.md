@@ -64,7 +64,9 @@
   Gespeichert an Katalog (`markets`), Datensatz (`resolved`), Wetten (`positions`) und Kaufgeboten (`orders`).
 - **Zwei Spuren** je Markt: `model` (eigenes Datenmodell: Krypto, Sport, Wetter) und `base` (Basisraten, `base_model.py`).
   Hat das eigene Modell für einen Markt nichts, bekommt er Basisraten (bei Spielen nur vor Spielbeginn). Jede Wette prüft
-  `Engine.refuse`: nie ein genaues Ergebnis (`polymarket.is_exact_score`), Gewinnchance ≥ `MIN_WIN_P`, eine Wette je Spiel. Basisraten-Regeln für einen „guten Grund“ stehen oben in `base_model.py`
+  `Engine.refuse`: nie ein genaues Ergebnis (`polymarket.is_exact_score`), Gewinnchance ≥ `MIN_WIN_P`, eine Wette je Spiel,
+  bei Modell-Wetten (auch Limit-Geboten) der Rückblick (`hindsight.py`: Lern-Agent rechnet stündlich nach, ob Wetten je
+  Thema · Wettart · Seite · Abweichung gewonnen hätten, kv `learn:rueckblick`; Sperre nur bei gesichertem Verlust). Basisraten-Regeln für einen „guten Grund“ stehen oben in `base_model.py`
   (eigenes Thema, Stabilität ältere/neuere Hälfte, Plausibilitäts-Deckel, Wächter aus `learn:summary`).
   Spiele: `engine.game_key` fasst alle Märkte einer Partie zusammen (Kürzel bis zum Datum); je Konto höchstens eine
   offene Wette oder ein Gebot je Spiel (`store.has_game`). Jede Wette merkt sich

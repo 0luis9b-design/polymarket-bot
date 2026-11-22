@@ -12,7 +12,7 @@ import re
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
-from . import config, events, sources, taxonomy, version
+from . import config, events, hindsight, sources, taxonomy, version
 
 log = logging.getLogger("polybot.bericht")
 BERLIN = ZoneInfo("Europe/Berlin")
@@ -93,7 +93,7 @@ def bets_review(st, since_iso, min_n=5):
     richtig liegt, auf die er wettet – das sind die, bei denen er am stärksten vom Markt abweicht.
     Zählt nur abgerechnete Wetten (gewonnen/verloren); vorzeitig verkaufte stehen getrennt daneben. Ohne Arbitrage.
     """
-    rows = st.q("SELECT category, lane, status, own_p, market_p, edge, pnl, closed_at FROM positions "
+    rows = st.q("SELECT category, lane, status, own_p, market_p, edge, pnl, closed_at, opened_at FROM positions "
                 "WHERE status IN ('won','lost','sold') AND COALESCE(kind,'')!='arb' AND COALESCE(lane,'')!='arb'")
     L, recs = [], []
     if not rows:
@@ -101,6 +101,7 @@ def bets_review(st, since_iso, min_n=5):
     L.append("Wetten im Rückblick – gewinnen die gekauften Wetten so oft, wie der Bot beim Kauf erwartet hat? "
              "(alle Konten zusammen, seit Start; „erwartet“ = eigene Gewinnchance beim Kauf, „Preis“ = was der Markt dafür verlangte)")
     L.append("")
+    rec_cut = max(st.kv_get("rueckblick:seit") or "", (datetime.now(timezone.utc) - timedelta(days=14)).isoformat(timespec="seconds"))
     groups = {}
     for r in rows:
         groups.setdefault((r["category"], r["lane"] if r["lane"] in LANES else None), []).append(r)
@@ -112,9 +113,12 @@ def bets_review(st, since_iso, min_n=5):
             continue
         table.append([taxonomy.NAMES.get(cat, cat), LANES[lane], b["n"], _f(b["own"], 0, pct=True), _f(b["price"], 0, pct=True),
                       _f(b["won"], 0, pct=True), f"{b['gv']:+.0f} $", f"{b['sold']} / {b['gv_sold']:+.0f} $", f"{recent:+.0f} $"])
-        if b["n"] >= 30 and b["own"] - b["won"] >= 0.10:
+        # Empfehlung nur aus Wetten, die unter den heutigen Regeln entstanden sind: seit dem Rückblick (2.8) und höchstens
+        # 14 Tage alt. Bis 2.7 zählte alles seit Start – die Empfehlung blieb dann offen, auch wenn die Ursache behoben war.
+        bn = _bet_stats([r for r in rs if (r["opened_at"] or "") >= rec_cut])
+        if bn["n"] >= 30 and bn["own"] - bn["won"] >= 0.10:
             recs.append(f"{taxonomy.NAMES.get(cat, cat)} ({LANES[lane]}): Die Wetten gewinnen deutlich seltener als beim Kauf erwartet "
-                        f"(erwartet Ø {b['own'] * 100:.0f} %, eingetreten {b['won'] * 100:.0f} %, Preis Ø {b['price'] * 100:.0f} %, n = {b['n']}) – "
+                        f"(erwartet Ø {bn['own'] * 100:.0f} %, eingetreten {bn['won'] * 100:.0f} %, Preis Ø {bn['price'] * 100:.0f} %, n = {bn['n']}) – "
                         "der Bot überschätzt genau die Märkte, auf die er wettet. Mindest-Vorsprung erhöhen oder Modell prüfen.")
     L += _table(["Thema", "Grund", "abgerechnet", "erwartet", "Preis", "gewonnen", "G/V abgerechnet", "verkauft (Anzahl / G/V)",
                  "G/V im Zeitraum"], table)
@@ -264,7 +268,8 @@ def build(coord, now, since):
     for v in err.get("validierung", []):
         if v["n"] >= 10:
             better = "die Ablehnung war berechtigt (Markt lag näher)" if v["brier"] > v["brier_market"] else "das Modell lag hier näher als der Markt"
-            add(f"- Prüfung „{v['grund']}“: {v['n']} abgelehnte Prognosen, Brier Modell {v['brier']:.3f} / Markt {v['brier_market']:.3f} – {better}.")
+            seit = f" (seit der Regeländerung am {v['seit'][8:10]}.{v['seit'][5:7]}.)" if v.get("seit") else ""
+            add(f"- Prüfung „{v['grund']}“{seit}: {v['n']} abgelehnte Prognosen, Brier Modell {v['brier']:.3f} / Markt {v['brier_market']:.3f} – {better}.")
             n_pat += 1
             if v["brier"] < v["brier_market"] and v["n"] >= 50:
                 recs.append(f"Die Prüfregel „{v['grund']}“ hat {v['n']} Prognosen gesperrt, bei denen das Modell besser lag als der Markt – Schwelle überdenken.")
@@ -284,6 +289,20 @@ def build(coord, now, since):
                 add(f"  - {c['thema']}, {c['stufe'].replace('p_', '')} vor Ende, Kurs {c['kurs']}: eingetreten {c['eingetreten'] * 100:.0f} % "
                     f"bei Ø Kurs {c['kurs_avg'] * 100:.0f} % (n = {c['n']})")
             n_pat += 1
+    hs = hindsight.load(st)
+    if hs and hs.get("bereiche"):
+        cells = [c for c in hs["bereiche"] if c["wettart"] == hindsight.ALL and c["ereignisse"] >= 10]
+        if cells:
+            add(f"- Rückblick (seit 2.8): Hätten Modell-Wetten Geld gebracht? Alle entschiedenen Prognosen der letzten {hs['tage']} Tage, "
+                "Wette auf die Seite des Modells zum damaligen Marktpreis. Gesperrt wird nur bei gesichertem Verlust.")
+            L.extend(_table(["Thema", "Seite", "Abweichung", "Ereignisse", "Gewonnen", "Ø Preis", "Rendite", "z", "Stand"],
+                            [[taxonomy.NAMES.get(c["thema"], c["thema"]), c["seite"], c["abweichung"], c["ereignisse"],
+                              _f(c["gewonnen"], 0, pct=True), _f(c["preis"], 0, pct=True), _f(c["rendite"], 0, pct=True, sign=True),
+                              _f(c["z"], 1, sign=True), "gesperrt" if c["gesperrt"] else "offen"] for c in cells]))
+            n_pat += 1
+        fine = hindsight.summary_lines({"bereiche": [c for c in hs["bereiche"] if c["wettart"] != hindsight.ALL]}, limit=8)
+        if fine:
+            add("- Gesperrt nach Wettart: " + "; ".join(fine) + ".")
     lab = (coord.strategy.view() or {}).get("latest") or {}
     for b in lab.get("kalibrierung") or []:
         if b["n"] >= 60 and abs(b["ist"] - b["p"]) >= 0.05:

@@ -283,7 +283,9 @@
         h("span", null, "Einsatz ", h("b", null, F.usd(s.einsatz || 0))),
         h("span", null, "G/V abgeschlossen ", signed(s.gv || 0)),
         s.offen ? h("span", null, F.num(s.offen) + " offen ", signed(s.gv_offen || 0, "dim")) : null,
-        (s.gewonnen || s.verloren) ? h("span", null, F.num(s.gewonnen) + " gewonnen, " + F.num(s.verloren) + " verloren") : null));
+        (s.gewonnen || s.verloren) ? h("span", null, F.num(s.gewonnen) + " gewonnen, " + F.num(s.verloren) + " verloren") : null,
+        s.n ? h("a", { href: "/api/bets.csv?" + qs(pick(q, FILTER_KEYS.concat(["status", "q", "von", "bis", "spur"]))), download: "",
+                       title: "Alle Wetten dieser Auswahl als Tabelle (öffnet in Excel)" }, "Als Tabelle herunterladen") : null));
       var sortKey = q.sort || "eroeffnet", dir = q.dir || "desc";
       out.push(PB.panel("Historie", "neueste zuerst", [betsTable(d.rows, {
         sort: { key: sortKey, dir: dir }, closedCol: sortKey === "geschlossen",
@@ -452,6 +454,26 @@
         ], g.zeilen.slice(0, k === "quelle" ? 40 : 30)), true));
       });
       if (!s.n && !s.verkauft) out.push(PB.panel("Keine Wetten", null, PB.empty("Für diese Auswahl gibt es noch keine abgeschlossene Wette.")));
+      var rb = d.rueckblick || {};
+      if (rb.bereiche && rb.bereiche.length) {
+        var gesperrt = rb.bereiche.filter(function (x) { return x.gesperrt; }).length;
+        out.push(PB.panel("Rückblick: Hätten Modell-Wetten Geld gebracht?", gesperrt ? gesperrt + " gesperrt" : "nichts gesperrt", [
+          h("p", { class: "note", style: { margin: "0 0 8px" } },
+            "Alle entschiedenen Prognosen der letzten " + (rb.tage || 30) + " Tage (unabhängig vom Filter oben), als wäre jedes Mal auf die Seite des Modells " +
+            "zum damaligen Marktpreis gewettet worden. Liegt „Treffer“ gesichert unter „Preis“, wettet der Bot in diesem Bereich nicht mehr – " +
+            "er rechnet aber weiter mit und gibt den Bereich von selbst wieder frei, wenn er besser wird." + (rb.aktiv ? "" : " (Im Moment ausgeschaltet – nur Anzeige.)")),
+          PB.table([
+            { label: "Bereich", get: function (x) {
+              return h("div", { class: "q" }, x.thema_name + (x.wettart === "alle Wettarten" ? "" : " · " + x.wettart),
+                h("small", { class: "dim2", style: { display: "block" } }, "„" + x.seite + "“ · " + x.abweichung + " Abweichung"));
+            } },
+            { label: "Ereignisse", num: true, cls: "hide-s", get: function (x) { return F.num(x.ereignisse); } },
+            { label: "Treffer", num: true, get: function (x) { return h("span", { class: x.ereignisse >= 20 ? (x.gewonnen > x.preis ? "pos" : "neg") : null }, pc(x.gewonnen)); } },
+            { label: "Preis", num: true, get: function (x) { return pc(x.preis); } },
+            { label: "Rendite", num: true, cls: "hide-s", get: function (x) { return x.rendite == null ? "–" : F.pct(x.rendite, 0); } },
+            { label: "Stand", get: function (x) { return h("span", { class: x.gesperrt ? "neg" : "dim2" }, x.gesperrt ? "gesperrt" : "offen"); } }
+          ], rb.bereiche.slice(0, 60))], true));
+      }
       return out;
     }
   };
