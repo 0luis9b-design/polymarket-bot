@@ -201,6 +201,7 @@ def evaluate_strategy(key, name, desc, fn_or_factory, rows, baseline=False, lear
 
 
 HISTORY_MAX_PAGES = 10
+SPLIT_BUDGET = 40          # höchstens so viele Zusatz-Abrufe je Sammellauf, um defekte Einträge zu umgehen
 
 
 class StrategyAgent(Agent):
@@ -215,8 +216,42 @@ class StrategyAgent(Agent):
         super().__init__(store)
         self.fetch_markets = fetch_markets
         self.fetch_history = fetch_history
+        self._split_left = SPLIT_BUDGET
 
     # ------------------------------------------------------------------ Datensatz
+    def fetch_page(self, params, offset, size, deadline):
+        """Eine Seite holen – und einzelne defekte Einträge bei Polymarket umgehen (2.9.1).
+
+        Live-Befund 18.–22.11.: Der Fehler 500 kommt nicht zufällig, sondern immer bei derselben Abfrage (z. B. Wirtschaft,
+        neueste Märkte, Seite 3; Politik, ältere Märkte bis 31.07. – dort blieb der Rückwärts-Durchlauf tagelang hängen).
+        Vermutlich bringt ein einzelner Markt die ganze Seite zum Absturz. Darum wird eine Seite mit Fehler 500 in kleinere
+        Stücke geteilt (100 → 25 → 5 → 1); was auch einzeln scheitert, wird übersprungen. Scheitern alle Stücke einer
+        Teilung oder ist das Zusatz-Budget aufgebraucht, ist Polymarket wirklich gestört – dann gilt der alte Weg (Abbruch).
+        Gibt (Märkte, Zahl der übersprungenen Einträge) zurück."""
+        try:
+            return self.fetch_markets({**params, "limit": size, "offset": offset}), 0
+        except HttpError as e:
+            if e.status is None or e.status < 500:
+                raise
+            if size <= 1:
+                return [], 1
+            if self._split_left <= 0 or self.time_left(deadline) < 10:
+                raise
+            err = e
+        step = 25 if size > 25 else 5 if size > 5 else 1
+        out, bad = [], 0
+        for off in range(offset, offset + size, step):
+            n = min(step, offset + size - off)
+            self._split_left -= 1
+            got, b = self.fetch_page(params, off, n, deadline)   # Störung oder leeres Budget: Fehler geht nach oben
+            out += got
+            bad += b
+            if len(got) + b < n:       # Ende der Liste erreicht
+                break
+        if not out and bad > 1:
+            raise err                  # nichts kam durch: kein einzelner defekter Eintrag, sondern eine Störung
+        return out, bad
+
     def collect(self, now, deadline, limit=None):
         limit = config.HISTORY_PER_RUN if limit is None else limit
         if limit <= 0:
@@ -232,8 +267,9 @@ class StrategyAgent(Agent):
         oldest_dt = polymarket.parse_dt(oldest) if backfill else None
         end_max = (oldest_dt or now).strftime("%Y-%m-%dT%H:%M:%SZ")
         backfill = bool(oldest_dt)
-        added = skipped = gaps = seen = 0
+        added = skipped = gaps = seen = defect = 0
         stop = None
+        self._split_left = SPLIT_BUDGET
         # Krypto: die zuletzt beendeten Märkte sind fast nur 5-Minuten-Märkte („Up or Down“) – deshalb mehrere Seiten
         for page in range(HISTORY_MAX_PAGES):
             if added >= limit or self.time_left(deadline) < 8:
@@ -243,7 +279,7 @@ class StrategyAgent(Agent):
             if config.HISTORY_MIN_VOLUME > 0:
                 params["volume_num_min"] = config.HISTORY_MIN_VOLUME
             try:
-                raws = self.fetch_markets(params)
+                raws, bad = self.fetch_page(params, page * 100, 100, deadline)
             except HttpError as e:
                 # Live-Befund 17./18.11.: Polymarket antwortet bei manchen Abfragen mit „HTTP 500“ (Fehler auf deren Seite).
                 # Dann diese Portion beenden statt den ganzen Agenten abbrechen – was schon gespeichert ist, bleibt, und
@@ -258,6 +294,14 @@ class StrategyAgent(Agent):
                 fails[k] = fails.get(k, 0) + 1
                 self.store.kv_set("hist:gamma_fail", json.dumps(fails))
                 break
+            if bad:
+                defect += bad
+                log.info("Datensatz: %d defekte Einträge bei Polymarket übersprungen (%s, %s Märkte, Seite %d)",
+                         bad, CATEGORY_NAMES.get(cat, cat), "ältere" if backfill else "neueste", page + 1)
+                skips = self.store.kv_json("hist:gamma_skip", {})
+                k = f"{cat}|{'alt' if backfill else 'neu'}|{page}"
+                skips[k] = skips.get(k, 0) + bad
+                self.store.kv_set("hist:gamma_skip", json.dumps(skips))
             seen += len(raws)
             ids = [str(r.get("id")) for r in raws]
             have = set()
@@ -303,10 +347,12 @@ class StrategyAgent(Agent):
                               ps["p_1h"], ps["p_6h"], ps["p_24h"], ps["p_72h"], ps["p_7d"], len(hist), now.isoformat(timespec="seconds"),
                               config.DATASET_SEL))
                 added += 1
-            if len(raws) < 100:
+            if len(raws) + bad < 100:
                 break
         out = {"kategorie": CATEGORY_NAMES.get(cat, cat), "richtung": "ältere" if backfill else "neueste", "geprüft": seen,
                "neu": added, "übersprungen": skipped, "ohne_kurse": gaps}
+        if defect:
+            out["defekt_bei_polymarket"] = defect
         if stop:
             out["abgebrochen"] = stop
         return out

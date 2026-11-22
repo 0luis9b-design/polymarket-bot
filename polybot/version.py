@@ -1,8 +1,10 @@
 """Versionsstand des Systems. CHANGES wird im Claude-Bericht unter „Neue Funktionen“ gezeigt."""
-VERSION = "2.9.0"
+VERSION = "2.9.1"
 
 # (Datum, Version, Text) – neueste zuerst
 CHANGES = [
+    ("2026-11-22", "2.9.1", "Trefferquote überall gleich gezählt (Startseite, Konten, Strategie-Tabelle, Telegram, Bericht): vorher verkaufte Wetten zählen mit, sobald ihr Markt entschieden ist"),
+    ("2026-11-22", "2.9.1", "Polymarket-Fehler 500 beim Sammeln der Vergleichsdaten: Er kam immer bei denselben Abfragen (vermutlich ein defekter Eintrag). Die Seite wird jetzt in kleinere Stücke geteilt und nur der defekte Eintrag übersprungen – der Rückwärts-Durchlauf bleibt nicht mehr hängen; Bericht zeigt beides"),
     ("2026-11-22", "2.9.0", "Treffer ehrlich gezählt: Wetten, die kurz vor Schluss mit Gewinn verkauft wurden, zählen in Auswertung und Bericht mit, sobald ihr Markt entschieden ist – vorher fehlten genau die Gewinner (E-Sport schien 0 von 83 zu gewinnen); der Bot holt dafür auch den Ausgang verkaufter Märkte"),
     ("2026-11-22", "2.9.0", "Bericht: Wirkung des Rückblicks – eigene Modell-Wetten und Limit-Gebote gleich lange vorher und nachher, dazu wie viele Märkte der Rückblick je Tag vom Wetten abhielt (auch in der Log-Zeile „Lauf“)"),
     ("2026-11-22", "2.9.0", "Bericht: Wetter-Prüfung „Ist die Vorhersage zu breit?“ – gemessene Temperatur gegen die Breite, mit der das Modell rechnet, und wie oft der Favoriten-Bereich des Marktes eintraf"),

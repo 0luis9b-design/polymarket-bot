@@ -21,6 +21,8 @@ from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
 from . import base_model, config, crypto_model, events, hindsight, notify, polymarket, sports_model, taxonomy, weather_model
+from .paperview import hit as paperview_hit
+from .store import DECIDED_SQL, HIT_SQL
 from .agents.coordinator import Coordinator
 from .prices import hourly_closes, source_status
 from .sources import redact
@@ -1321,10 +1323,19 @@ class Engine:
             self.store.kv_set("rueckblick:gesperrt", json.dumps({d: per_day[d] for d in keep}))
         return len(ids)
 
+    def _outcomes(self, market_ids):
+        """Ausgang je Markt (1.0 = erste Antwort, 0.0 = zweite) aus `outcomes`."""
+        out, ids = {}, sorted(set(market_ids))
+        for i in range(0, len(ids), 800):
+            chunk = ids[i:i + 800]
+            for r in self.store.q("SELECT market_id, outcome FROM outcomes WHERE market_id IN (%s)" % ",".join("?" * len(chunk)), chunk):
+                out[r["market_id"]] = r["outcome"]
+        return out
+
     def _pnl_by_account(self, since_iso, until_iso=None):
         """Abgerechneter G/V und Anzahl je Konto seit einem Zeitpunkt (eine Abfrage für alle Konten)."""
-        q = ("SELECT account, SUM(pnl) gv, COUNT(*) n, SUM(CASE WHEN status='won' AND COALESCE(kind,'')!='arb' THEN 1 ELSE 0 END) w, "
-             "SUM(CASE WHEN status IN ('won','lost') AND COALESCE(kind,'')!='arb' THEN 1 ELSE 0 END) s "
+        q = (f"SELECT account, SUM(pnl) gv, COUNT(*) n, SUM(CASE WHEN {HIT_SQL} AND COALESCE(kind,'')!='arb' THEN 1 ELSE 0 END) w, "
+             f"SUM(CASE WHEN {DECIDED_SQL} AND COALESCE(kind,'')!='arb' THEN 1 ELSE 0 END) s "
              "FROM positions WHERE status!='open' AND closed_at>=?")
         args = [since_iso]
         if until_iso:
@@ -1416,8 +1427,10 @@ class Engine:
         cash = self.cash(acc)
         equity = self.equity(acc, pos)
         model_closed = [c for c in closed if c.get("kind") != "arb"]
-        settled = [c for c in model_closed if c["status"] in ("won", "lost")]
-        wins = [c for c in settled if c["status"] == "won"]
+        outs = self._outcomes([c["market_id"] for c in model_closed if c["status"] == "sold"])
+        hits = {c["id"]: paperview_hit({**c, "mkt_outcome": outs.get(c["market_id"])}) for c in model_closed}
+        settled = [c for c in model_closed if hits[c["id"]] is not None]       # mit bekanntem Ausgang, auch vorher verkaufte
+        wins = [c for c in settled if hits[c["id"]] == 1]
         staked = sum(c["cost"] for c in closed)
         pnl = sum(c["pnl"] or 0 for c in closed)
         clv_rows = [c for c in closed + pos if c["category"] == "sports" and c.get("close_p") is not None and c.get("kind") != "arb"]
@@ -1462,9 +1475,9 @@ class Engine:
             "WHERE status='open' GROUP BY account")}
         closed = {r["account"]: r for r in st.q(
             "SELECT account, COUNT(*) n, SUM(pnl) gv, SUM(cost) einsatz, "
-            "SUM(CASE WHEN status='won' AND COALESCE(kind,'')!='arb' THEN 1 ELSE 0 END) w, "
-            "SUM(CASE WHEN status IN ('won','lost') AND COALESCE(kind,'')!='arb' THEN 1 ELSE 0 END) s, "
-            "SUM(CASE WHEN status IN ('won','lost') AND COALESCE(kind,'')!='arb' THEN own_p END) erwartet "
+            f"SUM(CASE WHEN {HIT_SQL} AND COALESCE(kind,'')!='arb' THEN 1 ELSE 0 END) w, "
+            f"SUM(CASE WHEN {DECIDED_SQL} AND COALESCE(kind,'')!='arb' THEN 1 ELSE 0 END) s, "
+            f"SUM(CASE WHEN {DECIDED_SQL} AND COALESCE(kind,'')!='arb' THEN own_p END) erwartet "
             "FROM positions WHERE status!='open' GROUP BY account")}
         orders = {r["account"]: r["n"] for r in st.q("SELECT account, COUNT(*) n FROM orders WHERE status='open' GROUP BY account")}
         rows = []

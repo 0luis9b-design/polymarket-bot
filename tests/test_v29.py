@@ -157,3 +157,80 @@ def test_weather_favourite_bin(tmp_path):
     r = rows[0]
     assert (r["variante"], r["vorlauf"], r["n"]) == ("gehandelt", "etwa 1 Tag", 30)
     assert abs(r["modell"] - 0.30) < 1e-9 and abs(r["markt"] - 0.60) < 1e-9 and abs(r["eingetroffen"] - 2 / 3) < 1e-9
+
+
+# ================================================================ 2.9.1: Polymarket-Fehler 500 durch einzelne defekte Einträge
+def _gamma(items, bad, calls):
+    """Falscher Polymarket-Abruf: Jede Abfrage, deren Bereich einen defekten Eintrag enthält, endet mit Fehler 500."""
+    from polybot.http import HttpError
+
+    def fetch(params):
+        lo, n = params["offset"], params["limit"]
+        calls.append((lo, n))
+        if any(lo <= b < lo + n for b in bad):
+            raise HttpError("HTTP 500 bei https://gamma-api.polymarket.com/markets: internal server error", 500)
+        return items[lo:lo + n]
+    return fetch
+
+
+def _sa(tmp_path, fetch):
+    import time as _t
+    from polybot.agents import strategy as S
+    st = _store(tmp_path)
+    return S.StrategyAgent(st, fetch_markets=fetch, fetch_history=lambda *a: []), _t.time() + 60
+
+
+def test_fetch_page_skips_single_broken_entry(tmp_path):
+    items = [{"id": str(i)} for i in range(250)]
+    calls = []
+    sa, dl = _sa(tmp_path, _gamma(items, {137}, calls))
+    got, bad = sa.fetch_page({"tag_id": 1}, 100, 100, dl)
+    assert bad == 1 and len(got) == 99 and {"id": "137"} not in got and got[0] == {"id": "100"}
+    assert len(calls) == 1 + 4 + 5 + 5                                   # 100 → 25 → 5 → 1: nur 14 Zusatz-Abrufe
+
+
+def test_fetch_page_end_of_list_and_outage(tmp_path):
+    from polybot.http import HttpError
+    items = [{"id": str(i)} for i in range(130)]
+    calls = []
+    sa, dl = _sa(tmp_path, _gamma(items, {104}, calls))
+    got, bad = sa.fetch_page({}, 100, 100, dl)
+    assert (len(got), bad) == (29, 1)                                     # Liste endet bei 130: keine weiteren Abrufe
+    sa2, dl2 = _sa(tmp_path, _gamma(items, set(range(130)), []))          # alles kaputt = echte Störung
+    try:
+        sa2.fetch_page({}, 0, 100, dl2)
+        raise AssertionError("Störung muss als Fehler ankommen")
+    except HttpError as e:
+        assert e.status == 500
+
+
+def test_collect_moves_past_broken_entry(tmp_path):
+    """Live 19.–22.11.: dieselbe Abfrage scheiterte bei jedem Durchlauf – der Datensatz kam dort nicht weiter."""
+    from tests.test_v25 import _raw
+    end = NOW - timedelta(days=1)
+    items = [_raw(i, end) for i in range(150)]
+    calls = []
+    sa, dl = _sa(tmp_path, _gamma(items, {42}, calls))
+    sa.fetch_history = lambda t, a, b: [(int(end.timestamp()) - 3600 * h, 0.4) for h in range(100, 0, -1)]
+    out = sa.collect(NOW, dl, limit=500)
+    assert out["neu"] == 149 and out["defekt_bei_polymarket"] == 1 and "abgebrochen" not in out
+    assert sa.store.kv_json("hist:gamma_skip", {}) == {"crypto|neu|0": 1} and sa.store.kv_json("hist:gamma_fail", {}) == {}
+
+
+# ================================================================ 2.9.1: Trefferquote überall nach Markt-Ausgang
+def test_account_winrate_counts_sold_bets_with_known_outcome(tmp_path):
+    st = _store(tmp_path)
+    eng = Engine(st, fetch_events=lambda tag, **kw: [], fetch_by_ids=lambda ids: {}, closes_fn=lambda a: ([1.0] * 721, "Test"),
+                 odds_client=OddsClient(st, api_key=""), chain_fn=lambda a, n: None)
+    _pos(st, "a", "sold", side=0, pnl=4.0, outcome=1.0)      # verkauft, Markt ging für uns aus
+    _pos(st, "b", "sold", side=1, pnl=1.0, outcome=1.0)      # verkauft, Markt ging gegen uns aus
+    _pos(st, "c", "lost", side=0, pnl=-4.0, outcome=0.0)
+    _pos(st, "d", "sold", side=0, pnl=2.0)                   # Ausgang unbekannt: zählt nicht
+    acc = next(a for a in eng.accounts_overview() if a["id"] == "haupt_esport")
+    assert (acc["wins"], acc["settled"]) == (1, 3) and abs(acc["winrate"] - 1 / 3) < 1e-9
+    s = eng.stats("haupt_esport")
+    assert (s["wins"], s["settled"]) == (1, 3)
+    k = paperview.overview(st, None, {"account": "haupt_esport"})["kennzahlen"]
+    assert (k["gewonnen"], k["entschieden"]) == (1, 3) and abs(k["trefferquote"] - 1 / 3) < 1e-9
+    per = eng._pnl_by_account("2000-01-01")
+    assert (per["haupt_esport"]["w"], per["haupt_esport"]["s"]) == (1, 3)

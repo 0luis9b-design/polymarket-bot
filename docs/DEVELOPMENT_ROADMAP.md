@@ -1,7 +1,7 @@
 # Entwicklungs-Roadmap
 
 Priorität: **1** = verhindert Schaden oder ist Voraussetzung · **2** = Kern des Zielsystems · **3** = Ausbau.
-Status: ✅ erledigt (mit Tests belegt) · 🔧 in Arbeit · ⏳ geplant. Stand: 22.11.2026, Version 2.9.0.
+Status: ✅ erledigt (mit Tests belegt) · 🔧 in Arbeit · ⏳ geplant. Stand: 22.11.2026, Version 2.9.1.
 
 ## Phase 1–2 · Audit und Architektur — ✅
 Dokumente: `PROJECT_AUDIT.md`, `SYSTEM_ARCHITECTURE.md`, `TECHNICAL_DEBT.md`, `RISK_REGISTER.md`, diese Datei.
@@ -167,9 +167,23 @@ Darum auch „Dota 2: 7 % Treffer, aber +287 $“.
 | Bericht „Wirkung des Rückblicks“: Modell-Wetten und Limit-Gebote gleich lange vor und nach dem Start des Rückblicks – Wetten je Tag, Ausgang für uns gegen Preis, G/V; dazu gesperrte Märkte je Tag (kv `rueckblick:gesperrt`, Log-Zeile „Lauf“) | ✅ mit Test |
 | Bericht „Wetter: Ist die Vorhersage zu breit?“ (`weather_check.py`): gemessene Temperatur gegen Ensemble-Mittel, geteilt durch die Modellbreite (soll: 50 % innen, Streuung 1,0) je Vorlauf; Favoriten-Bereich des Marktes: eingetroffen gegen Modell und Markt. Empfehlung nur bei ≥ 100 Tagen und klarer Abweichung | ✅ mit Test |
 
-Noch offen: Die Konto-Kennzahl „Trefferquote“ (Startseite, Strategie-Tabelle) zählt weiter nur abgerechnete Wetten – sie
-beschreibt das Konto, nicht die Prognose. Wird die Wetter-Breite als falsch gemessen, braucht es eine schmalere Variante als
+Wird die Wetter-Breite als falsch gemessen, braucht es eine schmalere Variante als
 Herausforderer (Lernsystem, Freigabe im Dashboard) – nichts ändert sich von selbst.
+
+## Version 2.9.1 · Trefferquote überall gleich, Polymarket-Fehler 500 umgangen (Freigabe Luis 22.11.) — ✅
+Befund aus den Logs 18.–22.11.: Der Fehler 500 beim Sammeln kam nie zufällig, sondern immer bei denselben Abfragen – vor dem
+21.11. bei den älteren Märkten auf Seite 1 (z. B. Politik bis 31.07., Kultur bis 01.09., Krypto bis 01.07.: der
+Rückwärts-Durchlauf blieb dort tagelang hängen), seitdem z. B. Wirtschaft · neueste · Seite 3, Welt · neueste · Seite 7,
+Technik · neueste · Seite 5. Polymarket selbst konnten wir von hier nicht abfragen; am wahrscheinlichsten bringt ein einzelner
+Markt die ganze Seite zum Absturz.
+
+| Schritt | Status |
+|---|---|
+| `StrategyAgent.fetch_page`: Seite mit Fehler 500 wird geteilt (100 → 25 → 5 → 1), nur der defekte Eintrag übersprungen (höchstens 40 Zusatz-Abrufe je Lauf); kommt nichts durch, gilt es als Störung wie bisher | ✅ mit Test |
+| Gezählt in kv `hist:gamma_skip` (übersprungene Einträge) neben `hist:gamma_fail` (ganze Seite ausgefallen); beides im Bericht, Abschnitt 11 | ✅ mit Test |
+| „Trefferquote“ überall nach Markt-Ausgang: Startseite, Konten, Strategie-Tabelle, Telegram-Bilanzen, Bericht (`store.HIT_SQL`, `store.DECIDED_SQL`) | ✅ mit Test |
+
+Prüfen im Bericht Mi 25.11.: Sinkt „ganze Seite ausgefallen“, und wie viele Einträge wurden übersprungen?
 
 ## Machbarkeit (geprüft)
 | Ressource | Heute | Mit Ausbau (geschätzt) | Grenze |
@@ -203,7 +217,7 @@ Ergebnis: alles läuft auf dem vorhandenen Railway-Dienst ohne Zusatzkosten.
 6. **Basisraten verfeinern**, sobald je Bereich einige Hundert entschiedene Märkte da sind: nach Unterbereich (z. B. Fußball
    getrennt von NBA) und nach Markttyp (Sieger, Handicap, Über/Unter).
 7. **`engine.py` weiter zerlegen** (T9) – erst wenn das neue System zwei Wochen stabil läuft.
-8. **Ursache der Polymarket-Fehler 500 eingrenzen**, sobald `hist:gamma_fail` ein paar Tage gezählt hat (welches Thema, welche Richtung, welche Seite).
+8. ~~Ursache der Polymarket-Fehler 500 eingrenzen~~ ✅ 2.9.1: immer dieselben Abfragen; defekte Einträge werden übersprungen.
 9. ~~Wetter: Mindest-Vorsprung oder Modell prüfen~~ → 2.8 Rückblick sperrt verlierende Bereiche automatisch. Ob die Streuung zu
    breit ist, misst seit 2.9 der Bericht (Abschnitt 7). Nächster Schritt erst nach dem Messergebnis.
 10. **Wirkung des Rückblicks prüfen** (Bericht Mi 25.11., Abschnitt 9 „Wirkung des Rückblicks“): verlieren Wetter- und

@@ -413,7 +413,7 @@ def build(coord, now, since):
             ids = [a["id"] for a in accs if a.get("strategy") == sr["id"]]
             rows.append([sr["name"], sr["konten"], f"{sr['pnl_total']:+.2f} $", f"{sum(per.get(i, 0) for i in ids):+.2f} $",
                          sr["settled"], _f(sr["winrate"], 0, pct=True), sr["open_count"], sr["paused"]])
-    L += _table(["Strategie", "Konten", "seit Start", "im Zeitraum", "entschieden", "Treffer", "offen", "pausiert"], rows)
+    L += _table(["Strategie", "Konten", "seit Start", "im Zeitraum", "mit Ausgang", "Treffer", "offen", "pausiert"], rows)
     add("")
     if accs:
         topics = [(cat, name) for cat, _, name in config.TOPICS if any(a.get("topic") == cat for a in accs)]
@@ -488,6 +488,16 @@ def build(coord, now, since):
     n_ds = (lab.get("datensatz") or {}).get("zeilen") or 0
     if n_ds and gaps.get("p_24h", 0) / n_ds > 0.3:
         probs.append(f"Backtest-Datensatz: bei {gaps['p_24h']} von {n_ds} Märkten fehlt der Kurs 24 h vor Ende (kein Handel in dem Fenster).")
+    skips = st.kv_json("hist:gamma_skip", {}) or {}
+    if skips:
+        probs.append(f"Polymarket: {sum(skips.values())} defekte Einträge beim Sammeln der Vergleichsdaten übersprungen "
+                     f"(Polymarket antwortet dort mit Fehler 500; seit 2.9.1 wird nur der Eintrag ausgelassen, nicht die ganze Seite).")
+    fails = st.kv_json("hist:gamma_fail", {}) or {}
+    if fails:
+        top = sorted(fails.items(), key=lambda kv: -kv[1])[:3]
+        names = ", ".join(f"{taxonomy.NAMES.get(k.split('|')[0], k.split('|')[0])} {'ältere' if k.split('|')[1] == 'alt' else 'neueste'} "
+                          f"Seite {int(k.split('|')[2]) + 1} ({n}×)" for k, n in top)
+        probs.append(f"Polymarket-Fehler 500 beim Sammeln (ganze Seite ausgefallen), seit Beginn der Zählung {sum(fails.values())}×: {names}.")
     for k in ("kritisch",):
         for w in [w for w in warn if w["level"] == k][:5]:
             probs.append(f"Kritisches Ereignis {w['ts'][:16].replace('T', ' ')}: {w['title']}")

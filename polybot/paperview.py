@@ -10,6 +10,7 @@ from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
 from . import config, taxonomy
+from .store import DECIDED_SQL, HIT_SQL
 
 BERLIN = ZoneInfo("Europe/Berlin")
 ACC_NAMES = {a["id"]: a["name"] for a in config.ACCOUNTS}
@@ -291,9 +292,9 @@ def overview(store, engine, args):
                  f"SUM(CASE WHEN status='open' THEN shares*COALESCE(mark, price)-cost ELSE 0 END) gv_offen, "
                  f"SUM(CASE WHEN status!='open' THEN 1 ELSE 0 END) geschlossen, SUM(CASE WHEN status!='open' THEN pnl ELSE 0 END) gv, "
                  f"SUM(CASE WHEN status!='open' THEN cost ELSE 0 END) einsatz, "
-                 f"SUM(CASE WHEN status='won' AND COALESCE(lane,'model')!='arb' THEN 1 ELSE 0 END) gewonnen, "
-                 f"SUM(CASE WHEN status IN ('won','lost') AND COALESCE(lane,'model')!='arb' THEN 1 ELSE 0 END) entschieden, "
-                 f"AVG(CASE WHEN status IN ('won','lost') AND COALESCE(lane,'model')!='arb' THEN own_p END) erwartet "
+                 f"SUM(CASE WHEN {HIT_SQL} AND COALESCE(lane,'model')!='arb' THEN 1 ELSE 0 END) gewonnen, "
+                 f"SUM(CASE WHEN {DECIDED_SQL} AND COALESCE(lane,'model')!='arb' THEN 1 ELSE 0 END) entschieden, "
+                 f"AVG(CASE WHEN {DECIDED_SQL} AND COALESCE(lane,'model')!='arb' THEN own_p END) erwartet "
                  f"FROM positions{w}", p) or {}
     today = datetime.now(BERLIN).strftime("%Y-%m-%d")
     ta, tb = _utc_bounds(today, today)
@@ -316,7 +317,7 @@ def overview(store, engine, args):
     level = "detail" if args.get("sub") else "sub" if args.get("cat") else "category"
     split = store.q(f"SELECT COALESCE({level}, ?) name, COUNT(*) n, SUM(CASE WHEN status='open' THEN 1 ELSE 0 END) offen, "
                     f"SUM(CASE WHEN status!='open' THEN pnl ELSE 0 END) gv, SUM(CASE WHEN status!='open' THEN cost ELSE 0 END) einsatz, "
-                    f"SUM(CASE WHEN status='won' THEN 1 ELSE 0 END) gewonnen, SUM(CASE WHEN status IN ('won','lost') THEN 1 ELSE 0 END) entschieden "
+                    f"SUM(CASE WHEN {HIT_SQL} THEN 1 ELSE 0 END) gewonnen, SUM(CASE WHEN {DECIDED_SQL} THEN 1 ELSE 0 END) entschieden "
                     f"FROM positions{w} GROUP BY 1 ORDER BY n DESC", [taxonomy.OTHER if level != "category" else "other"] + p)
     open_rows = [_decorate(x) for x in store.q(f"SELECT {LIST_COLS} FROM positions{w}{joiner}status='open' ORDER BY end_date IS NULL, end_date LIMIT 100", p)]
     ow, op = where({**args, "status": None, "q": None, "von": None, "bis": None, "spur": None})

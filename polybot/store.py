@@ -5,6 +5,12 @@ import sqlite3
 import threading
 from datetime import datetime, timezone
 
+# Treffer nach Markt-Ausgang (2.9/2.9.1): gewonnen/verloren – oder verkauft, sobald der Markt entschieden ist.
+# Vorher fehlten die kurz vor Schluss mit Gewinn verkauften Wetten, die Trefferquote wirkte viel zu niedrig.
+_MKT_OUT = "(SELECT o.outcome FROM outcomes o WHERE o.market_id=positions.market_id)"
+DECIDED_SQL = f"(status IN ('won','lost') OR (status='sold' AND side IN (0,1) AND {_MKT_OUT} IS NOT NULL))"
+HIT_SQL = f"(status='won' OR (status='sold' AND side IN (0,1) AND {_MKT_OUT} = CASE WHEN side=0 THEN 1.0 ELSE 0.0 END))"
+
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS kv (k TEXT PRIMARY KEY, v TEXT);
 CREATE TABLE IF NOT EXISTS positions (

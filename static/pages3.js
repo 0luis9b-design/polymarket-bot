@@ -212,7 +212,7 @@
         [single ? h("p", { class: "note", style: { "margin-bottom": "10px" } }, acct.desc) : null,
          single && acct.paused ? h("div", { class: "callout", style: { "margin-bottom": "10px" } }, PB.chip("pausiert", "warn"), " ", acct.paused, " ", resume(acct)) : null,
          h("div", { class: "facts" }, facts.map(function (f) { return h("div", null, h("div", { class: "l" }, f[0]), h("div", { class: "v" }, PB.val(f[1] == null ? null : f[1]), f[2] || null)); })),
-         h("p", { class: "note", style: { "margin-top": "10px" } }, "Trefferquote zählt nur entschiedene Wetten. „Erwartet“ ist der Durchschnitt der Wahrscheinlichkeit, die der Bot beim Einstieg für den eigenen Tipp berechnet hatte – liegt die echte Quote darunter, war er zu optimistisch.")]));
+         h("p", { class: "note", style: { "margin-top": "10px" } }, "Trefferquote zählt Wetten mit bekanntem Ausgang – auch vorher verkaufte, sobald ihr Markt entschieden ist. „Erwartet“ ist der Durchschnitt der Wahrscheinlichkeit, die der Bot beim Einstieg für den eigenen Tipp berechnet hatte – liegt die echte Quote darunter, war er zu optimistisch.")]));
 
       var pts = (d.kurve.punkte || []).map(function (p) { return [new Date(p[0]).getTime(), p[1]]; });
       var isEq = d.kurve.art === "kontowert";
