@@ -1,7 +1,7 @@
 # Entwicklungs-Roadmap
 
 Priorität: **1** = verhindert Schaden oder ist Voraussetzung · **2** = Kern des Zielsystems · **3** = Ausbau.
-Status: ✅ erledigt (mit Tests belegt) · 🔧 in Arbeit · ⏳ geplant. Stand: 21.11.2026, Version 2.7.0.
+Status: ✅ erledigt (mit Tests belegt) · 🔧 in Arbeit · ⏳ geplant. Stand: 22.11.2026, Version 2.9.0.
 
 ## Phase 1–2 · Audit und Architektur — ✅
 Dokumente: `PROJECT_AUDIT.md`, `SYSTEM_ARCHITECTURE.md`, `TECHNICAL_DEBT.md`, `RISK_REGISTER.md`, diese Datei.
@@ -154,6 +154,23 @@ Temperatur-Bereich, den der Markt für den wahrscheinlichsten hält (15–22 Pkt
 | Bericht: Empfehlung „Wetten gewinnen seltener als erwartet“ nur noch aus Wetten seit dem Rückblick (höchstens 14 Tage alt); Prüfregel-Auswertung zählt nur Ablehnungen nach der letzten Regeländerung (Summen-Prüfung seit 21.11.) | ✅ mit Test |
 | Export als Tabelle: Knopf „Als Tabelle herunterladen“ auf der Seite „Wetten“ (gleiche Auswahl, öffnet in Excel, Marktfragen gegen Formel-Einschleusung geschützt) | ✅ mit Test |
 
+## Version 2.9 · Befunde aus dem Claude-Review vom 22.11. (Freigabe Luis: „Alles bauen“) — ✅
+Befund 1: E-Sport schien 0 von 83 Counter-Strike-Wetten zu gewinnen (Preis Ø 47 %). In der Abrechnung (`engine.settle`,
+`polymarket.resolution`) fand sich kein Fehler; belegt ist ein Fehler in der Zählung: „Treffer“ zählte nur abgerechnete Wetten. Gewinner wurden aber meist kurz vor Schluss mit „Gewinn
+mitgenommen“ verkauft (z. B. Dota 2 „Froglings … Game 1“ zu 99,9 ¢) und fehlten – übrig blieben fast nur die Verlierer.
+Darum auch „Dota 2: 7 % Treffer, aber +287 $“.
+
+| Schritt | Status |
+|---|---|
+| „Treffer“ in Auswertung und Bericht zählt verkaufte Wetten mit, sobald der Markt entschieden ist (Ausgang aus `outcomes`, `paperview.hit`); Spalte heißt jetzt „mit Ausgang“ | ✅ mit Test |
+| Abrechnung holt jeden 3. Lauf auch den Ausgang verkaufter Märkte der letzten 30 Tage (höchstens 200 je Lauf) | ✅ mit Test |
+| Bericht „Wirkung des Rückblicks“: Modell-Wetten und Limit-Gebote gleich lange vor und nach dem Start des Rückblicks – Wetten je Tag, Ausgang für uns gegen Preis, G/V; dazu gesperrte Märkte je Tag (kv `rueckblick:gesperrt`, Log-Zeile „Lauf“) | ✅ mit Test |
+| Bericht „Wetter: Ist die Vorhersage zu breit?“ (`weather_check.py`): gemessene Temperatur gegen Ensemble-Mittel, geteilt durch die Modellbreite (soll: 50 % innen, Streuung 1,0) je Vorlauf; Favoriten-Bereich des Marktes: eingetroffen gegen Modell und Markt. Empfehlung nur bei ≥ 100 Tagen und klarer Abweichung | ✅ mit Test |
+
+Noch offen: Die Konto-Kennzahl „Trefferquote“ (Startseite, Strategie-Tabelle) zählt weiter nur abgerechnete Wetten – sie
+beschreibt das Konto, nicht die Prognose. Wird die Wetter-Breite als falsch gemessen, braucht es eine schmalere Variante als
+Herausforderer (Lernsystem, Freigabe im Dashboard) – nichts ändert sich von selbst.
+
 ## Machbarkeit (geprüft)
 | Ressource | Heute | Mit Ausbau (geschätzt) | Grenze |
 |---|---|---|---|
@@ -187,8 +204,10 @@ Ergebnis: alles läuft auf dem vorhandenen Railway-Dienst ohne Zusatzkosten.
    getrennt von NBA) und nach Markttyp (Sieger, Handicap, Über/Unter).
 7. **`engine.py` weiter zerlegen** (T9) – erst wenn das neue System zwei Wochen stabil läuft.
 8. **Ursache der Polymarket-Fehler 500 eingrenzen**, sobald `hist:gamma_fail` ein paar Tage gezählt hat (welches Thema, welche Richtung, welche Seite).
-9. ~~Wetter: Mindest-Vorsprung oder Modell prüfen~~ → 2.8 Rückblick sperrt verlierende Bereiche automatisch. Offen: Warum liegt das
-   Wetter-Modell gerade beim Favoriten-Bereich daneben (Streuung zu breit?) – prüfen, sobald der Rückblick ein paar Tage läuft.
+9. ~~Wetter: Mindest-Vorsprung oder Modell prüfen~~ → 2.8 Rückblick sperrt verlierende Bereiche automatisch. Ob die Streuung zu
+   breit ist, misst seit 2.9 der Bericht (Abschnitt 7). Nächster Schritt erst nach dem Messergebnis.
+10. **Wirkung des Rückblicks prüfen** (Bericht Mi 25.11., Abschnitt 9 „Wirkung des Rückblicks“): verlieren Wetter- und
+    Krypto-Wetten seitdem weniger?
 
 ## Vorgemerkt (aus früheren Absprachen)
 ~~Wetter am Messtag mit Live-Messwerten (METAR)~~ ✅ · ~~Export als Tabelle~~ ✅ 2.8 · ~~Auswertung nach Quelle (Liga, Stadt, Markt-Typ)~~ ✅ 2.7 ·

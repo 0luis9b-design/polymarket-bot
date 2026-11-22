@@ -12,7 +12,7 @@ import re
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
-from . import config, events, hindsight, sources, taxonomy, version
+from . import config, events, hindsight, sources, taxonomy, version, weather_check
 
 log = logging.getLogger("polybot.bericht")
 BERLIN = ZoneInfo("Europe/Berlin")
@@ -50,12 +50,16 @@ EDGE_STEPS = [(None, 0.10, "unter 10 Pkt"), (0.10, 0.20, "10–20 Pkt"), (0.20, 
 
 
 def _bet_stats(rs):
-    done = [r for r in rs if r["status"] in ("won", "lost")]
+    """Wetten mit bekanntem Ausgang – abgerechnete und (seit 2.9) verkaufte, deren Markt inzwischen entschieden ist.
+    „won“ = Anteil, bei dem der Markt für die gekaufte Seite ausging; „gv“ = G/V der abgerechneten."""
+    from .paperview import hit
+    done = [r for r in rs if hit(r) is not None]
     n = len(done)
     return {"n": n, "own": sum(r["own_p"] or 0 for r in done) / n if n else None,
             "price": sum(r["market_p"] or 0 for r in done) / n if n else None,
-            "won": sum(1 for r in done if r["status"] == "won") / n if n else None,
-            "gv": sum(r["pnl"] or 0 for r in done), "sold": sum(1 for r in rs if r["status"] == "sold"),
+            "won": sum(hit(r) or 0 for r in done) / n if n else None,
+            "gv": sum(r["pnl"] or 0 for r in rs if r["status"] in ("won", "lost")), "sold": sum(1 for r in rs if r["status"] == "sold"),
+            "sold_known": sum(1 for r in done if r["status"] == "sold"),
             "gv_sold": sum(r["pnl"] or 0 for r in rs if r["status"] == "sold")}
 
 
@@ -66,11 +70,11 @@ def source_review(st, min_n=10, top=5):
     L = []
     q = [x for x in g["quelle"]["zeilen"] if x["n"] >= min_n]
     if q:
-        L.append(f"Auswertung nach Quelle (alle Konten, seit Start, je mindestens {min_n} entschiedene Wetten; Treffer über Preis = echter Vorsprung):")
+        L.append(f"Auswertung nach Quelle (alle Konten, seit Start, je mindestens {min_n} Wetten mit bekanntem Ausgang, auch vorher verkaufte; Treffer über Preis = echter Vorsprung):")
         L.append("")
         best = sorted(q, key=lambda x: -x["gv"])[:top]
         worst = [x for x in sorted(q, key=lambda x: x["gv"]) if x not in best][:top]
-        L += _table(["Liga, Stadt oder Coin", "entschieden", "Treffer", "Preis", "G/V"],
+        L += _table(["Liga, Stadt oder Coin", "mit Ausgang", "Treffer", "Preis", "G/V"],
                     [[x["name"], x["n"], _f(x["treffer"], 0, pct=True), _f(x["preis"], 0, pct=True), f"{x['gv']:+.0f} $"]
                      for x in best + worst])
         L.append("")
@@ -78,7 +82,7 @@ def source_review(st, min_n=10, top=5):
     if t:
         L.append("Nach Art der Wette:")
         L.append("")
-        L += _table(["Art der Wette", "entschieden", "Treffer", "Preis", "erwartet", "G/V"],
+        L += _table(["Art der Wette", "mit Ausgang", "Treffer", "Preis", "erwartet", "G/V"],
                     [[x["name"], x["n"], _f(x["treffer"], 0, pct=True), _f(x["preis"], 0, pct=True), _f(x["erwartet"], 0, pct=True),
                       f"{x['gv']:+.0f} $"] for x in t[:12]])
         L.append("")
@@ -91,15 +95,18 @@ def bets_review(st, since_iso, min_n=5):
     Anlass 18.11.: Die Wetter-Prognose ist im Schnitt besser als der Marktpreis, trotzdem stehen alle Wetter-Konten
     deutlich im Minus. Der Durchschnitt über alle Märkte sagt nichts darüber, ob der Bot ausgerechnet bei den Märkten
     richtig liegt, auf die er wettet – das sind die, bei denen er am stärksten vom Markt abweicht.
-    Zählt nur abgerechnete Wetten (gewonnen/verloren); vorzeitig verkaufte stehen getrennt daneben. Ohne Arbitrage.
+    Zählt abgerechnete Wetten und (seit 2.9) verkaufte, deren Ausgang inzwischen bekannt ist – sonst fehlen die Gewinner,
+    die kurz vor Schluss mit „Gewinn mitgenommen“ verkauft wurden. Ohne Arbitrage.
     """
-    rows = st.q("SELECT category, lane, status, own_p, market_p, edge, pnl, closed_at, opened_at FROM positions "
+    from .paperview import OUTCOME_SQL
+    rows = st.q(f"SELECT category, lane, status, side, own_p, market_p, edge, pnl, closed_at, opened_at, {OUTCOME_SQL} FROM positions "
                 "WHERE status IN ('won','lost','sold') AND COALESCE(kind,'')!='arb' AND COALESCE(lane,'')!='arb'")
     L, recs = [], []
     if not rows:
         return ["Wetten im Rückblick: Keine Daten.", ""], recs
     L.append("Wetten im Rückblick – gewinnen die gekauften Wetten so oft, wie der Bot beim Kauf erwartet hat? "
-             "(alle Konten zusammen, seit Start; „erwartet“ = eigene Gewinnchance beim Kauf, „Preis“ = was der Markt dafür verlangte)")
+             "(alle Konten zusammen, seit Start; „erwartet“ = eigene Gewinnchance beim Kauf, „Preis“ = was der Markt dafür verlangte; "
+             "„mit Ausgang“ zählt auch vorher verkaufte Wetten, sobald ihr Markt entschieden ist – „gewonnen“ = Markt ging für uns aus)")
     L.append("")
     rec_cut = max(st.kv_get("rueckblick:seit") or "", (datetime.now(timezone.utc) - timedelta(days=14)).isoformat(timespec="seconds"))
     groups = {}
@@ -120,7 +127,7 @@ def bets_review(st, since_iso, min_n=5):
             recs.append(f"{taxonomy.NAMES.get(cat, cat)} ({LANES[lane]}): Die Wetten gewinnen deutlich seltener als beim Kauf erwartet "
                         f"(erwartet Ø {bn['own'] * 100:.0f} %, eingetreten {bn['won'] * 100:.0f} %, Preis Ø {bn['price'] * 100:.0f} %, n = {bn['n']}) – "
                         "der Bot überschätzt genau die Märkte, auf die er wettet. Mindest-Vorsprung erhöhen oder Modell prüfen.")
-    L += _table(["Thema", "Grund", "abgerechnet", "erwartet", "Preis", "gewonnen", "G/V abgerechnet", "verkauft (Anzahl / G/V)",
+    L += _table(["Thema", "Grund", "mit Ausgang", "erwartet", "Preis", "gewonnen", "G/V abgerechnet", "verkauft (Anzahl / G/V)",
                  "G/V im Zeitraum"], table)
     L.append("")
     # Nach behauptetem Vorsprung: Stimmen große Vorsprünge? (eigenes Modell und Basisraten)
@@ -137,9 +144,52 @@ def bets_review(st, since_iso, min_n=5):
         L.append("Dieselben Wetten nach dem Vorsprung, den der Bot beim Kauf sah (eigenes Modell, Basisraten, Limit-Orders). "
                  "Ein echter Vorsprung zeigt sich daran, dass „gewonnen“ über „Preis“ liegt:")
         L.append("")
-        L += _table(["Thema", "Vorsprung beim Kauf", "abgerechnet", "erwartet", "Preis", "gewonnen", "G/V"], table)
+        L += _table(["Thema", "Vorsprung beim Kauf", "mit Ausgang", "erwartet", "Preis", "gewonnen", "G/V"], table)
         L.append("")
     return L, recs
+
+
+def hindsight_effect(st, now, max_days=14):
+    """Wirkt der Rückblick (2.8)? Modell-Wetten und Limit-Gebote gleich lange Zeit vorher und nachher (2.9).
+
+    Vergleicht je Thema: Wetten je Tag, wie oft der Markt für die gekaufte Seite ausging (auch vorher verkaufte, sobald der
+    Ausgang bekannt ist) gegen den Preis, und den G/V. Dazu, wie viele Märkte der Rückblick je Tag vom Wetten abhielt.
+    Nur Messung – daraus entsteht keine Empfehlung."""
+    from .paperview import OUTCOME_SQL, hit
+    seit = st.kv_get("rueckblick:seit")
+    if not seit:
+        return ["Wirkung des Rückblicks: Keine Daten (Rückblick noch nicht gelaufen).", ""]
+    t0 = datetime.fromisoformat(seit)
+    span = min(max(now - t0, timedelta(hours=1)), timedelta(days=max_days))
+    before_from, after_to = (t0 - span).isoformat(timespec="seconds"), (t0 + span).isoformat(timespec="seconds")
+    rows = st.q(f"SELECT category, status, side, market_p, pnl, opened_at, {OUTCOME_SQL} FROM positions "
+                "WHERE COALESCE(lane,'model') IN ('model','maker') AND COALESCE(kind,'')!='arb' AND opened_at>=? AND opened_at<?",
+                (before_from, after_to))
+    days = span.total_seconds() / 86400
+    L = [f"Wirkung des Rückblicks (seit {t0.astimezone(BERLIN):%d.%m. %H:%M} Uhr): eigene Modell-Wetten und Limit-Gebote, "
+         f"je {days:.1f} Tage vorher und nachher. „Ausgang für uns“ zählt auch vorher verkaufte Wetten, sobald ihr Markt entschieden ist; "
+         "liegt er über dem Preis, verdienen die Wetten.", ""]
+    table = []
+    for cat in sorted({r["category"] for r in rows}):
+        line = [taxonomy.NAMES.get(cat, cat)]
+        for after in (False, True):
+            rs = [r for r in rows if r["category"] == cat and (r["opened_at"] >= seit) == after]
+            done = [r for r in rs if hit(r) is not None]
+            won = sum(hit(r) or 0 for r in done)
+            price = sum(r["market_p"] or 0 for r in done) / len(done) if done else None
+            gv = sum(r["pnl"] or 0 for r in rs if r["status"] != "open")
+            line += [f"{len(rs) / days:.1f}",
+                     f"{won}/{len(done)} · Preis {_f(price, 0, pct=True)}" if done else "keine Daten",
+                     f"{gv:+.0f} $"]
+        table.append(line)
+    L += _table(["Thema", "Wetten/Tag vorher", "Ausgang für uns vorher", "G/V vorher",
+                 "Wetten/Tag nachher", "Ausgang für uns nachher", "G/V nachher"], table)
+    per_day = st.kv_json("rueckblick:gesperrt", None) or {}
+    if per_day:
+        L.append("")
+        L.append("Vom Rückblick abgehaltene Märkte je Tag: " + ", ".join(f"{d[8:10]}.{d[5:7]}. {n}" for d, n in sorted(per_day.items())[-8:]) + ".")
+    L.append("")
+    return L
 
 
 def build(coord, now, since):
@@ -303,6 +353,27 @@ def build(coord, now, since):
         fine = hindsight.summary_lines({"bereiche": [c for c in hs["bereiche"] if c["wettart"] != hindsight.ALL]}, limit=8)
         if fine:
             add("- Gesperrt nach Wettart: " + "; ".join(fine) + ".")
+    wx = weather_check.spread(st)
+    if wx:
+        add("- Wetter: Ist die Vorhersage zu breit? Gemessene Temperatur gegen Ensemble-Mittel, geteilt durch die Breite, mit der "
+            "das Modell rechnet. Passt die Breite, liegen 50 % der Tage „innen“ und die Streuung ist 1,0; weniger = zu breit.")
+        L.extend(_table(["Vorlauf", "Tage", "innen (soll 50 %)", "Streuung (soll 1,0)", "Verschiebung"],
+                        [[r["vorlauf"], r["n"], _f(r["innen50"], 0, pct=True), _f(r["streuung"], 2), _f(r["verschiebung"], 2, sign=True)]
+                         for r in wx]))
+        n_pat += 1
+        v = weather_check.verdict(wx)
+        if v:
+            add(f"  - {v}")
+            if "zu breit" in v or "zu eng" in v:
+                recs.append(f"Wetter: {v} Eine Variante mit angepasster Breite als Herausforderer mitlaufen lassen; "
+                            "freigeben erst, wenn das Lernsystem sie an späteren Daten bestätigt.")
+    fav = weather_check.favourite(st)
+    if fav:
+        add("- Wetter: Der Bereich mit dem höchsten Marktpreis (je Tag) – wie oft traf er ein, und was gaben ihm Modell und Markt?")
+        L.extend(_table(["Variante", "Vorlauf", "Tage", "Modell", "Markt", "eingetroffen"],
+                        [[r["variante"], r["vorlauf"], r["n"], _f(r["modell"], 0, pct=True), _f(r["markt"], 0, pct=True),
+                          _f(r["eingetroffen"], 0, pct=True)] for r in fav]))
+        n_pat += 1
     lab = (coord.strategy.view() or {}).get("latest") or {}
     for b in lab.get("kalibrierung") or []:
         if b["n"] >= 60 and abs(b["ist"] - b["p"]) >= 0.05:
@@ -366,6 +437,7 @@ def build(coord, now, since):
     lines, more = bets_review(st, since_iso)
     L += lines
     recs += more
+    L += hindsight_effect(st, now)
     L += source_review(st)
     n_new = st.scalar("SELECT COUNT(*) FROM resolved WHERE sel=?", (config.DATASET_SEL,)) or 0
     n_old = st.scalar("SELECT COUNT(*) FROM resolved WHERE sel<>?", (config.DATASET_SEL,)) or 0

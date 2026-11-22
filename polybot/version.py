@@ -1,8 +1,11 @@
 """Versionsstand des Systems. CHANGES wird im Claude-Bericht unter „Neue Funktionen“ gezeigt."""
-VERSION = "2.8.0"
+VERSION = "2.9.0"
 
 # (Datum, Version, Text) – neueste zuerst
 CHANGES = [
+    ("2026-11-22", "2.9.0", "Treffer ehrlich gezählt: Wetten, die kurz vor Schluss mit Gewinn verkauft wurden, zählen in Auswertung und Bericht mit, sobald ihr Markt entschieden ist – vorher fehlten genau die Gewinner (E-Sport schien 0 von 83 zu gewinnen); der Bot holt dafür auch den Ausgang verkaufter Märkte"),
+    ("2026-11-22", "2.9.0", "Bericht: Wirkung des Rückblicks – eigene Modell-Wetten und Limit-Gebote gleich lange vorher und nachher, dazu wie viele Märkte der Rückblick je Tag vom Wetten abhielt (auch in der Log-Zeile „Lauf“)"),
+    ("2026-11-22", "2.9.0", "Bericht: Wetter-Prüfung „Ist die Vorhersage zu breit?“ – gemessene Temperatur gegen die Breite, mit der das Modell rechnet, und wie oft der Favoriten-Bereich des Marktes eintraf"),
     ("2026-11-22", "2.8.0", "Rückblick: Für alle entschiedenen Prognosen wird nachgerechnet, ob eine Wette Geld gebracht hätte (je Thema, Wettart, Seite und Abweichung vom Markt). In Bereichen mit gesichertem Verlust keine Modell-Wetten mehr – gibt sich von selbst wieder frei; Tabelle auf der Seite „Auswertung“ und im Bericht"),
     ("2026-11-22", "2.8.0", "Export: Wetten der aktuellen Auswahl als Tabelle herunterladen (öffnet in Excel)"),
     ("2026-11-22", "2.8.0", "Bericht: Empfehlungen zu Wetten und Prüfregeln nur noch aus Daten unter den aktuellen Regeln – alte Fälle halten erledigte Empfehlungen nicht mehr offen"),

@@ -347,13 +347,34 @@ CHANCE_STEPS = [(0.0, 0.5, "unter 50 %"), (0.5, 0.6, "50–60 %"), (0.6, 0.7, "6
                 (0.8, 0.9, "80–90 %"), (0.9, 1.01, "90 % und mehr")]
 
 
+# Ausgang des Marktes je Wette – auch für vorzeitig verkaufte (Unterabfrage statt JOIN, damit der Filter eindeutig bleibt)
+OUTCOME_SQL = "(SELECT o.outcome FROM outcomes o WHERE o.market_id=positions.market_id) AS mkt_outcome"
+
+
+def hit(r):
+    """1 = der Markt ging für die gekaufte Seite aus, 0 = dagegen, None = Ausgang unbekannt.
+
+    Seit 2.9 zählen verkaufte Wetten mit bekanntem Ausgang mit. Vorher fehlten genau die Gewinner, die kurz vor Schluss
+    mit „Gewinn mitgenommen“ verkauft wurden – bei Spielen fast alle (Bericht #4: E-Sport 0 von 83 „gewonnen“)."""
+    if r["status"] == "won":
+        return 1
+    if r["status"] == "lost":
+        return 0
+    o, side = r.get("mkt_outcome"), r.get("side")
+    if r["status"] != "sold" or o is None or side not in (0, 1):
+        return None
+    return 1 if (o >= 0.5) == (side == 0) else 0
+
+
 def _group_stats(rs):
-    done = [r for r in rs if r["status"] in ("won", "lost")]
+    done = [r for r in rs if hit(r) is not None]
     n = len(done)
     staked = sum(r["cost"] or 0 for r in rs)
     gv = sum(r["pnl"] or 0 for r in rs)
-    return {"n": n, "verkauft": sum(1 for r in rs if r["status"] == "sold"), "gewonnen": sum(1 for r in done if r["status"] == "won"),
-            "treffer": (sum(1 for r in done if r["status"] == "won") / n) if n else None,
+    won = sum(hit(r) or 0 for r in done)
+    return {"n": n, "verkauft": sum(1 for r in rs if r["status"] == "sold"), "gewonnen": won,
+            "verkauft_mit_ausgang": sum(1 for r in done if r["status"] == "sold"),
+            "treffer": (won / n) if n else None,
             "erwartet": (sum(r["own_p"] or 0 for r in done) / n) if n else None,
             "preis": (sum(r["market_p"] or 0 for r in done) / n) if n else None,
             "gv": round(gv, 2), "einsatz": round(staked, 2), "roi": (gv / staked) if staked else None}
@@ -364,7 +385,7 @@ def breakdown(store, args, min_n=1):
     gekaufter Seite, Grund und Gewinnchance beim Kauf. Filter wie überall (Strategie, Konto, Bereich, Zeitraum)."""
     w, p = where({**args, "status": None}, status=False)
     joiner = " AND " if w else " WHERE "
-    rows = store.q("SELECT category, sub, detail, question, side, side_name, lane, own_p, market_p, pnl, cost, status FROM positions "
+    rows = store.q(f"SELECT category, sub, detail, question, side, side_name, lane, own_p, market_p, pnl, cost, status, {OUTCOME_SQL} FROM positions "
                    f"{w}{joiner}status IN ('won','lost','sold') AND COALESCE(kind,'')!='arb' AND COALESCE(lane,'')!='arb'", p)
 
     def side_of(r):
@@ -393,12 +414,12 @@ def breakdown(store, args, min_n=1):
         for r in rows:
             groups[fn(r)].append(r)
         lst = [{"name": k, **_group_stats(v)} for k, v in groups.items()]
-        lst = [x for x in lst if x["n"] + x["verkauft"] >= min_n]
+        lst = [x for x in lst if x["n"] + x["verkauft"] - x["verkauft_mit_ausgang"] >= min_n]
         if key == "chance":
             order = [n for _, _, n in CHANCE_STEPS] + ["ohne Angabe"]
             lst.sort(key=lambda x: order.index(x["name"]) if x["name"] in order else 99)
         else:
-            lst.sort(key=lambda x: (-(x["n"] + x["verkauft"]), x["name"]))
+            lst.sort(key=lambda x: (-(x["n"] + x["verkauft"] - x["verkauft_mit_ausgang"]), x["name"]))
         out[key] = {"titel": title, "zeilen": lst}
     total = _group_stats(rows)
     return {"gruppen": out, "summe": total, "tree": tree(store, args), **choices()}

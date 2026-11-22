@@ -56,7 +56,7 @@
 | News Research | `agents/news.py` | RSS-Schlagzeilen sammeln, entdoppeln, Märkten zuordnen | 30 min |
 | System Guardian | `agents/guardian.py` | Ressourcen, Quellen-Ausfälle, tägliches Backup, Integrität (Datenbank + Prüfsummen-Kette der Prognosen), Aufräumen. Der Neustart einer hängenden Schleife liegt im Wachhund (`app.py`) | jeder Lauf |
 | Paper Trading | `engine.py` | virtuelle Wetten auf 91 Spielgeld-Konten (Strategie × Thema), Verlust-Warnung, Abrechnung | jeder Lauf |
-| Berichte | `reports.py` | Claude-Review-Bericht Mi + So (13 Abschnitte, nur gemessene Werte; in Abschnitt 9 „Wetten im Rückblick“: erwartete gegen tatsächliche Gewinnquote) | Zeitplan |
+| Berichte | `reports.py`, `weather_check.py` | Claude-Review-Bericht Mi + So (13 Abschnitte, nur gemessene Werte; Abschnitt 7 u. a. „Wetter: Ist die Vorhersage zu breit?“; Abschnitt 9 „Wetten im Rückblick“ – Treffer nach Markt-Ausgang, auch vorher verkaufte – und „Wirkung des Rückblicks“ vorher/nachher) | Zeitplan |
 
 ## Alle Märkte im Paper-Trading (ab 2.1)
 - **Einordnung** (`taxonomy.py`): Bereich › Unterbereich › Detail aus den Polymarket-Schlagwörtern, in fester Rangfolge

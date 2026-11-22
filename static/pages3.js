@@ -435,17 +435,18 @@
       var pc = function (v) { return v == null ? "–" : F.pct(v); };
       out.push(PB.panel("Gewählte Wetten", null, [h("div", { class: "sumline" },
         h("span", null, "G/V ", signed(s.gv)),
-        h("span", null, F.num(s.n) + " entschieden, davon " + F.num(s.gewonnen) + " gewonnen" + (s.verkauft ? ", " + F.num(s.verkauft) + " vorher verkauft" : "")),
+        h("span", null, F.num(s.n) + " mit bekanntem Ausgang, davon " + F.num(s.gewonnen) + " für uns ausgegangen" + (s.verkauft ? " · " + F.num(s.verkauft) + " vorher verkauft" + (s.verkauft_mit_ausgang ? " (" + F.num(s.verkauft_mit_ausgang) + " davon mitgezählt)" : "") : "")),
         h("span", null, "Treffer " + pc(s.treffer) + " · erwartet " + pc(s.erwartet) + " · Preis " + pc(s.preis)),
         h("span", null, "Rendite " + (s.roi == null ? "–" : F.pct(s.roi, 1)) + " auf " + F.usd(s.einsatz) + " Einsatz")),
         h("p", { class: "note", style: { margin: "8px 0 0" } }, "„Preis“ = was der Markt beim Kauf für unsere Seite verlangte, „erwartet“ = was der Bot selbst erwartete. ",
-          "Ein echter Vorsprung zeigt sich nur, wenn „Treffer“ über „Preis“ liegt – und das bei genug Wetten (ab etwa 30).")]));
+          "Ein echter Vorsprung zeigt sich nur, wenn „Treffer“ über „Preis“ liegt – und das bei genug Wetten (ab etwa 30). ",
+          "„Treffer“ zählt, wie oft der Markt für die gekaufte Seite ausging – auch bei Wetten, die vorher verkauft wurden, sobald ihr Ausgang bekannt ist.")]));
       ["quelle", "wettart", "seite", "grund", "chance"].forEach(function (k) {
         var g = d.gruppen[k];
         if (!g || !g.zeilen.length) return;
         out.push(PB.panel(g.titel, F.num(g.zeilen.length) + (g.zeilen.length === 1 ? " Gruppe" : " Gruppen"), PB.table([
           { label: g.titel, get: function (x) { return h("div", { class: "q" }, x.name); } },
-          { label: "Wetten", num: true, get: function (x) { return h("span", null, F.num(x.n), x.verkauft ? h("small", { class: "dim2" }, " +" + x.verkauft + " verk.") : null); } },
+          { label: "Wetten", num: true, get: function (x) { var rest = x.verkauft - (x.verkauft_mit_ausgang || 0); return h("span", null, F.num(x.n), rest > 0 ? h("small", { class: "dim2" }, " +" + rest + " verk.") : null); } },
           { label: "Treffer", num: true, get: function (x) { return h("span", { class: x.treffer != null && x.preis != null && x.n >= 30 ? (x.treffer > x.preis ? "pos" : "neg") : null }, pc(x.treffer)); } },
           { label: "Preis", num: true, cls: "hide-s", get: function (x) { return pc(x.preis); } },
           { label: "erwartet", num: true, cls: "hide-s", get: function (x) { return pc(x.erwartet); } },

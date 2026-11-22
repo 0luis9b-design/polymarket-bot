@@ -1238,6 +1238,14 @@ class Engine:
             return d is None or d <= now + timedelta(hours=1)
 
         ids = {p["market_id"] for p in pos if due(p["end_date"])} | {r["market_id"] for r in preds if due(r["end_date"])}
+        if self.state["scans"] % 3 == 0:
+            # Ausgang auch für vorzeitig verkaufte Wetten festhalten (2.9): Sonst fehlen in der Auswertung genau die Gewinner,
+            # die mit „Gewinn mitgenommen“ kurz vor Schluss verkauft wurden – Bericht #4: E-Sport 0 von 83 „gewonnen“.
+            cut = (now - timedelta(days=30)).isoformat(timespec="seconds")
+            for r in self.store.q("SELECT DISTINCT p.market_id, p.end_date FROM positions p LEFT JOIN outcomes o ON o.market_id=p.market_id "
+                                  "WHERE p.status='sold' AND o.market_id IS NULL AND p.closed_at>=? ORDER BY RANDOM() LIMIT 200", (cut,)):
+                if due(r["end_date"]):
+                    ids.add(r["market_id"])
         if not ids:
             return
         raws = self.fetch_by_ids(sorted(ids))
@@ -1286,10 +1294,32 @@ class Engine:
         arbs = [(a["type"], a["profit"], a["status"]) for a in self.state.get("arbs", [])]
         wfail = sum(1 for v in weather_model.status.values() if not str(v).startswith("OK"))
         timing = " ".join(f"{k} {v:.0f}s" for k, v in getattr(self, "_timer", {}).items())
+        hs_now = self.count_hindsight_blocks(results)
         log.info("Lauf: Märkte %s · berechnet %d %s · neue Wetten %s · Arbitrage %s · Optionen %s · Quoten: %s · "
-                 "Wetter-Stationen mit Fehler: %d · Dauer: %s",
+                 "Wetter-Stationen mit Fehler: %d · Rückblick gesperrt: %d Märkte · Dauer: %s",
                  self.state["markets_seen"], len(results), dict(models), dict(bought) or "keine", arbs or "keine",
-                 dict(options.status), self.odds.status, wfail, timing)
+                 dict(options.status), self.odds.status, wfail, hs_now, timing)
+
+    def count_hindsight_blocks(self, results, now=None):
+        """Wie viele Märkte hat der Rückblick heute vom Wetten abgehalten? (2.9, für den Vorher-Nachher-Vergleich im Bericht)
+
+        Gezählt werden verschiedene Märkte je Tag (deutsche Zeit), nicht jede Prüfung – derselbe Markt kommt alle 10 Minuten
+        wieder. Ablage in kv `rueckblick:gesperrt` als {Tag: Anzahl} (30 Tage), die Markt-Kennungen des Tages in
+        `rueckblick:heute`. Gibt die Zahl der in diesem Lauf gesperrten Märkte zurück."""
+        ids = {o["market"]["id"] for o in results
+               if any(isinstance(v, str) and v.startswith("Rückblick:") for v in (o.get("status") or {}).values())}
+        now = now or datetime.now(timezone.utc)
+        day = now.astimezone(BERLIN).date().isoformat()
+        today = self.store.kv_json("rueckblick:heute", None) or {}
+        seen = set(today.get("ids") or []) if today.get("tag") == day else set()
+        if ids - seen or today.get("tag") != day:
+            seen |= ids
+            self.store.kv_set("rueckblick:heute", json.dumps({"tag": day, "ids": sorted(seen)}))
+            per_day = self.store.kv_json("rueckblick:gesperrt", None) or {}
+            per_day[day] = len(seen)
+            keep = sorted(per_day)[-30:]
+            self.store.kv_set("rueckblick:gesperrt", json.dumps({d: per_day[d] for d in keep}))
+        return len(ids)
 
     def _pnl_by_account(self, since_iso, until_iso=None):
         """Abgerechneter G/V und Anzahl je Konto seit einem Zeitpunkt (eine Abfrage für alle Konten)."""
