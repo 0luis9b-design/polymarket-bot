@@ -353,7 +353,7 @@ class Form:
         rated = {k: sum(1 for v in t.values() if v[1] >= config.FORM_MIN_GAMES) for k, t in self.ratings().items()}
         return {"ergebnisse": [{"thema": r["category"], "sportart": r["sport"], "spiele": r["n"],
                                 "bewertet": rated.get((r["category"], r["sport"]), 0)} for r in rows],
-                "clubelo": self.store.kv_json("form:clubelo", None), "zeiger": self.store.kv_json("form:cursor", None),
+                "clubelo": self.store.kv_json("form:clubelo", None), "zeiger": self.store.kv_json("form:back", None),
                 "verletzte": self.store.scalar("SELECT COUNT(*) FROM injuries"), "verletzte_schluessel": bool(config.API_FOOTBALL_KEY),
                 "verletzte_fehler": self.store.kv_get("form:inj_error")}
 

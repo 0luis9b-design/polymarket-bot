@@ -1012,10 +1012,10 @@ class Engine:
                 self.intel.probability.log_extra(pseudo, now)
             if added is not None:   # einmal je Stunde ein Lebenszeichen im Log
                 fx = self.store.kv_json("form:clubelo", None) or {}
-                cur = self.store.kv_json("form:cursor", None) or {}
-                log.info("Form-Modell: +%s Ergebnisse (gesamt %s, gesammelt ab %s) · ClubElo %s Spiele · Prognosen jetzt %s "
+                cur = self.store.kv_json("form:back", None) or {}
+                log.info("Form-Modell: +%s Ergebnisse (gesamt %s, rückwärts gesammelt bis %s) · ClubElo %s Spiele · Prognosen jetzt %s "
                          "(Fußball %s, Duelle %s) · Ausfälle %s", added, self.store.scalar("SELECT COUNT(*) FROM match_results"),
-                         (cur.get("lo") or "–")[:10], fx.get("spiele", 0), len(self.form_map),
+                         (cur.get("back") or "–")[:10], fx.get("spiele", 0), len(self.form_map),
                          sum(1 for m, _ in self.form_map.values() if m["outcomes"][0].lower() in ("yes", "no")),
                          sum(1 for m, _ in self.form_map.values() if m["outcomes"][0].lower() not in ("yes", "no")),
                          "aus (kein Schlüssel)" if not config.API_FOOTBALL_KEY else inj)
