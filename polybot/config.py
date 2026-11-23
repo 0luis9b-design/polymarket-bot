@@ -133,6 +133,7 @@ ALL_MAX_PRICE = _f("ALL_MAX_PRICE", 0.90)        # darüber bringt ein Treffer f
 ALL_MAX_SPREAD = _f("ALL_MAX_SPREAD", 0.10)      # ohne echtes Orderbuch kein fairer Kurs (viele Tennis-/Tischtennis-Märkte sind leer)
 ALL_MIN_LIQUIDITY = _f("ALL_MIN_LIQUIDITY", 100)
 ALL_STAKE = _f("ALL_STAKE", 5.0)                 # fester Einsatz je Wette
+ALL_MAX_PER_SUB = _i("ALL_MAX_PER_SUB", 25)      # je Konto und Sportart/Unterbereich höchstens so viele offene Wetten
 ALL_MAX_NEW = _i("ALL_MAX_NEW", 40)              # je Konto und Lauf höchstens so viele neue Wetten (Rest im nächsten Lauf)
 
 # --- Ausführung, Ausstieg, Arbitrage ---

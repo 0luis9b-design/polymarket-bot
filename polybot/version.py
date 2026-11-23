@@ -1,8 +1,9 @@
 """Versionsstand des Systems. CHANGES wird im Claude-Bericht unter „Neue Funktionen“ gezeigt."""
-VERSION = "2.10.1"
+VERSION = "2.10.2"
 
 # (Datum, Version, Text) – neueste zuerst
 CHANGES = [
+    ("2026-11-23", "2.10.2", "„Alles tippen“: je Sportart höchstens 25 offene Wetten – sonst füllen die vielen Tischtennis-Spiele das Konto und andere Sportarten kommen kaum dran"),
     ("2026-11-23", "2.10.1", "„Alles tippen“: Spiele ohne Tags landeten im ersten Lauf unter „Sonstiges“ – jetzt Sport bzw. E-Sport; die ersten Wetten wurden ins richtige Konto umgebucht"),
     ("2026-11-23", "2.10.0", "Neue Strategie „Alles tippen“: bei jedem Spiel und Ereignis – alle Sportarten mit Tennis und Tischtennis, E-Sport und alle weiteren Themen – eine Wette auf den Favoriten laut Markt (50–90 ¢, je 5 $), eigene Konten je Thema. Zeigt, wo Wetten Plus oder Minus machen"),
     ("2026-11-23", "2.10.0", "Spiele werden schon kurz nach Spielende abgerechnet statt erst zum offiziellen Marktende (bei Tischtennis bis zu 7 Tage später)"),

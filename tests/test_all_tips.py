@@ -156,3 +156,14 @@ def test_misfiled_first_bets_move_to_the_right_account_once(tmp_path):
     assert eng.cash("alles_sonstiges") == config.START_BALANCE and eng.cash("alles_sport") == config.START_BALANCE - 5
     eng.refile_all([m])                                   # nur einmal
     assert eng.cash("alles_sport") == config.START_BALANCE - 5
+
+
+def test_one_sport_cannot_fill_the_account(tmp_path, monkeypatch):
+    monkeypatch.setattr(config, "ALL_TIPS", True)
+    monkeypatch.setattr(config, "ALL_MAX_PER_SUB", 2)
+    tt = [_game(f"tt{i}", ["sports", "table-tennis"], [f"A{i}", f"B{i}"], 0.60, 0.62, start_h=1 + i * 0.1, end_days=7) for i in range(5)]
+    soccer = [_game("fb", ["sports", "soccer"], ["Yes", "No"], 0.61, 0.62, start_h=6, q="Will Bayern win?")]
+    st, eng, _ = _eng(tmp_path, {"sports": tt + soccer})
+    assert eng.run_cycle()
+    subs = sorted(p["sub"] for p in _bets(st).values())
+    assert subs == ["Fußball", "Tischtennis", "Tischtennis"], subs

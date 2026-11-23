@@ -942,6 +942,9 @@ class Engine:
             groups.setdefault(grp, []).append(m)
         far = now + timedelta(days=365)
         new = 0
+        # je Sportart/Unterbereich höchstens ALL_MAX_PER_SUB offene Wetten – sonst füllen die vielen Tischtennis-Spiele
+        # (alle 30 min eins) das Konto, und Fußball, Basketball, Tennis kämen kaum noch dran (live 23.11.)
+        per_sub = Counter(p.get("sub") for p in self.store.open_positions(aid))
         # bald beginnende Spiele zuerst; je Lauf höchstens ALL_MAX_NEW neue Wetten (jede holt das aktuelle Orderbuch)
         for grp, ms in sorted(groups.items(), key=lambda g: min((m.get("game_start") or m["end_date"] or far) for m in g[1])):
             if new >= config.ALL_MAX_NEW:
@@ -952,6 +955,8 @@ class Engine:
             if not pick:
                 continue
             m, side, ask, q = pick
+            if per_sub[m.get("sub")] >= config.ALL_MAX_PER_SUB:
+                continue
             fee = fee_per_share(m["fee_rate"], ask)
             ev = {"side": side, "price": ask, "fee_ps": fee, "eff": ask + fee, "q": q, "edge": q - ask - fee}
             mid = polymarket.mid_yes(m)
@@ -962,6 +967,7 @@ class Engine:
             res = self.open_position(acc, o, min_edge=-1.0)
             if res == "eröffnet":
                 new += 1
+                per_sub[m.get("sub")] += 1
             elif res == "Limit erreicht":
                 break
 
