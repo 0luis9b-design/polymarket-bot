@@ -6,6 +6,7 @@ So kann keine kostenlose Quelle mehr „leergefragt“ werden wie Open-Meteo am 
 
 Gewicht: Open-Meteo zählt eine Ensemble-Abfrage (~120 Szenarien) wie ~12 normale Abrufe.
 """
+import os
 import re
 import threading
 import time
@@ -30,6 +31,10 @@ SOURCES = {
                    "limit": "10.000 gewichtete Abrufe/Tag, 600/min"},
     "aviationweather": {"name": "METAR (aviationweather.gov)", "hosts": ["aviationweather.gov"], "use": "Gemessene Temperaturen am Messtag",
                         "day_budget": 1500, "minute_budget": 6, "limit": "keine feste Zahl; kleine, seltene Abfragen erbeten"},
+    "clubelo": {"name": "ClubElo", "hosts": ["api.clubelo.com"], "use": "Stärke-Wertung europäischer Fußballklubs (Spielplan mit Wahrscheinlichkeiten)",
+                "day_budget": 60, "limit": "frei, ohne Schlüssel"},
+    "api_football": {"name": "API-Football", "hosts": ["v3.football.api-sports.io"], "use": "Verletzte und gesperrte Spieler (nur mit eigenem Schlüssel)",
+                     "day_budget": 90, "limit": "Gratis-Plan 100 Abrufe/Tag"},
     "bbc_rss": {"name": "BBC RSS", "hosts": ["feeds.bbci.co.uk"], "use": "Schlagzeilen", "day_budget": 600, "limit": "öffentlicher Feed"},
     "telegram": {"name": "Telegram", "hosts": ["api.telegram.org"], "use": "Benachrichtigungen", "day_budget": 600, "limit": "frei"},
     "sonstige": {"name": "Sonstige", "hosts": [], "use": "nicht zugeordnete Abrufe", "day_budget": 2000, "limit": "–"},
@@ -54,6 +59,10 @@ def redact(text):
     s = str(text)
     for pat, rep in _SECRET_PATTERNS:
         s = pat.sub(rep, s)
+    for env in ("API_FOOTBALL_KEY", "ODDS_API_KEY"):   # Schlüssel, die im Kopf einer Anfrage stehen
+        v = os.environ.get(env, "").strip()
+        if len(v) >= 8:
+            s = s.replace(v, "<geheim>")
     return s
 
 

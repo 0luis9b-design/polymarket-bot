@@ -12,7 +12,7 @@ import re
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
-from . import config, events, hindsight, sources, taxonomy, version, weather_check
+from . import config, events, form_model, hindsight, sources, taxonomy, version, weather_check
 
 log = logging.getLogger("polybot.bericht")
 BERLIN = ZoneInfo("Europe/Berlin")
@@ -373,6 +373,24 @@ def build(coord, now, since):
         L.extend(_table(["Variante", "Vorlauf", "Tage", "Modell", "Markt", "eingetroffen"],
                         [[r["variante"], r["vorlauf"], r["n"], _f(r["modell"], 0, pct=True), _f(r["markt"], 0, pct=True),
                           _f(r["eingetroffen"], 0, pct=True)] for r in fav]))
+        n_pat += 1
+    form = getattr(getattr(coord, "engine", None), "form", None)
+    if form is not None:
+        fs = form.status()
+        sports = ", ".join(f"{taxonomy.NAMES.get(r['thema'], r['thema'])} · {r['sportart']} {r['spiele']} ({r['bewertet']} mit Wertung)"
+                           for r in fs["ergebnisse"][:10]) or "noch keine"
+        ce = fs["clubelo"] or {}
+        inj = (f"{fs['verletzte']} Einträge" + (f", letzte Meldung von API-Football: {fs['verletzte_fehler']}" if fs["verletzte_fehler"] else "")) \
+            if fs["verletzte_schluessel"] else "aus (kein Schlüssel API_FOOTBALL_KEY eingetragen)"
+        add(f"- Form-Modell (seit 2.11, Elo): gesammelte Ergebnisse je Sportart – {sports}. ClubElo-Spielplan: "
+            f"{ce.get('spiele', 0)} Spiele (Stand {ce.get('stand', '–')}). Verletzte/Gesperrte: {inj}.")
+        ev = form_model.evaluate(st)
+        if ev:
+            L.extend(_table(["Thema", "Sportart", "Prognosen", "Ereignisse", "Brier Form-Modell", "Brier Markt", "besser?"],
+                            [[taxonomy.NAMES.get(r["thema"], r["thema"]), r["sportart"], r["n"], r["ereignisse"],
+                              _f(r["brier_modell"]), _f(r["brier_markt"]),
+                              ("noch zu wenig" if r["ereignisse"] < 30 else "Modell" if r["brier_modell"] < r["brier_markt"] else "Markt")]
+                             for r in ev[:15]]))
         n_pat += 1
     lab = (coord.strategy.view() or {}).get("latest") or {}
     for b in lab.get("kalibrierung") or []:

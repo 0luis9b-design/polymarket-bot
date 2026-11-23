@@ -20,10 +20,10 @@ def test_every_strategy_has_one_account_per_topic():
     topics = [t[0] for t in config.TOPICS]
     for s in config.STRATEGIES:
         mine = [a for a in config.ACCOUNTS if a["strategy"] == s["id"]]
-        expected = list(config.MODEL_TOPICS) if s["id"] == "arbitrage" else topics
+        expected = list(config.MODEL_TOPICS) if s["id"] == "arbitrage" else ["sports", "esports"] if s["id"] == "form" else topics
         assert [a["topic"] for a in mine] == expected, s["id"]
         assert all(a["cats"] == [a["topic"]] and a["id"] == f"{s['id']}_{config.TOPIC_CODE[a['topic']]}" for a in mine)
-    assert len(ids) == 9 * 11 + 3   # seit 2.10 mit „Alles tippen“
+    assert len(ids) == 9 * 11 + 3 + 2   # seit 2.10 mit „Alles tippen“, seit 2.11 „Form (Elo)“ nur Sport/E-Sport
     # die bisherigen Hauptkonten behalten ihre Kennung (Verlauf, Telegram, Lesezeichen)
     assert {"haupt_krypto", "haupt_sport", "haupt_wetter"} <= set(ids) and ids[0] == "haupt_krypto"
     # Arbitrage nur dort, wo der Bot ganze Ereignisse kennt

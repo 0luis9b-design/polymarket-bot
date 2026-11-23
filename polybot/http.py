@@ -21,7 +21,7 @@ class HttpError(Exception):
         self.blocked = blocked
 
 
-def _request(url, params, retries, parse):
+def _request(url, params, retries, parse, headers=None):
     sid = sources.source_for(url)
     last = None
     for attempt in range(retries + 1):
@@ -31,7 +31,8 @@ def _request(url, params, retries, parse):
             raise HttpError(str(b), blocked=True) from None
         t0 = time.time()
         try:
-            r = SESSION.get(url, params=params, timeout=config.HTTP_TIMEOUT)
+            # Schlüssel nur im Kopf der Anfrage, nie in der Adresse (sonst stünde er in Logs)
+            r = SESSION.get(url, params=params, timeout=config.HTTP_TIMEOUT, headers=headers)
             ms = (time.time() - t0) * 1000
             if r.status_code >= 400:
                 sources.after(sid, False, r.status_code, ms, f"HTTP {r.status_code}")
@@ -52,9 +53,9 @@ def _request(url, params, retries, parse):
     raise last
 
 
-def get_json(url, params=None, retries=2, want_headers=False):
-    data, headers = _request(url, params, retries, lambda r: r.json())
-    return (data, headers) if want_headers else data
+def get_json(url, params=None, retries=2, want_headers=False, headers=None):
+    data, hdrs = _request(url, params, retries, lambda r: r.json(), headers=headers)
+    return (data, hdrs) if want_headers else data
 
 
 def get_text(url, params=None, retries=1):

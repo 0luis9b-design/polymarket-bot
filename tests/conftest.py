@@ -27,6 +27,8 @@ def _saubere_umgebung(monkeypatch):
     monkeypatch.setattr(config, "MIN_WIN_P", 0.0)
     # „Alles tippen“ (2.10) würde in den älteren Tests zusätzlich kaufen; eigene Tests in tests/test_all_tips.py
     monkeypatch.setattr(config, "ALL_TIPS", False)
+    monkeypatch.setattr(config, "FORM_TIPS", False)          # eigene Tests in tests/test_form_model.py
+    monkeypatch.setattr(config, "API_FOOTBALL_KEY", "")
     yield
     for k, v in saved.items():
         setattr(config, k, v)

@@ -116,6 +116,17 @@ MIGRATIONS = [
         "ALTER TABLE resolved ADD COLUMN sel INTEGER DEFAULT 1",
         "CREATE INDEX idx_resolved_sel ON resolved(sel, category, end_date)",
     ]),
+    (11, "Form-Modell: Spielergebnisse für die Stärke-Wertung, Verletzte/Gesperrte", [
+        # Ergebnisse entschiedener Polymarket-Sieger-Märkte (Name gegen Name) – Grundlage der Elo-Wertung je Sportart
+        """CREATE TABLE match_results (
+            market_id TEXT PRIMARY KEY, category TEXT, sport TEXT, played_at TEXT, a TEXT, b TEXT, winner INTEGER,
+            slug TEXT, added_at TEXT)""",
+        "CREATE INDEX idx_match_sport ON match_results(category, sport, played_at)",
+        # Verletzte/gesperrte Spieler je Spieltag und Team (API-Football, nur mit eigenem Schlüssel)
+        """CREATE TABLE injuries (
+            day TEXT, team TEXT, player TEXT, kind TEXT, reason TEXT, league TEXT, fixture_id TEXT, fetched_at TEXT,
+            PRIMARY KEY (day, team, player))""",
+    ]),
 ]
 LATEST = MIGRATIONS[-1][0]
 

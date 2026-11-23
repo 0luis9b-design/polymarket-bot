@@ -133,6 +133,17 @@ ALL_MAX_PRICE = _f("ALL_MAX_PRICE", 0.90)        # darüber bringt ein Treffer f
 ALL_MAX_SPREAD = _f("ALL_MAX_SPREAD", 0.10)      # ohne echtes Orderbuch kein fairer Kurs (viele Tennis-/Tischtennis-Märkte sind leer)
 ALL_MIN_LIQUIDITY = _f("ALL_MIN_LIQUIDITY", 100)
 ALL_STAKE = _f("ALL_STAKE", 5.0)                 # fester Einsatz je Wette
+# --- Form-Modell (seit 2.11, Freigabe 23.11.: „Du kannst alles kostenlose umsetzen“) ---
+# Stärke-Wertung (Elo): Fußball aus ClubElo (frei, ohne Schlüssel), alle Duelle „Name gegen Name“ (Tennis, Tischtennis,
+# Basketball, Eishockey, E-Sport …) aus den Ergebnissen entschiedener Polymarket-Märkte. Erst gemessen, eigene Konten.
+FORM_TIPS = os.environ.get("FORM_TIPS", "1") == "1"
+FORM_MIN_EDGE = _f("FORM_MIN_EDGE", 0.05)        # Wette nur, wenn das Modell mind. 5 Pkt mehr sieht als der Kaufpreis
+FORM_MIN_GAMES = _i("FORM_MIN_GAMES", 5)         # beide Seiten brauchen so viele gewertete Spiele
+FORM_STAKE = _f("FORM_STAKE", 5.0)
+FORM_DAYS = _i("FORM_DAYS", 90)                  # so weit zurück werden Ergebnisse gesammelt
+FORM_PAGES = _i("FORM_PAGES", 15)                # Abrufe je Stunde fürs Sammeln (à 100 Märkte)
+CLUBELO_URL = os.environ.get("CLUBELO_URL", "http://api.clubelo.com/Fixtures")
+API_FOOTBALL_KEY = os.environ.get("API_FOOTBALL_KEY", "").strip()   # freiwillig: Verletzte/Gesperrte (Gratis-Plan 100/Tag)
 ALL_MAX_PER_SUB = _i("ALL_MAX_PER_SUB", 25)      # je Konto und Sportart/Unterbereich höchstens so viele offene Wetten
 ALL_MAX_NEW = _i("ALL_MAX_NEW", 40)              # je Konto und Lauf höchstens so viele neue Wetten (Rest im nächsten Lauf)
 
@@ -185,6 +196,10 @@ STRATEGIES = [
      "desc": "ohne Modell: tippt bei jedem Spiel und Ereignis (auch Tennis, Tischtennis, E-Sport …) den Favoriten – zeigt, wo Wetten Plus oder Minus machen",
      "edge_c": 1.0, "edge_s": 1.0, "edge_w": 1.0, "edge_b": 1.0, "stake": "fest", "fixed": ALL_STAKE, "exit": False, "arb": False,
      "model": False, "all": True},
+    {"id": "form", "name": "Form (Elo)", "rules": "eigenes Stärke-Modell (Elo aus Ergebnissen, Fußball von ClubElo): Wette, wenn es mind. 5 Pkt mehr sieht als der Preis (je 5 $)",
+     "desc": "eigenes Stärke-Modell: wie stark sind beide Seiten nach ihren bisherigen Ergebnissen, gewichtet nach Stärke der Gegner",
+     "edge_c": 1.0, "edge_s": 1.0, "edge_w": 1.0, "edge_b": 1.0, "stake": "fest", "fixed": FORM_STAKE, "exit": False, "arb": False,
+     "model": False, "form": True, "topics": ("sports", "esports")},
     {"id": "aussenseiter", "name": "Außenseiter verkaufen", "rules": "ohne Modell: kauft „Nein“, wenn „Ja“ nur 2–5 % kostet (fester Einsatz 2 %)",
      "desc": "ohne Modell: kauft „Nein“, wenn ein Markt nur 2–5 % für „Ja“ gibt (fester Einsatz 2 %)",
      "edge_c": 1.0, "edge_s": 1.0, "edge_w": 1.0, "edge_b": 1.0, "stake": "longshot", "exit": False, "arb": False, "model": False,

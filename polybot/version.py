@@ -1,8 +1,10 @@
 """Versionsstand des Systems. CHANGES wird im Claude-Bericht unter „Neue Funktionen“ gezeigt."""
-VERSION = "2.10.2"
+VERSION = "2.11.0"
 
 # (Datum, Version, Text) – neueste zuerst
 CHANGES = [
+    ("2026-11-23", "2.11.0", "Form-Modell (Elo): Stärke beider Seiten nach ihren Ergebnissen, gewichtet nach der Stärke der Gegner – Fußball von ClubElo (kostenlos), Tennis, Tischtennis, Basketball, Eishockey, MMA und E-Sport aus den Ergebnissen entschiedener Polymarket-Spiele. Wird gegen den Markt gemessen (Bericht) und wettet in eigenen Konten „Form (Elo)“, wenn es mind. 5 Punkte mehr sieht als der Preis"),
+    ("2026-11-23", "2.11.0", "Verletzte und gesperrte Spieler von API-Football (Gratis-Plan, eigener Schlüssel nötig): stehen bei der Wette und werden gespeichert, ändern die Wahrscheinlichkeit aber erst, wenn gemessen ist, dass sie helfen"),
     ("2026-11-23", "2.10.2", "„Alles tippen“: je Sportart höchstens 25 offene Wetten – sonst füllen die vielen Tischtennis-Spiele das Konto und andere Sportarten kommen kaum dran"),
     ("2026-11-23", "2.10.1", "„Alles tippen“: Spiele ohne Tags landeten im ersten Lauf unter „Sonstiges“ – jetzt Sport bzw. E-Sport; die ersten Wetten wurden ins richtige Konto umgebucht"),
     ("2026-11-23", "2.10.0", "Neue Strategie „Alles tippen“: bei jedem Spiel und Ereignis – alle Sportarten mit Tennis und Tischtennis, E-Sport und alle weiteren Themen – eine Wette auf den Favoriten laut Markt (50–90 ¢, je 5 $), eigene Konten je Thema. Zeigt, wo Wetten Plus oder Minus machen"),

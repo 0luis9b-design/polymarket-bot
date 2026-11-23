@@ -20,7 +20,7 @@ from collections import Counter, defaultdict
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
-from . import base_model, config, crypto_model, events, hindsight, notify, polymarket, sports_model, taxonomy, weather_model
+from . import base_model, config, crypto_model, form_model, events, hindsight, notify, polymarket, sports_model, taxonomy, weather_model
 from .paperview import hit as paperview_hit
 from .store import DECIDED_SQL, HIT_SQL
 from .agents.coordinator import Coordinator
@@ -34,7 +34,7 @@ MAIN = config.ACCOUNTS[0]["id"]
 CATS = tuple(config.MODEL_TOPICS)   # Bereiche mit eigenem Datenmodell
 # Hauptkonto je Thema (für den Status in der Analyse und den Umzug alter Konten)
 MAIN_BY_CAT = {a["topic"]: a["id"] for a in config.ACCOUNTS if a.get("strategy") == "haupt" and a.get("topic")}
-LANE_NAMES = {"model": "eigenes Datenmodell", "base": "Basisraten", "rule": "feste Regel", "arb": "Arbitrage", "maker": "Limit-Order"}
+LANE_NAMES = {"model": "eigenes Datenmodell", "base": "Basisraten", "rule": "feste Regel", "arb": "Arbitrage", "maker": "Limit-Order", "form": "Form-Modell (Elo)"}
 
 
 def game_key(m):
@@ -137,6 +137,12 @@ class Engine:
         self.intel.engine = self
         self.fetch_events = fetch_events
         self.fetch_by_ids = fetch_by_ids
+        live = fetch_events is polymarket.fetch_events
+        # Form-Modell (2.11): ClubElo und API-Football nur im Betrieb abrufen, in Tests nie ins Netz
+        self.form = form_model.Form(store, fetch_markets=self.fetch_markets,
+                                    fetch_text=form_model.get_text if live else (lambda url: b""),
+                                    fetch_json=form_model.get_json if live else (lambda *a, **k: {}))
+        self.form_map = {}
         self.closes_fn = closes_fn
         self.chain_fn = chain_fn
         self.book_fn = book_fn if config.USE_ORDERBOOK else None
@@ -349,6 +355,9 @@ class Engine:
             tm["berechnen"] = time.time() - t
             t = time.time()
             by_market = {o["market"]["id"]: o for o in results}
+            t = time.time()
+            self.form_step(markets, now)
+            tm["form"] = time.time() - t
             self.refile_all(markets)
             self.check_risk(now)
             for a in config.ACCOUNTS:
@@ -367,6 +376,9 @@ class Engine:
                 elif a.get("all"):
                     if config.ALL_TIPS:
                         self.do_all(a, markets, now)
+                elif a.get("form"):
+                    if config.FORM_TIPS:
+                        self.do_form(a, now)
                 elif a["model"]:
                     self.do_entries(a, results)
             tm["konten"] = time.time() - t
@@ -467,7 +479,7 @@ class Engine:
                 markets += others
             except Exception as e:  # noqa: BLE001
                 self.store.log(f"Weitere Märkte nicht abrufbar: {e}", "error")
-        if config.ALL_TIPS and any(a.get("all") for a in config.ACCOUNTS):
+        if config.ALL_TIPS or config.FORM_TIPS:   # alle Spiele: für „Alles tippen“ und das Form-Modell
             try:
                 extra = self.collect_all(now, {m["id"] for m in markets})
                 seen["alle Spiele"] = len(extra)
@@ -702,6 +714,8 @@ class Engine:
             return equity * config.LONGSHOT_STAKE_PCT, config.MIN_STAKE, conf
         if acc.get("all"):   # „Alles tippen“: fester Einsatz, unter Einstellungen änderbar
             return config.ALL_STAKE, min(config.ALL_STAKE, config.MIN_STAKE), conf
+        if acc.get("form"):
+            return config.FORM_STAKE, min(config.FORM_STAKE, config.MIN_STAKE), conf
         if mode == "fest":
             return acc.get("fixed", 10.0), min(acc.get("fixed", 10.0), max(config.MIN_STAKE, 5.0)), conf
         pct = config.STAKE_MIN_PCT + (config.STAKE_MAX_PCT - config.STAKE_MIN_PCT) * conf
@@ -965,6 +979,85 @@ class Engine:
                               "info": f"Alles tippen: Favorit laut Markt – {m['outcomes'][side]} mit {q * 100:.0f} % "
                                       "(ohne eigenes Modell: unsere Wahrscheinlichkeit ist hier der Marktpreis)"}}
             res = self.open_position(acc, o, min_edge=-1.0)
+            if res == "eröffnet":
+                new += 1
+                per_sub[m.get("sub")] += 1
+            elif res == "Limit erreicht":
+                break
+
+    # ------------------------------------------------------------------ Form-Modell (Elo)
+    def form_step(self, markets, now):
+        """Ergebnisse sammeln (stündlich), Ausfälle holen, Prognose für jedes Spiel – und als „form.elo“ mitschreiben,
+        damit gemessen wird, ob das Modell besser ist als der Markt. Fehler hier halten den Lauf nie an."""
+        self.form_map = {}
+        try:
+            last = self.store.kv_get("form:collected")
+            added = None
+            if not last or (now - datetime.fromisoformat(last)).total_seconds() >= 3600:
+                self.store.kv_set("form:collected", now.isoformat(timespec="seconds"))
+                added = self.form.collect(now)
+            inj = self.form.injuries_refresh(now)
+            pseudo = []
+            for m in markets:
+                if m["category"] not in config.GAME_TOPICS:
+                    continue
+                a = self.form.analyze(m, now)
+                if not a:
+                    continue
+                self.form_map[m["id"]] = (m, a)
+                pseudo.append({"market": m, "market_p": polymarket.mid_yes(m), "group": game_key(m),
+                               "analysis": {"variants": dict(a["variants"]), "model_id": None, "hours": a["hours"],
+                                            "features": a["features"]}})
+            if pseudo:
+                self.intel.probability.log_extra(pseudo, now)
+            if added is not None:   # einmal je Stunde ein Lebenszeichen im Log
+                fx = self.store.kv_json("form:clubelo", None) or {}
+                cur = self.store.kv_json("form:cursor", None) or {}
+                log.info("Form-Modell: +%s Ergebnisse (gesamt %s, gesammelt ab %s) · ClubElo %s Spiele · Prognosen jetzt %s "
+                         "(Fußball %s, Duelle %s) · Ausfälle %s", added, self.store.scalar("SELECT COUNT(*) FROM match_results"),
+                         (cur.get("lo") or "–")[:10], fx.get("spiele", 0), len(self.form_map),
+                         sum(1 for m, _ in self.form_map.values() if m["outcomes"][0].lower() in ("yes", "no")),
+                         sum(1 for m, _ in self.form_map.values() if m["outcomes"][0].lower() not in ("yes", "no")),
+                         "aus (kein Schlüssel)" if not config.API_FOOTBALL_KEY else inj)
+        except Exception as e:  # noqa: BLE001
+            log.warning("Form-Modell: %s", e)
+            self.store.log(f"Form-Modell: {type(e).__name__}: {e}", "error")
+
+    def do_form(self, acc, now):
+        """Eigene Konten „Form (Elo)“: Wette auf die Seite, die das Form-Modell für wahrscheinlicher hält, wenn es
+        mindestens FORM_MIN_EDGE mehr sieht als der Kaufpreis. Feste Regeln wie überall."""
+        aid = acc["id"]
+        cats = acc_cats(acc)
+        groups = {}
+        for m, a in self.form_map.values():
+            if m["category"] not in cats or not getattr(config, f"TRADE_{m['category'].upper()}", True):
+                continue
+            if (m["liquidity"] or 0) < config.ALL_MIN_LIQUIDITY or not m["best_bid"] or not m["best_ask"] \
+                    or m["best_ask"] - m["best_bid"] > config.ALL_MAX_SPREAD:
+                continue
+            side = 0 if a["p_yes"] >= 0.5 else 1
+            q = a["p_yes"] if side == 0 else 1 - a["p_yes"]
+            ask, _ = polymarket.quote(m, side)
+            if not ask or ask > 0.95:
+                continue
+            fee = fee_per_share(m["fee_rate"], ask)
+            edge = q - ask - fee
+            if edge < config.FORM_MIN_EDGE:
+                continue
+            grp = game_key(m)
+            if grp not in groups or edge > groups[grp][0]:
+                groups[grp] = (edge, m, a, side, ask, q, fee)
+        per_sub = Counter(p.get("sub") for p in self.store.open_positions(aid))
+        new = 0
+        for grp, (edge, m, a, side, ask, q, fee) in sorted(groups.items(), key=lambda g: g[1][1]["game_start"]):
+            if new >= config.ALL_MAX_NEW:
+                break
+            if self.store.has_game(aid, grp, m.get("event_id")) or per_sub[m.get("sub")] >= config.ALL_MAX_PER_SUB:
+                continue
+            ev = {"side": side, "price": ask, "fee_ps": fee, "eff": ask + fee, "q": q, "edge": edge}
+            o = {"market": m, "eval": ev, "group": grp, "status": {}, "max_price": min(0.99, ask + 0.01),
+                 "market_p": polymarket.mid_yes(m), "analysis": dict(a)}
+            res = self.open_position(acc, o, min_edge=config.FORM_MIN_EDGE)
             if res == "eröffnet":
                 new += 1
                 per_sub[m.get("sub")] += 1

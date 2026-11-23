@@ -228,7 +228,7 @@ class ProbabilityAgent(Agent):
                              round(hours, 2), 1 if is_champ else 0, 0 if a.get("valid") is False else 1,
                              a.get("reject") if is_champ else None, o.get("group"),
                              json.dumps(a.get("sources"), ensure_ascii=False) if is_champ and a.get("sources") else None,
-                             json.dumps(a.get("features"), ensure_ascii=False) if a.get("features") and (is_champ or model == "weather.ens") else None,
+                             json.dumps(a.get("features"), ensure_ascii=False) if a.get("features") and (is_champ or model in ("weather.ens", "form.elo")) else None,
                              prev, h))
                 prev = h
         if rows:
@@ -238,6 +238,14 @@ class ProbabilityAgent(Agent):
             self._last_hash = prev
         self.cycle = {"logged": len(rows), "variants": sum(len(o["analysis"].get("variants", {})) for o in results)}
         return {"neu": len(rows), "märkte": len(results)}
+
+    def log_extra(self, results, now):
+        """Zusätzliche Prognosen außerhalb der Modell-Berechnung (Form-Modell, 2.11) – nur mitschreiben, nie gehandelt
+        als aktives Modell; die Zählung des Laufs bleibt die der Modell-Berechnung."""
+        keep = dict(self.cycle)
+        out = self.log(results, now)
+        self.cycle = {**keep, "form": out.get("neu", 0)}
+        return out
 
     def verify_chain(self, from_id=0, limit=200000):
         """Prüfsummen-Kette nachrechnen. Gibt (ok, geprüfte Zeilen, erste fehlerhafte ID, letzte geprüfte ID) zurück."""

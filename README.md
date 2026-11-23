@@ -75,10 +75,14 @@ Angezeigt werden nur gemessene Werte; fehlt etwas, steht dort „Keine Daten ver
 - **Rückblick** (eigene Modelle): Für alle entschiedenen Prognosen der letzten 30 Tage wird nachgerechnet, ob eine Wette auf
   die Seite des Modells Geld gebracht hätte – je Thema, Wettart, Seite und Abweichung vom Markt. Wo das gesichert nicht der
   Fall war, wettet der Bot dort nicht (Einstellung `HINDSIGHT`); wird der Bereich besser, ist er von selbst wieder offen.
-- Konten (je 1.000 $ Spielgeld): **jede Strategie hat je Thema ein eigenes Konto** – 10 Strategien (Haupt, Schwelle 4/2/7,
-  Schwelle 8/4/14, Fest 10 $, Ohne Ausstieg, Viertel-Kelly, Limit-Orders, Alles tippen, Außenseiter verkaufen, Nur Arbitrage)
-  × 11 Themen (Krypto, Sport, Wetter, E-Sport, Politik, Welt, Wirtschaft, Technik, Wissenschaft, Kultur, Sonstiges); Arbitrage
-  nur in Krypto, Sport und Wetter → 102 Konten.
+- Konten (je 1.000 $ Spielgeld): **jede Strategie hat je Thema ein eigenes Konto** – 11 Strategien (Haupt, Schwelle 4/2/7,
+  Schwelle 8/4/14, Fest 10 $, Ohne Ausstieg, Viertel-Kelly, Limit-Orders, Form (Elo), Alles tippen, Außenseiter verkaufen,
+  Nur Arbitrage) × 11 Themen (Krypto, Sport, Wetter, E-Sport, Politik, Welt, Wirtschaft, Technik, Wissenschaft, Kultur,
+  Sonstiges); Arbitrage nur in Krypto, Sport und Wetter, Form (Elo) nur Sport und E-Sport → 104 Konten.
+- **Form (Elo)** (seit 2.11): eigenes Stärke-Modell – wie stark sind beide Seiten nach ihren Ergebnissen, gewichtet nach
+  der Stärke der Gegner. Fußball von ClubElo (frei), alle Duelle „Name gegen Name“ aus entschiedenen Polymarket-Spielen.
+  Wird immer gegen den Markt gemessen (Bericht); wettet in eigenen Konten, wenn es mind. 5 Punkte mehr sieht als der Preis.
+  Verletzte/Gesperrte über API-Football nur mit eigenem Gratis-Schlüssel `API_FOOTBALL_KEY` (in Railway eintragen).
 - **Alles tippen** (seit 2.10): ohne Modell bei jedem Spiel und Ereignis – alle Sportarten mit Tennis und Tischtennis,
   E-Sport, alle weiteren Themen – eine Wette auf den Favoriten laut Markt (Kaufkurs 50–90 ¢, je 5 $, `ALL_STAKE`). Nur mit
   echtem Orderbuch (Spanne ≤ 10 ¢), vor Spielbeginn, eine Wette je Spiel, nie ein genaues Ergebnis. Zweck: sehen, in welchen

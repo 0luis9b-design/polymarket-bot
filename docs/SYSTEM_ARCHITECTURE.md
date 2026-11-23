@@ -77,7 +77,11 @@
   Sport, Wetter). „Alles tippen“ (2.10, `Engine.do_all` / `all_pick`): zusätzliche Spur `alles` aus `Engine.collect_all`
   (Polymarket `/markets` mit `tag_id` + `sports_market_types=moneyline` je Tag aus `ALL_TAGS`, alle 30 min) – diese Märkte
   gehen nicht durch Modell-Berechnung und Arbitrage, nur in den Katalog (wie Basisraten-Märkte) und an „Alles tippen“; je
-  Spiel/Ereignis der Favorit laut Markt. Abrechnung von Spielen schon 2 h nach Spielbeginn (`settle`, `game_start`). Der einmalige Umzug der alten Konten steht in `Engine.migrate_strategies` (kv `split_v2`, Sicherung
+  Spiel/Ereignis der Favorit laut Markt. Abrechnung von Spielen schon 2 h nach Spielbeginn (`settle`, `game_start`).
+  „Form (Elo)“ (2.11, `form_model.Form`, `Engine.form_step` / `do_form`): Spur `form`; Elo je (Bereich, Sportart) aus
+  `match_results` (gesammelt aus geschlossenen Polymarket-Sieger-Märkten, Zeiger kv `form:cursor`), Fußball aus dem
+  ClubElo-Spielplan, Ausfälle aus API-Football (Tabelle `injuries`, nur mit Schlüssel). Prognosen gehen über
+  `ProbabilityAgent.log_extra` als `form.elo` (champion = 0) in die Prognose-Historie; `form_model.evaluate` für den Bericht. Der einmalige Umzug der alten Konten steht in `Engine.migrate_strategies` (kv `split_v2`, Sicherung
   `backups/vor-kontoaufteilung.sqlite`). Kennzahlen aller Konten kommen aus wenigen gruppierten Abfragen (`accounts_overview`).
 - **Einstiegs-Daten**: Spalten zum Filtern (`sub`, `detail`, `model`, `lane`, `p_mid`, `uncertainty`, `hours_left`, `spread`,
   `liquidity`, `volume24h`) plus `entry` (JSON mit allem für die Detailseite) und `exit_reason`.
