@@ -81,8 +81,8 @@ class Coordinator:
     # ------------------------------------------------------------------ Teilschritte im Handels-Lauf
     def on_markets(self, markets, now):
         def ingest(n, d):
-            out = self.scanner.ingest([m for m in markets if m.get("lane") != "base"], now)
-            others = [m for m in markets if m.get("lane") == "base"]
+            out = self.scanner.ingest([m for m in markets if m.get("lane") not in ("base", "alles")], now)
+            others = [m for m in markets if m.get("lane") in ("base", "alles")]
             if others:
                 out["weitere"] = self.scanner.ingest(others, now, modeled=False)["märkte"]
             return out

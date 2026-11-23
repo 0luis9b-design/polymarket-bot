@@ -1,8 +1,10 @@
 """Versionsstand des Systems. CHANGES wird im Claude-Bericht unter „Neue Funktionen“ gezeigt."""
-VERSION = "2.9.1"
+VERSION = "2.10.0"
 
 # (Datum, Version, Text) – neueste zuerst
 CHANGES = [
+    ("2026-11-23", "2.10.0", "Neue Strategie „Alles tippen“: bei jedem Spiel und Ereignis – alle Sportarten mit Tennis und Tischtennis, E-Sport und alle weiteren Themen – eine Wette auf den Favoriten laut Markt (50–90 ¢, je 5 $), eigene Konten je Thema. Zeigt, wo Wetten Plus oder Minus machen"),
+    ("2026-11-23", "2.10.0", "Spiele werden schon kurz nach Spielende abgerechnet statt erst zum offiziellen Marktende (bei Tischtennis bis zu 7 Tage später)"),
     ("2026-11-22", "2.9.1", "Trefferquote überall gleich gezählt (Startseite, Konten, Strategie-Tabelle, Telegram, Bericht): vorher verkaufte Wetten zählen mit, sobald ihr Markt entschieden ist"),
     ("2026-11-22", "2.9.1", "Polymarket-Fehler 500 beim Sammeln der Vergleichsdaten: Er kam immer bei denselben Abfragen (vermutlich ein defekter Eintrag). Die Seite wird jetzt in kleinere Stücke geteilt und nur der defekte Eintrag übersprungen – der Rückwärts-Durchlauf bleibt nicht mehr hängen; Bericht zeigt beides"),
     ("2026-11-22", "2.9.0", "Treffer ehrlich gezählt: Wetten, die kurz vor Schluss mit Gewinn verkauft wurden, zählen in Auswertung und Bericht mit, sobald ihr Markt entschieden ist – vorher fehlten genau die Gewinner (E-Sport schien 0 von 83 zu gewinnen); der Bot holt dafür auch den Ausgang verkaufter Märkte"),

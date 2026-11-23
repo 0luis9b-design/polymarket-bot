@@ -340,12 +340,12 @@ class Engine:
             self.update_weights()
             t = time.time()
             markets = self.collect_markets(now)
-            modeled = [m for m in markets if m.get("lane") != "base"]
+            modeled = [m for m in markets if m.get("lane") not in ("base", "alles")]
             tm["märkte"] = time.time() - t
             self.intel.on_markets(markets, now)
             self.refresh_closing_odds(markets, now)
             t = time.time()
-            results = self.analyze_all(markets, now)
+            results = self.analyze_all([m for m in markets if m.get("lane") != "alles"], now)
             tm["berechnen"] = time.time() - t
             t = time.time()
             by_market = {o["market"]["id"]: o for o in results}
@@ -363,6 +363,9 @@ class Engine:
                     self.do_maker(a, results, markets, by_market, now)
                 elif a.get("longshot"):
                     self.do_longshots(a, markets, now)
+                elif a.get("all"):
+                    if config.ALL_TIPS:
+                        self.do_all(a, markets, now)
                 elif a["model"]:
                     self.do_entries(a, results)
             tm["konten"] = time.time() - t
@@ -463,8 +466,56 @@ class Engine:
                 markets += others
             except Exception as e:  # noqa: BLE001
                 self.store.log(f"Weitere Märkte nicht abrufbar: {e}", "error")
+        if config.ALL_TIPS and any(a.get("all") for a in config.ACCOUNTS):
+            try:
+                extra = self.collect_all(now, {m["id"] for m in markets})
+                seen["alle Spiele"] = len(extra)
+                markets += extra
+            except Exception as e:  # noqa: BLE001
+                self.store.log(f"Spiele für „Alles tippen“ nicht abrufbar: {e}", "error")
         self.state["markets_seen"] = seen
         return markets
+
+    def collect_all(self, now, known):
+        """Für „Alles tippen“: die Sieger-Märkte (moneyline) aller Sportarten und E-Sport, die bald beginnen.
+
+        Nur der flache Sieger-Markt je Spiel (nicht die 20–30 Zusatzmärkte), höchstens alle ALL_REFRESH_MIN neu geholt –
+        gekauft wird ohnehin zum Kurs aus dem aktuellen Orderbuch. Tischtennis-Ereignisse enden bei Polymarket oft erst
+        7 Tage nach Spielbeginn, deshalb je Tag ein eigenes Zeitfenster (ALL_TAGS: „tag:tage“).
+        """
+        cache = getattr(self, "_all_cache", None)
+        if cache is None or (now - cache[0]).total_seconds() > config.ALL_REFRESH_MIN * 60:
+            raws, ids = [], set()
+            for item in config.ALL_TAGS:
+                slug, _, days = item.partition(":")
+                tid = polymarket.tag_id(slug) if self.fetch_markets is polymarket.fetch_markets else slug
+                if not tid:
+                    continue
+                params = {"tag_id": tid, "sports_market_types": "moneyline", "closed": "false", "active": "true", "limit": 100,
+                          "end_date_min": (now - timedelta(hours=1)).strftime("%Y-%m-%dT%H:%M:%SZ"),
+                          "end_date_max": (now + timedelta(days=float(days or 3))).strftime("%Y-%m-%dT%H:%M:%SZ")}
+                for page in range(config.ALL_MAX_PAGES):
+                    got = self.fetch_markets({**params, "offset": page * 100})
+                    for raw in got:
+                        if raw.get("id") not in ids:
+                            ids.add(raw.get("id"))
+                            raws.append(raw)
+                    if len(got) < 100:
+                        break
+            self._all_cache = cache = (now, raws)
+        out = []
+        for raw in cache[1]:
+            ev = raw["events"][0] if isinstance(raw.get("events"), list) and raw.get("events") else None
+            m = polymarket.normalize_market(raw, ev, "other")
+            if not m or m["id"] in known or m["closed"]:
+                continue
+            c = taxonomy.classify(m)   # Sport oder E-Sport nach den Tags
+            m.update(c)
+            m["fee_rate"] = polymarket.fee_rate_for(raw, c["category"])
+            m["lane"] = "alles"
+            known.add(m["id"])
+            out.append(m)
+        return out
 
     def collect_others(self, now, known):
         """Die aktivsten Märkte aller übrigen Bereiche, die in den nächsten 8 Tagen enden (dafür gibt es Basisraten)."""
@@ -644,6 +695,8 @@ class Engine:
             return equity * config.KELLY_FRACTION * kelly_fraction(ev["q"], ev["eff"]), config.MIN_STAKE, conf
         if mode == "longshot":
             return equity * config.LONGSHOT_STAKE_PCT, config.MIN_STAKE, conf
+        if acc.get("all"):   # „Alles tippen“: fester Einsatz, unter Einstellungen änderbar
+            return config.ALL_STAKE, min(config.ALL_STAKE, config.MIN_STAKE), conf
         if mode == "fest":
             return acc.get("fixed", 10.0), min(acc.get("fixed", 10.0), max(config.MIN_STAKE, 5.0)), conf
         pct = config.STAKE_MIN_PCT + (config.STAKE_MAX_PCT - config.STAKE_MIN_PCT) * conf
@@ -780,7 +833,7 @@ class Engine:
         aid = acc["id"]
         cats = acc_cats(acc)
         for m in markets:
-            if m["category"] not in cats:
+            if m["category"] not in cats or m.get("lane") == "alles":
                 continue
             if not m["accepting_orders"] or not m["end_date"] or m["outcomes"][0].lower() not in ("yes", "ja"):
                 continue
@@ -809,6 +862,80 @@ class Engine:
             res = self.open_position(acc, o, min_edge=-1.0)
             if res == "Limit erreicht" and self.exposure(self.store.open_positions(aid)) > \
                     self.equity(aid) * config.MAX_EXPOSURE_PCT * 0.98:
+                break
+
+    # ------------------------------------------------------------------ Alles tippen
+    @staticmethod
+    def all_pick(ms, now):
+        """Je Spiel/Ereignis die eine Wette für „Alles tippen“: der Favorit laut Markt.
+
+        Vorrang: Sieger-Markt vor Zusatzmärkten, ein Sieger-Tipp („Ja“ oder ein Name) vor „Nein“, dann die höhere
+        Gewinnchance. Nur mit echtem Orderbuch und Kaufkurs zwischen ALL_MIN_PRICE und ALL_MAX_PRICE.
+        Gibt (Markt, Seite, Kaufkurs, Gewinnchance) oder None zurück."""
+        best = None
+        for m in ms:
+            mid = polymarket.mid_yes(m)
+            outs = [o.lower() for o in m["outcomes"]]
+            for side in (0, 1):
+                q = mid if side == 0 else 1 - mid
+                ask, _ = polymarket.quote(m, side)
+                if q < config.ALL_MIN_PRICE or not (config.ALL_MIN_PRICE <= ask <= config.ALL_MAX_PRICE):
+                    continue
+                winner = outs[side] not in ("no", "nein", "over", "under")
+                money = (m.get("sports_market_type") or "moneyline").lower() == "moneyline"
+                key = (money, winner, q)
+                if best is None or key > best[0]:
+                    best = (key, m, side, ask, q)
+        return best[1:] if best else None
+
+    def do_all(self, acc, markets, now):
+        """Ohne Modell: bei jedem Spiel und Ereignis eine Wette auf den Favoriten laut Markt.
+
+        Zweck (Wunsch 23.11.): Daten aus allen Bereichen – auch Tennis, Tischtennis, E-Sport –, um zu sehen, wo Wetten
+        Plus oder Minus machen. Es gelten die festen Regeln jeder Wette: nie ein genaues Ergebnis, Gewinnchance ≥ 50 %,
+        eine Wette je Spiel, nicht nach Spielbeginn."""
+        aid = acc["id"]
+        cats = acc_cats(acc)
+        groups = {}
+        for m in markets:
+            if m["category"] not in cats or not m["accepting_orders"] or not m["end_date"] or polymarket.is_exact_score(m):
+                continue
+            if not getattr(config, f"TRADE_{m['category'].upper()}", True):
+                continue   # Thema unter Einstellungen ausgeschaltet
+            game = m["category"] in config.GAME_TOPICS
+            if game and m.get("game_start"):
+                if m["game_start"] <= now or m["game_start"] > now + timedelta(hours=config.ALL_LOOKAHEAD_H):
+                    continue
+            elif not (0.05 <= (m["end_date"] - now).total_seconds() / 86400 <= config.ALL_MAX_DAYS):
+                continue
+            if (m["liquidity"] or 0) < config.ALL_MIN_LIQUIDITY or not m["best_bid"] or not m["best_ask"] \
+                    or m["best_ask"] - m["best_bid"] > config.ALL_MAX_SPREAD:
+                continue  # leeres oder sehr weites Orderbuch: kein fairer Kurs (viele Tennis-/Tischtennis-Märkte)
+            grp = game_key(m) if game else f"{m['category']}:{m['event_id'] or m['id']}"
+            groups.setdefault(grp, []).append(m)
+        far = now + timedelta(days=365)
+        new = 0
+        # bald beginnende Spiele zuerst; je Lauf höchstens ALL_MAX_NEW neue Wetten (jede holt das aktuelle Orderbuch)
+        for grp, ms in sorted(groups.items(), key=lambda g: min((m.get("game_start") or m["end_date"] or far) for m in g[1])):
+            if new >= config.ALL_MAX_NEW:
+                break
+            if self.store.has_game(aid, grp, ms[0].get("event_id")):
+                continue
+            pick = self.all_pick(ms, now)
+            if not pick:
+                continue
+            m, side, ask, q = pick
+            fee = fee_per_share(m["fee_rate"], ask)
+            ev = {"side": side, "price": ask, "fee_ps": fee, "eff": ask + fee, "q": q, "edge": q - ask - fee}
+            mid = polymarket.mid_yes(m)
+            o = {"market": m, "eval": ev, "group": grp, "status": {}, "max_price": min(0.99, ask + 0.01), "market_p": mid,
+                 "analysis": {"p_yes": mid, "lane": "rule", "model": "Favoriten-Regel", "model_id": "rule.favorit@1",
+                              "info": f"Alles tippen: Favorit laut Markt – {m['outcomes'][side]} mit {q * 100:.0f} % "
+                                      "(ohne eigenes Modell: unsere Wahrscheinlichkeit ist hier der Marktpreis)"}}
+            res = self.open_position(acc, o, min_edge=-1.0)
+            if res == "eröffnet":
+                new += 1
+            elif res == "Limit erreicht":
                 break
 
     # ------------------------------------------------------------------ Limit-Orders (Maker)
@@ -1239,7 +1366,13 @@ class Engine:
             d = polymarket.parse_dt(end)
             return d is None or d <= now + timedelta(hours=1)
 
-        ids = {p["market_id"] for p in pos if due(p["end_date"])} | {r["market_id"] for r in preds if due(r["end_date"])}
+        def played(start):
+            # Spiele sind oft lange vor dem offiziellen Marktende entschieden (Tischtennis: Ende = Beginn + 7 Tage)
+            d = polymarket.parse_dt(start) if start else None
+            return d is not None and d <= now - timedelta(hours=2)
+
+        ids = {p["market_id"] for p in pos if due(p["end_date"]) or played(p.get("game_start"))} | \
+            {r["market_id"] for r in preds if due(r["end_date"])}
         if self.state["scans"] % 3 == 0:
             # Ausgang auch für vorzeitig verkaufte Wetten festhalten (2.9): Sonst fehlen in der Auswertung genau die Gewinner,
             # die mit „Gewinn mitgenommen“ kurz vor Schluss verkauft wurden – Bericht #4: E-Sport 0 von 83 „gewonnen“.

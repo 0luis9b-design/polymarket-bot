@@ -12,6 +12,8 @@ LEVELS = ["info", "normal", "hoch", "kritisch"]
 SPEC = {
     "SCAN_INTERVAL_MIN": ("float", 5, 60, "Analyse", "Minuten zwischen zwei Läufen"),
     "MAX_DIVERGENCE": ("float", 0.10, 0.60, "Analyse", "Größte glaubwürdige Abweichung Modell/Markt (0,25 = 25 Punkte); darüber wird nicht gehandelt"),
+    "ALL_TIPS": ("bool", None, None, "Kategorien", "„Alles tippen“: bei jedem Spiel und Ereignis eine Wette auf den Favoriten (eigene Konten)"),
+    "ALL_STAKE": ("float", 2.0, 50.0, "Kategorien", "„Alles tippen“: Einsatz je Wette in $"),
     "TRADE_CRYPTO": ("bool", None, None, "Kategorien", "Paper-Trading Krypto"),
     "TRADE_SPORTS": ("bool", None, None, "Kategorien", "Paper-Trading Sport"),
     "TRADE_WEATHER": ("bool", None, None, "Kategorien", "Paper-Trading Wetter"),

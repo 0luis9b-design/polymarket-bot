@@ -75,10 +75,14 @@ Angezeigt werden nur gemessene Werte; fehlt etwas, steht dort „Keine Daten ver
 - **Rückblick** (eigene Modelle): Für alle entschiedenen Prognosen der letzten 30 Tage wird nachgerechnet, ob eine Wette auf
   die Seite des Modells Geld gebracht hätte – je Thema, Wettart, Seite und Abweichung vom Markt. Wo das gesichert nicht der
   Fall war, wettet der Bot dort nicht (Einstellung `HINDSIGHT`); wird der Bereich besser, ist er von selbst wieder offen.
-- Konten (je 1.000 $ Spielgeld): **jede Strategie hat je Thema ein eigenes Konto** – 9 Strategien (Haupt, Schwelle 4/2/7,
-  Schwelle 8/4/14, Fest 10 $, Ohne Ausstieg, Viertel-Kelly, Limit-Orders, Außenseiter verkaufen, Nur Arbitrage) × 11 Themen
-  (Krypto, Sport, Wetter, E-Sport, Politik, Welt, Wirtschaft, Technik, Wissenschaft, Kultur, Sonstiges); Arbitrage nur in
-  Krypto, Sport und Wetter → 91 Konten. In Krypto, Sport und Wetter zählt das eigene Modell (sonst Basisraten), in allen
+- Konten (je 1.000 $ Spielgeld): **jede Strategie hat je Thema ein eigenes Konto** – 10 Strategien (Haupt, Schwelle 4/2/7,
+  Schwelle 8/4/14, Fest 10 $, Ohne Ausstieg, Viertel-Kelly, Limit-Orders, Alles tippen, Außenseiter verkaufen, Nur Arbitrage)
+  × 11 Themen (Krypto, Sport, Wetter, E-Sport, Politik, Welt, Wirtschaft, Technik, Wissenschaft, Kultur, Sonstiges); Arbitrage
+  nur in Krypto, Sport und Wetter → 102 Konten.
+- **Alles tippen** (seit 2.10): ohne Modell bei jedem Spiel und Ereignis – alle Sportarten mit Tennis und Tischtennis,
+  E-Sport, alle weiteren Themen – eine Wette auf den Favoriten laut Markt (Kaufkurs 50–90 ¢, je 5 $, `ALL_STAKE`). Nur mit
+  echtem Orderbuch (Spanne ≤ 10 ¢), vor Spielbeginn, eine Wette je Spiel, nie ein genaues Ergebnis. Zweck: sehen, in welchen
+  Bereichen Wetten Plus oder Minus machen. Abschaltbar unter Einstellungen (`ALL_TIPS`). In Krypto, Sport und Wetter zählt das eigene Modell (sonst Basisraten), in allen
   anderen Themen (auch E-Sport) nur Basisraten. Kennungen: `<strategie>_<thema>`, z. B.
   `haupt_krypto`, `schwelle4_politik`. Telegram meldet Käufe/Verkäufe der Hauptkonten (`NOTIFY_ACCOUNTS=haupt_*`).
 

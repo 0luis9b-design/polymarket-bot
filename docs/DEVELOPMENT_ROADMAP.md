@@ -185,6 +185,22 @@ Markt die ganze Seite zum Absturz.
 
 Prüfen im Bericht Mi 25.11.: Sinkt „ganze Seite ausgefallen“, und wie viele Einträge wurden übersprungen?
 
+## Version 2.10 · Alles tippen (Wunsch vom 23.11.) — ✅
+Frage von Luis: „Warum tippt der Bot nicht die Tennis Matches oder andere Sportarten wie Tischtennis? Er soll wirklich alles
+tippen, damit wir nach einer Zeit die Strategien verbessern können.“ Ursache: Sport holte der Bot nur für die Ligen mit
+Buchmacher-Quoten (Fußball, NFL, UFC); Tennis/Tischtennis kamen höchstens über „weitere Märkte“, dort aber keine Basisraten
+(Name gegen Name statt Ja/Nein; Sport-Basisraten zudem vom Wächter gesperrt). Live 23.11.: viele Tennis- und alle
+Tischtennis-Märkte ohne echtes Orderbuch (z. B. Kauf 30 / Verkauf 70 ¢ oder gar kein Gebot).
+
+| Schritt | Status |
+|---|---|
+| Neue Strategie „Alles tippen“ (11 Konten `alles_<thema>`): je Spiel/Ereignis eine Wette auf den Favoriten laut Markt – Sieger-Markt vor Zusatzmärkten, Sieger-Tipp vor „Nein“, Kaufkurs 50–90 ¢, je 5 $, hält bis zur Entscheidung | ✅ mit Test |
+| Sammeln: Sieger-Märkte aller Sportarten und E-Sport (`ALL_TAGS` = sports:3, esports:3, table-tennis:10 Tage), alle 30 min; Spiele, die in den nächsten 48 h beginnen; andere Themen bis 7 Tage | ✅ mit Test |
+| Feste Regeln bleiben: nie ein genaues Ergebnis, Gewinnchance ≥ 50 %, eine Wette je Spiel, nicht nach Spielbeginn, nur mit echtem Orderbuch (Spanne ≤ 10 ¢, Liquidität ≥ 100 $), Themen-Schalter gelten | ✅ mit Test |
+| Bald beginnende Spiele zuerst, höchstens 40 neue Wetten je Konto und Lauf | ✅ mit Test |
+| Abrechnung von Spielen schon 2 h nach Spielbeginn statt erst zum offiziellen Marktende (Tischtennis: Ende = Beginn + 7 Tage) – gilt für alle Konten | ✅ mit Test |
+| Einstellungen `ALL_TIPS` (an/aus) und `ALL_STAKE` (Einsatz) | ✅ |
+
 ## Machbarkeit (geprüft)
 | Ressource | Heute | Mit Ausbau (geschätzt) | Grenze |
 |---|---|---|---|

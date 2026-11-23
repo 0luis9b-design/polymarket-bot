@@ -23,7 +23,7 @@ def test_every_strategy_has_one_account_per_topic():
         expected = list(config.MODEL_TOPICS) if s["id"] == "arbitrage" else topics
         assert [a["topic"] for a in mine] == expected, s["id"]
         assert all(a["cats"] == [a["topic"]] and a["id"] == f"{s['id']}_{config.TOPIC_CODE[a['topic']]}" for a in mine)
-    assert len(ids) == 8 * 11 + 3
+    assert len(ids) == 9 * 11 + 3   # seit 2.10 mit „Alles tippen“
     # die bisherigen Hauptkonten behalten ihre Kennung (Verlauf, Telegram, Lesezeichen)
     assert {"haupt_krypto", "haupt_sport", "haupt_wetter"} <= set(ids) and ids[0] == "haupt_krypto"
     # Arbitrage nur dort, wo der Bot ganze Ereignisse kennt

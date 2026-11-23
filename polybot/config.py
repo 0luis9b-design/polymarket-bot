@@ -119,6 +119,22 @@ LONGSHOT_MAX = _f("LONGSHOT_MAX", 0.05)
 LONGSHOT_MAX_DAYS = _f("LONGSHOT_MAX_DAYS", 14)
 LONGSHOT_STAKE_PCT = _f("LONGSHOT_STAKE_PCT", 0.02)
 
+# --- Alles tippen (seit 2.10, Wunsch 23.11.: „Er soll wirklich alles tippen, damit wir nach einer Zeit die Strategien
+# verbessern können“) – eigene Konten, ohne Modell: je Spiel/Ereignis eine Wette auf den Favoriten laut Markt.
+ALL_TIPS = os.environ.get("ALL_TIPS", "1") == "1"
+# zusätzlich abgerufene Polymarket-Tags „tag:tage“ (Zeitfenster für das Marktende; Tischtennis endet oft 7 Tage nach Spielbeginn)
+ALL_TAGS = [x.strip() for x in os.environ.get("ALL_TAGS", "sports:3,esports:3,table-tennis:10").split(",") if x.strip()]
+ALL_MAX_PAGES = _i("ALL_MAX_PAGES", 20)          # je Tag höchstens so viele Seiten à 100 Sieger-Märkte
+ALL_REFRESH_MIN = _f("ALL_REFRESH_MIN", 30)      # Liste höchstens alle 30 min neu (gekauft wird zum aktuellen Orderbuch)
+ALL_LOOKAHEAD_H = _f("ALL_LOOKAHEAD_H", 48)      # Spiele, die in den nächsten 48 h beginnen
+ALL_MAX_DAYS = _f("ALL_MAX_DAYS", 7)             # andere Märkte: Entscheidung in den nächsten 7 Tagen
+ALL_MIN_PRICE = _f("ALL_MIN_PRICE", 0.50)        # Favorit: Gewinnchance laut Markt mindestens 50 %
+ALL_MAX_PRICE = _f("ALL_MAX_PRICE", 0.90)        # darüber bringt ein Treffer fast nichts
+ALL_MAX_SPREAD = _f("ALL_MAX_SPREAD", 0.10)      # ohne echtes Orderbuch kein fairer Kurs (viele Tennis-/Tischtennis-Märkte sind leer)
+ALL_MIN_LIQUIDITY = _f("ALL_MIN_LIQUIDITY", 100)
+ALL_STAKE = _f("ALL_STAKE", 5.0)                 # fester Einsatz je Wette
+ALL_MAX_NEW = _i("ALL_MAX_NEW", 40)              # je Konto und Lauf höchstens so viele neue Wetten (Rest im nächsten Lauf)
+
 # --- Ausführung, Ausstieg, Arbitrage ---
 USE_ORDERBOOK = os.environ.get("USE_ORDERBOOK", "1") == "1"   # echten Durchschnittskurs aus dem Orderbuch rechnen
 EXIT_BUFFER = _f("EXIT_BUFFER", 0.01)        # verkaufen, sobald Verkaufserlös ≥ eigene W. − 1 Punkt
@@ -164,6 +180,10 @@ STRATEGIES = [
      "desc": "stellt Kaufgebote unter den fairen Wert (keine Gebühr) statt sofort zu kaufen – Füllung nur angenähert simuliert",
      "edge_c": MAKER_EDGE, "edge_s": MAKER_EDGE, "edge_w": MAKER_EDGE, "edge_b": MAKER_EDGE,
      "stake": "sicherheit", "exit": True, "arb": False, "model": False, "maker": True},
+    {"id": "alles", "name": "Alles tippen", "rules": "ohne Modell: je Spiel/Ereignis eine Wette auf den Favoriten laut Markt (Preis 50–90 ¢, je 5 $)",
+     "desc": "ohne Modell: tippt bei jedem Spiel und Ereignis (auch Tennis, Tischtennis, E-Sport …) den Favoriten – zeigt, wo Wetten Plus oder Minus machen",
+     "edge_c": 1.0, "edge_s": 1.0, "edge_w": 1.0, "edge_b": 1.0, "stake": "fest", "fixed": ALL_STAKE, "exit": False, "arb": False,
+     "model": False, "all": True},
     {"id": "aussenseiter", "name": "Außenseiter verkaufen", "rules": "ohne Modell: kauft „Nein“, wenn „Ja“ nur 2–5 % kostet (fester Einsatz 2 %)",
      "desc": "ohne Modell: kauft „Nein“, wenn ein Markt nur 2–5 % für „Ja“ gibt (fester Einsatz 2 %)",
      "edge_c": 1.0, "edge_s": 1.0, "edge_w": 1.0, "edge_b": 1.0, "stake": "longshot", "exit": False, "arb": False, "model": False,

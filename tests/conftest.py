@@ -25,6 +25,8 @@ def _saubere_umgebung(monkeypatch):
     # Ältere Handels-Tests kaufen auch Außenseiter-Seiten; die Mindest-Gewinnchance (Standard 50 %) prüfen
     # tests/test_games.py und tests/test_paper.py ausdrücklich.
     monkeypatch.setattr(config, "MIN_WIN_P", 0.0)
+    # „Alles tippen“ (2.10) würde in den älteren Tests zusätzlich kaufen; eigene Tests in tests/test_all_tips.py
+    monkeypatch.setattr(config, "ALL_TIPS", False)
     yield
     for k, v in saved.items():
         setattr(config, k, v)

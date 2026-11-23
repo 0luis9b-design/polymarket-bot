@@ -74,7 +74,10 @@
 - **Konten** (seit 2.2): `config.STRATEGIES` × `config.TOPICS` → je Strategie und Thema ein Konto `<strategie>_<thema>`.
   Jedes Konto handelt nur Märkte seines Themas, mit beiden Spuren (`model`, falls es eins gibt, sonst `base` mit z ≥ 1,64);
   „Außenseiter verkaufen“ nach fester Regel, „Limit-Orders“ als Gebote, Arbitrage nur vollständige Ereignisse (Krypto,
-  Sport, Wetter). Der einmalige Umzug der alten Konten steht in `Engine.migrate_strategies` (kv `split_v2`, Sicherung
+  Sport, Wetter). „Alles tippen“ (2.10, `Engine.do_all` / `all_pick`): zusätzliche Spur `alles` aus `Engine.collect_all`
+  (Polymarket `/markets` mit `tag_id` + `sports_market_types=moneyline` je Tag aus `ALL_TAGS`, alle 30 min) – diese Märkte
+  gehen nicht durch Modell-Berechnung und Arbitrage, nur in den Katalog (wie Basisraten-Märkte) und an „Alles tippen“; je
+  Spiel/Ereignis der Favorit laut Markt. Abrechnung von Spielen schon 2 h nach Spielbeginn (`settle`, `game_start`). Der einmalige Umzug der alten Konten steht in `Engine.migrate_strategies` (kv `split_v2`, Sicherung
   `backups/vor-kontoaufteilung.sqlite`). Kennzahlen aller Konten kommen aus wenigen gruppierten Abfragen (`accounts_overview`).
 - **Einstiegs-Daten**: Spalten zum Filtern (`sub`, `detail`, `model`, `lane`, `p_mid`, `uncertainty`, `hours_left`, `spread`,
   `liquidity`, `volume24h`) plus `entry` (JSON mit allem für die Detailseite) und `exit_reason`.
