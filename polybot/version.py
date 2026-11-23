@@ -1,8 +1,11 @@
 """Versionsstand des Systems. CHANGES wird im Claude-Bericht unter „Neue Funktionen“ gezeigt."""
-VERSION = "2.9.1"
+VERSION = "2.10.0"
 
 # (Datum, Version, Text) – neueste zuerst
 CHANGES = [
+    ("2026-11-23", "2.10.0", "Wetter: zwei schmalere Testvarianten (weather.narrow@85 und @70) laufen an allen Tagen mit, auch am Messtag – nur zum Vergleich; gehandelt wird damit erst, wenn das Lernsystem sie vorschlägt und Luis freigibt"),
+    ("2026-11-23", "2.10.0", "Krypto: zwei Testvarianten mit mehr Schwankung als die Optionen (crypto.options.wide@115 und @130) – Anlass: Wetten auf Kursbereiche trafen seltener als erwartet; laufen nur mit"),
+    ("2026-11-23", "2.10.0", "Sport-Quoten klüger eingeteilt: neue Quoten nur für Ligen mit Spiel in den nächsten 6 Stunden, vormittags nur ein Teil des Tageskontingents – damit abends noch Abrufe für die Spiele übrig sind"),
     ("2026-11-22", "2.9.1", "Trefferquote überall gleich gezählt (Startseite, Konten, Strategie-Tabelle, Telegram, Bericht): vorher verkaufte Wetten zählen mit, sobald ihr Markt entschieden ist"),
     ("2026-11-22", "2.9.1", "Polymarket-Fehler 500 beim Sammeln der Vergleichsdaten: Er kam immer bei denselben Abfragen (vermutlich ein defekter Eintrag). Die Seite wird jetzt in kleinere Stücke geteilt und nur der defekte Eintrag übersprungen – der Rückwärts-Durchlauf bleibt nicht mehr hängen; Bericht zeigt beides"),
     ("2026-11-22", "2.9.0", "Treffer ehrlich gezählt: Wetten, die kurz vor Schluss mit Gewinn verkauft wurden, zählen in Auswertung und Bericht mit, sobald ihr Markt entschieden ist – vorher fehlten genau die Gewinner (E-Sport schien 0 von 83 zu gewinnen); der Bot holt dafür auch den Ausgang verkaufter Märkte"),

@@ -58,6 +58,11 @@ ODDS_REFRESH_MIN = _f("ODDS_REFRESH_MIN", 360)      # Quoten pro Liga höchstens
 ODDS_CREDIT_RESERVE = _i("ODDS_CREDIT_RESERVE", 15)
 ODDS_DAILY_BUDGET = _i("ODDS_DAILY_BUDGET", 0)      # 0 = automatisch: Restguthaben / Resttage im Monat
 SPORTS_LOOKAHEAD_H = _f("SPORTS_LOOKAHEAD_H", 24)   # nur Spiele in den nächsten 24 h (Quoten nah am Spiel sind genauer)
+# Gratis-Kontingent klüger einteilen (2.10): neue Quoten nur für Ligen, in denen in den nächsten ODDS_FETCH_H Stunden ein Spiel
+# beginnt – vorher waren abends oft alle Abrufe weg und die Spiele des Abends liefen mit veralteten Quoten (gesperrt).
+ODDS_FETCH_H = _f("ODDS_FETCH_H", 6)
+# Vormittags nicht alles verbrauchen: erlaubt ist bis Stunde h (UTC) höchstens dieser Anteil plus der Rest anteilig
+ODDS_PACE_START = _f("ODDS_PACE_START", 0.4)
 SPORTS_MIN_BOOKS = _i("SPORTS_MIN_BOOKS", 3)
 
 # --- Gebühren (Polymarket: Gebühr = Anteile × Satz × p × (1 − p)) ---

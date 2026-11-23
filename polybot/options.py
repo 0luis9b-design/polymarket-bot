@@ -111,15 +111,16 @@ class Chain:
     def atm_vol(self, t, spot):
         return math.sqrt(self.total_var(t, spot) / t)
 
-    def _call(self, spot, strike, t):
-        sd = math.sqrt(max(self.total_var(t, strike), 1e-12))
+    def _call(self, spot, strike, t, scale=1.0):
+        sd = math.sqrt(max(self.total_var(t, strike), 1e-12)) * scale
         d1 = (math.log(spot / strike) + sd * sd / 2) / sd
         return spot * _ncdf(d1) - strike * _ncdf(d1 - sd)
 
-    def prob_above(self, spot, strike, hours):
+    def prob_above(self, spot, strike, hours, scale=1.0):
+        """P(Kurs am Ende > strike). scale > 1 = mehr Schwankung als die Optionen einpreisen (nur Testvarianten)."""
         t = max(hours, 0.01) / YEAR_H
         h = strike * 0.003
-        p = (self._call(spot, strike - h, t) - self._call(spot, strike + h, t)) / (2 * h)
+        p = (self._call(spot, strike - h, t, scale) - self._call(spot, strike + h, t, scale)) / (2 * h)
         return min(max(p, 0.0), 1.0)
 
 

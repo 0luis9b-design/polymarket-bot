@@ -87,6 +87,9 @@ def target_time(question, end_date):
     return end_date
 
 
+WIDER = (1.15, 1.3)   # Schwankung der Testvarianten im Verhältnis zur Optionsvolatilität
+
+
 def _ncdf(x):
     return 0.5 * (1 + math.erf(x / math.sqrt(2)))
 
@@ -150,9 +153,9 @@ def _fmt(v):
     return f"{v:,.0f}".replace(",", ".") if v >= 100 else f"{v:.4g}"
 
 
-def probability_options(parsed, spot, ch, hours):
-    """Wie probability(), aber mit der Deribit-Volatilitätsoberfläche."""
-    above = lambda k: ch.prob_above(spot, k, hours)  # noqa: E731
+def probability_options(parsed, spot, ch, hours, scale=1.0):
+    """Wie probability(), aber mit der Deribit-Volatilitätsoberfläche (scale: Schwankung vergrößert, nur Testvarianten)."""
+    above = lambda k: ch.prob_above(spot, k, hours, scale) if scale != 1.0 else ch.prob_above(spot, k, hours)  # noqa: E731
     k = parsed["kind"]
     if k == "above":
         return above(parsed["k1"])
@@ -233,6 +236,11 @@ def analyze(market, now=None, closes_fn=hourly_closes, chain_fn=None):
     clamp = lambda v: min(max(v, 0.001), 0.999)  # noqa: E731
     model_id = "crypto.options@1" if ch else "crypto.histprem@1"
     variants = {"crypto.hist@1": clamp(p_hist), model_id: clamp(p)}
+    if ch:
+        # Testvarianten (2.10): mehr Schwankung als die Optionen einpreisen. Anlass Bericht #4: Wetten auf einen Kursbereich
+        # trafen in 69 % bei 80 % Preis (erwartet 84 %) – der Bot war zu sicher. Laufen nur mit, kein Handel ohne Freigabe.
+        for f in WIDER:
+            variants[f"crypto.options.wide@{int(round(f * 100))}"] = clamp(probability_options(parsed, spot, ch, hours, scale=f))
     from . import prices as _prices
     stamps = [t for t in (_prices.cache_time(parsed["asset"]) if closes_fn is hourly_closes else None,
                           options.cache_time(parsed["asset"]) if ch else None) if t]

@@ -1,7 +1,7 @@
 # Entwicklungs-Roadmap
 
 Priorität: **1** = verhindert Schaden oder ist Voraussetzung · **2** = Kern des Zielsystems · **3** = Ausbau.
-Status: ✅ erledigt (mit Tests belegt) · 🔧 in Arbeit · ⏳ geplant. Stand: 22.11.2026, Version 2.9.1.
+Status: ✅ erledigt (mit Tests belegt) · 🔧 in Arbeit · ⏳ geplant. Stand: 23.11.2026, Version 2.10.0.
 
 ## Phase 1–2 · Audit und Architektur — ✅
 Dokumente: `PROJECT_AUDIT.md`, `SYSTEM_ARCHITECTURE.md`, `TECHNICAL_DEBT.md`, `RISK_REGISTER.md`, diese Datei.
@@ -185,6 +185,19 @@ Markt die ganze Seite zum Absturz.
 
 Prüfen im Bericht Mi 25.11.: Sinkt „ganze Seite ausgefallen“, und wie viele Einträge wurden übersprungen?
 
+## Version 2.10 · Testvarianten nebenher, Sport-Quoten eingeteilt (Wunsch Luis 23.11.: „eigenständig weitermachen“) — ✅
+Leitlinie bis zum Bericht Mi 25.11.: nichts an den Wett-Regeln ändern, damit der Vorher-Nachher-Vergleich des Rückblicks sauber
+bleibt. Neue Varianten laufen nur mit und sammeln Vergleichsdaten; gehandelt wird damit erst nach Vorschlag und Freigabe.
+
+| Schritt | Status |
+|---|---|
+| Wetter `weather.narrow@85` / `@70`: Szenarien um 15 % bzw. 30 % zur Mitte gerückt, Verschmierung ebenso – an Vorhersage-Tagen und am Messtag unter demselben Namen, damit das Lernsystem sie gegen die gehandelte Mischung messen und vorschlagen kann | ✅ mit Test |
+| Krypto `crypto.options.wide@115` / `@130`: Optionsvolatilität × 1,15 bzw. × 1,3 (nur wenn Optionsdaten da sind). Anlass: „Kursbereich am Stichtag“ 69 % getroffen bei 80 % Preis, erwartet 84 % (n = 80) | ✅ mit Test |
+| Sport-Quoten: neuer Abruf nur, wenn in der Liga in den nächsten `ODDS_FETCH_H` (6) Stunden ein Spiel beginnt; weiter entfernte Spiele nur mit noch frischen gespeicherten Quoten. Vormittags (UTC) nur ein Teil des Tageskontingents (`ODDS_PACE_START` 0,4 + Rest anteilig); Schlusskurse vor Anpfiff dürfen immer. Anlass: Kontingent am 21.11. um 14:21 und am 22.11. um 20:20 Uhr aufgebraucht, danach „Daten veraltet“ | ✅ mit Test |
+
+Wirkung auf den Handel: Wetter und Krypto keine. Sport: Spiele werden erst 6 h vor Anpfiff bewertet (vorher bis 24 h), dafür
+seltener mit veralteten Quoten gesperrt.
+
 ## Machbarkeit (geprüft)
 | Ressource | Heute | Mit Ausbau (geschätzt) | Grenze |
 |---|---|---|---|
@@ -222,6 +235,8 @@ Ergebnis: alles läuft auf dem vorhandenen Railway-Dienst ohne Zusatzkosten.
    breit ist, misst seit 2.9 der Bericht (Abschnitt 7). Nächster Schritt erst nach dem Messergebnis.
 10. **Wirkung des Rückblicks prüfen** (Bericht Mi 25.11., Abschnitt 9 „Wirkung des Rückblicks“): verlieren Wetter- und
     Krypto-Wetten seitdem weniger?
+11. **Testvarianten auswerten** (ab etwa 1–2 Wochen): Schlagen `weather.narrow` oder `crypto.options.wide` die gehandelte
+    Variante an späteren Daten? Dann kommt ein Vorschlag im Dashboard unter „Lernen“.
 
 ## Vorgemerkt (aus früheren Absprachen)
 ~~Wetter am Messtag mit Live-Messwerten (METAR)~~ ✅ · ~~Export als Tabelle~~ ✅ 2.8 · ~~Auswertung nach Quelle (Liga, Stadt, Markt-Typ)~~ ✅ 2.7 ·

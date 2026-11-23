@@ -56,7 +56,8 @@ Angezeigt werden nur gemessene Werte; fehlt etwas, steht dort „Keine Daten ver
 **Sport-Märkte** – nur „Wer gewinnt“ in: Bundesliga, 2. Bundesliga, Premier League, La Liga, Serie A, Ligue 1, Champions League, Europa League, Championship, La Liga 2, Ligue 2, Serie B, Schottland, League One, NFL, UFC (änderbar über `SPORTS_LEAGUES`)
 - Holt die Quoten vieler Buchmacher (The Odds API), rechnet deren Marge heraus und bildet den Mittelwert
   (Pinnacle – der genaueste Buchmacher – zählt doppelt).
-- Nur Spiele, die in den nächsten 24 Stunden beginnen, nur vor Anpfiff.
+- Nur Spiele, die in den nächsten 24 Stunden beginnen, nur vor Anpfiff. Neue Quoten werden erst 6 Stunden vor Anpfiff geholt
+  und das Gratis-Kontingent über den Tag verteilt (seit 2.10).
 
 ## Wann und wie viel (virtuell) gewettet wird
 - Vorsprung = eigene Wahrscheinlichkeit − Kaufkurs − Gebühr. Gekauft wird ab 6 Punkten (Krypto), 3 (Sport), 10 (Wetter) –

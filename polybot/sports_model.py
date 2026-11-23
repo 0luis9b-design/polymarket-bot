@@ -9,6 +9,7 @@ Jeder Abruf (1 Liga, Markt h2h, Region eu) kostet 1 Guthaben-Punkt.
 """
 import json
 import logging
+import math
 import re
 import statistics
 import time
@@ -183,15 +184,26 @@ class OddsClient:
         days = max(1, (nxt - now).days + 1)
         return max(1, (left - config.ODDS_CREDIT_RESERVE) // days)
 
+    def paced_budget(self, now=None):
+        """Wie viele Abrufe bis jetzt erlaubt sind: vormittags (UTC) nur ein Teil, der Rest für die Abendspiele."""
+        now = now or datetime.now(timezone.utc)
+        share = min(1.0, config.ODDS_PACE_START + (1 - config.ODDS_PACE_START) * (now.hour + 1) / 24)
+        return max(1, math.ceil(self.daily_budget() * share))
+
+    def cached(self, sport):
+        """Gespeicherte Quoten (Zeit, Liste) ohne Abruf – auch nach einem Neustart."""
+        hit = self.cache.get(sport)
+        if hit is None and hasattr(self.store, "kv_json"):
+            saved = self.store.kv_json(f"odds_cache:{sport}")
+            if saved and "t" in saved:
+                hit = self.cache[sport] = (saved["t"], saved.get("data") or [])
+        return hit
+
     def events(self, sport, max_age=None):
         """max_age (Sekunden) überschreibt das normale Intervall – z. B. für Schlusskurse kurz vor Anpfiff."""
         if not self.enabled:
             return []
-        hit = self.cache.get(sport)
-        if hit is None:  # nach einem Neustart: gespeicherte Quoten nutzen statt Guthaben zu verbrauchen
-            saved = self.store.kv_json(f"odds_cache:{sport}") if hasattr(self.store, "kv_json") else None
-            if saved and "t" in saved:
-                hit = self.cache[sport] = (saved["t"], saved.get("data") or [])
+        hit = self.cached(sport)   # nach einem Neustart: gespeicherte Quoten nutzen statt Guthaben zu verbrauchen
         limit = max_age if max_age is not None else config.ODDS_REFRESH_MIN * 60
         if hit and time.time() - hit[0] < limit:
             return hit[1]
@@ -202,6 +214,9 @@ class OddsClient:
         used, budget = self.used_today(), self.daily_budget()
         if used >= budget:
             self.status = f"Tagesbudget aufgebraucht ({used}/{budget}) – nutze letzte Quoten"
+            return hit[1] if hit else []
+        if used >= self.paced_budget() and max_age is None:     # Schlusskurse kurz vor Anpfiff dürfen immer
+            self.status = f"spart Abrufe für später ({used}/{budget}, bis jetzt {self.paced_budget()} erlaubt) – nutze letzte Quoten"
             return hit[1] if hit else []
         try:
             data, headers = self.fetch(
@@ -293,6 +308,11 @@ def analyze(market, odds_client, now=None):
     teams = split_title(market.get("event_title")) or split_title(market.get("question"))
     if not teams:
         return {"skip": "Teams nicht erkannt"}
+    if hours > config.ODDS_FETCH_H:
+        # Weit vor Anpfiff kein neuer Abruf: gespeicherte Quoten nur, solange sie frisch genug sind
+        hit = odds_client.cached(sport)
+        if not hit or time.time() - hit[0] > config.ODDS_REFRESH_MIN * 60:
+            return {"skip": f"Quoten werden erst {config.ODDS_FETCH_H:.0f} h vor Anpfiff geholt"}
     events = odds_client.events(sport)
     ev, score = find_event(events, teams[0], teams[1], start)
     if not ev:

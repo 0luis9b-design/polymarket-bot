@@ -140,7 +140,7 @@ def _odds_event(start):
 
 
 def test_sports_analyze_moneyline():
-    now = datetime(2026, 11, 12, 12, 0, tzinfo=timezone.utc)
+    now = datetime(2026, 11, 12, 20, 0, tzinfo=timezone.utc)      # 4,5 h vor Anpfiff (seit 2.10 erst ab 6 h neue Quoten)
     start = "2026-11-13T00:30:00Z"
     calls = []
 
@@ -162,7 +162,7 @@ def test_sports_analyze_moneyline():
 
 
 def test_sports_soccer_yes_no():
-    now = datetime(2026, 11, 12, 12, 0, tzinfo=timezone.utc)
+    now = datetime(2026, 11, 12, 15, 0, tzinfo=timezone.utc)
     ev_odds = {"home_team": "Arsenal", "away_team": "Chelsea", "commence_time": "2026-11-12T20:00:00Z",
                "bookmakers": [{"key": k, "markets": [{"key": "h2h", "outcomes": [
                    {"name": "Arsenal", "price": 2.0}, {"name": "Chelsea", "price": 4.0}, {"name": "Draw", "price": 3.6}]}]}

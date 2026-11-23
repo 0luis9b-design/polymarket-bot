@@ -27,6 +27,9 @@ MODELS = "ecmwf_ifs025,gfs025,icon_seamless"
 CACHE_SEC = 3 * 3600
 FAIL_PAUSE_SEC = 30 * 60   # nach einem Fehler diese Station 30 min in Ruhe lassen (statt pro Markt neu zu versuchen)
 BLOCK_PAUSE_SEC = 50       # nach „Budget leer“ diese Station für den Rest des Laufs nicht erneut anfragen
+# Schmalere Testvarianten (2.10, Bericht #4: Verdacht „Vorhersage zu breit“): Szenarien um diesen Faktor zur Mitte gerückt,
+# Verschmierung ebenso verkleinert. Laufen nur als Herausforderer mit; gehandelt wird damit erst nach Freigabe im Dashboard.
+NARROW = (0.85, 0.7)
 status = {}
 _cache = {}
 _failed = {}
@@ -268,16 +271,24 @@ def live_analysis(market, p, icao, day, local_now, hours_by_member, day_vals, fe
     bias = max(-cap, min(cap, sum(diffs) / len(diffs))) if diffs else 0.0
     base_s = config.WEATHER_SPREAD_C if p["unit"] == "C" else config.WEATHER_SPREAD_C * 1.8
     O = ext["max"] if p["kind"] == "high" else ext["min"]
-    probs, wide, rests = [], [], []
+    probs, wide, rests, per_member = [], [], [], []
     for m in hours_by_member:
         rest = [v + bias * math.exp(-(hh - h_now) / 6.0) for hh, v in enumerate(m) if hh > h_now and v is not None]
         r = (max(rest) if p["kind"] == "high" else min(rest)) if rest else None
+        per_member.append(r)
         if r is not None:
             rests.append(r)
         probs.append(_final_prob(p["kind"], O, r, base_s, p["lo"], p["hi"]))
         wide.append(_final_prob(p["kind"], O, r, base_s * 2, p["lo"], p["hi"]))
     prob = sum(probs) / len(probs)
     pw = sum(wide) / len(wide)
+    # Schmalere Testvarianten (2.10): Szenarien zur Mitte gerückt und weniger verschmiert – nur zum Vergleich, kein Handel
+    narrow = {}
+    if rests:
+        mid = sum(rests) / len(rests)
+        for f in NARROW:
+            ps = [_final_prob(p["kind"], O, None if r is None else mid + f * (r - mid), base_s * f, p["lo"], p["hi"]) for r in per_member]
+            narrow[f"weather.narrow@{int(f * 100)}"] = sum(ps) / len(ps)
     # Auch am Messtag bleibt ein Rest Unsicherheit (entschieden wird nach Weather Underground, nicht nach unserem Abruf).
     # Untergrenze klein, damit die Bereiche eines Tages zusammen weiter etwa 100 % ergeben (Prüfung „Summe“).
     clamp = lambda v: min(max(v, 0.005), 0.98)  # noqa: E731
@@ -289,7 +300,7 @@ def live_analysis(market, p, icao, day, local_now, hours_by_member, day_vals, fe
             f"({ext['n']} Meldungen, letzte {last_local:%H:%M} Uhr Ortszeit) · {rest_txt} · Modelle gegen Messung {bias:+.1f}{u} "
             f"korrigiert · Ziel {_rng_text(p)}")
     # Keine Variante „weather.ens@2“ hier: sonst würde das aktive Modell der Kategorie die Messwerte überstimmen
-    variants = {"weather.live@1": clamp(prob), "weather.live.wide@1": clamp(pw)}
+    variants = {"weather.live@1": clamp(prob), "weather.live.wide@1": clamp(pw), **{k: clamp(v) for k, v in narrow.items()}}
     no_obs = bucket_prob(day_vals, p["lo"], p["hi"], base_s) if day_vals and len(day_vals) >= 20 else None
     fin = lambda v: None if v in (math.inf, -math.inf) else v  # noqa: E731
     hit = _cache.get((icao, p["unit"]))
@@ -357,7 +368,9 @@ def analyze(market, now=None, fetch=get_json, metar_fetch=None):
     sd = (sum((v - mean) ** 2 for v in vals) / len(vals)) ** 0.5
     hit = _cache.get((icao, p["unit"]))
     fin = lambda v: None if v in (math.inf, -math.inf) else v  # noqa: E731
-    extra = {"model_id": "weather.ens@2", "variants": {"weather.ens@2": clamp(prob), "weather.wide@1": clamp(wide)},
+    narrow = {f"weather.narrow@{int(f * 100)}": clamp(bucket_prob([mean + f * (v - mean) for v in vals], p["lo"], p["hi"], spread * f))
+              for f in NARROW}
+    extra = {"model_id": "weather.ens@2", "variants": {"weather.ens@2": clamp(prob), "weather.wide@1": clamp(wide), **narrow},
              "uncertainty": abs(prob - wide), "sources": ["Open-Meteo Ensemble (ECMWF, GFS, ICON)"],
              "data_ts": hit[0] if hit else None, "hours": hours_to_start + 24,
              "features": {"icao": icao, "date": day.strftime("%Y-%m-%d"), "kind": p["kind"], "unit": p["unit"],
