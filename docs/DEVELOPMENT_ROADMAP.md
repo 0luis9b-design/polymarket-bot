@@ -209,12 +209,16 @@ Verletzungen)? Antwort: nein – Sport lief nur über Buchmacher-Quoten. Umgeset
 
 | Schritt | Status |
 |---|---|
-| `form_model.py`: Elo-Wertung je Sportart aus entschiedenen Polymarket-Sieger-Märkten („Name gegen Name“: Tennis, Tischtennis, Basketball, Eishockey, MMA, E-Sport …); K-Faktor nach Spielzahl; Prognose nur, wenn beide Seiten ≥ 5 gewertete Spiele haben | ✅ mit Test |
-| Sammeln (stündlich, 15 Abrufe): ein Zeiger läuft Tag für Tag von 90 Tagen zurück bis heute, danach wird der letzte Tag laufend neu gelesen (Tabelle `match_results`, Migration 11) | ✅ mit Test |
+| `form_model.py`: Elo-Wertung je Sportart aus entschiedenen Polymarket-Sieger-Märkten („Name gegen Name“: Tennis, Tischtennis, Basketball, Eishockey, MMA, E-Sport …); K-Faktor nach Spielzahl; Prognose nur, wenn beide Seiten ≥ 8 gewertete Spiele haben | ✅ mit Test |
+| Sammeln (stündlich, 20 Abrufe): zuerst die letzten 36 h, dann rückwärts Tag für Tag bis 90 Tage (Zeiger kv `form:back`, Tabelle `match_results`, Migration 11) | ✅ mit Test |
 | Fußball: ClubElo-Spielplan (frei, ohne Schlüssel) mit Wahrscheinlichkeit je Tordifferenz → Sieg/Remis/Niederlage inkl. Heimvorteil; Zuordnung über Teamnamen und Spieltag | ✅ mit Test |
 | Verletzte/Gesperrte: API-Football (Gratis-Plan, Schlüssel `API_FOOTBALL_KEY` trägt Luis selbst in Railway ein), 2 Abrufe alle 3 h, Schlüssel nur im Kopf der Anfrage, aus Fehlertexten geschwärzt; angezeigt und als Merkmal gespeichert, ändert die Wahrscheinlichkeit noch nicht | ✅ mit Test |
 | Messen: jede Prognose als `form.elo` in der Prognose-Historie (nicht aktiv gehandelt in den Hauptstrategien); Bericht Abschnitt 7: Daten je Sportart und Brier Form-Modell gegen Markt | ✅ mit Test |
 | Neue Strategie „Form (Elo)“ (Konten `form_sport`, `form_esport`): Wette, wenn das Modell mind. 5 Pkt mehr sieht als der Kaufpreis und die Seite ≥ 50 % hat; je 5 $; eine Wette je Spiel, vor Spielbeginn, echtes Orderbuch; Einstellungen `FORM_TIPS`, `FORM_MIN_EDGE`, `FORM_STAKE` | ✅ mit Test |
+
+2.11.1 nach dem Live-Start: Das Sammeln begann 90 Tage zurück (Wertungen aus August, Wetten mit 14–18 Pkt Vorsprung auf
+wenige alte Spiele) – jetzt zuerst die letzten 36 h, dann rückwärts; Wertung erst ab 8 Spielen je Seite. ClubElo antwortete
+nicht (Zeitüberschreitung) – neuer Versuch nach 1 h mit 40 s Wartezeit, Fehler steht im Bericht.
 
 Nicht gebaut (kostet Geld oder braucht ein Sprachmodell): mehr Buchmacher-Quoten (The Odds API ab 30 $/Monat),
 Nachrichten verstehen. Direkter Vergleich: steckt in der Elo-Wertung, sofern die Seiten schon gegeneinander gespielt haben;

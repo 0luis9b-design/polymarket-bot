@@ -103,38 +103,48 @@ class Form:
         self._match = {}                  # (Ereignis, Tag) -> passendes ClubElo-Spiel (Namensvergleich ist teuer)
 
     # ------------------------------------------------------------------ Ergebnisse sammeln
+    def _window(self, lo, hi, off, now):
+        """Eine Seite je Tag (Sport, E-Sport) – gibt (neue Ergebnisse, Abrufe, weitere Seite vorhanden?) zurück."""
+        added = pages = 0
+        more = False
+        for slug in [t.partition(":")[0] for t in config.ALL_TAGS if t.partition(":")[0] in ("sports", "esports")]:
+            tid = polymarket.tag_id(slug) if self.fetch_markets is polymarket.fetch_markets else slug
+            if not tid:
+                continue
+            raws = self.fetch_markets({"tag_id": tid, "sports_market_types": "moneyline", "closed": "true", "include_tag": "true",
+                                       "limit": 100, "offset": off, "end_date_min": lo.strftime("%Y-%m-%dT%H:%M:%SZ"),
+                                       "end_date_max": hi.strftime("%Y-%m-%dT%H:%M:%SZ")})
+            pages += 1
+            added += self._store_results(raws, slug, now)
+            more = more or len(raws) >= 100
+        return added, pages, more
+
     def collect(self, now):
-        """Entschiedene Sieger-Märkte sammeln. Ein Zeiger läuft Tag für Tag von FORM_DAYS zurück bis heute; ist er
-        angekommen, wird jede Stunde der letzte Tag neu gelesen (auch Märkte, deren offizielles Ende noch kommt)."""
+        """Entschiedene Sieger-Märkte sammeln – die neuesten zuerst, weil sie für die heutige Stärke am meisten zählen.
+
+        1) Jede Stunde die letzten 36 Stunden (auch Märkte, deren offizielles Ende noch kommt: Tischtennis + 7 Tage).
+        2) Mit den übrigen Abrufen rückwärts Tag für Tag bis FORM_DAYS (Zeiger kv form:back). Die Reihenfolge des
+           Sammelns ist egal: Die Wertung wird immer in zeitlicher Reihenfolge der Spiele gerechnet."""
         if not self.fetch_markets:
             return 0
-        st = self.store.kv_json("form:cursor", None) or {}
-        lo = datetime.fromisoformat(st["lo"]) if st.get("lo") else now - timedelta(days=config.FORM_DAYS)
-        off = int(st.get("off", 0))
-        pages = added = 0
-        tags = [t.partition(":")[0] for t in config.ALL_TAGS if t.partition(":")[0] in ("sports", "esports")]
-        while pages < config.FORM_PAGES:
-            current = lo >= now - timedelta(days=1)
-            hi = now + timedelta(days=8) if current else lo + timedelta(days=1)
-            got_any = False
-            for slug in tags:
-                tid = polymarket.tag_id(slug) if self.fetch_markets is polymarket.fetch_markets else slug
-                if not tid:
-                    continue
-                raws = self.fetch_markets({"tag_id": tid, "sports_market_types": "moneyline", "closed": "true", "include_tag": "true",
-                                           "limit": 100, "offset": off, "end_date_min": lo.strftime("%Y-%m-%dT%H:%M:%SZ"),
-                                           "end_date_max": hi.strftime("%Y-%m-%dT%H:%M:%SZ")})
-                pages += 1
-                added += self._store_results(raws, slug, now)
-                got_any = got_any or len(raws) >= 100
-            if got_any:
-                off += 100
-                continue
-            if current:   # heutiger Tag fertig gelesen – nächste Stunde von vorn
-                off = 0
+        added = pages = off = 0
+        recent = now - timedelta(hours=36)
+        while pages < config.FORM_PAGES // 2:
+            a, p, more = self._window(recent, now + timedelta(days=8), off, now)
+            added, pages, off = added + a, pages + p, off + 100
+            if not more:
                 break
-            lo, off = lo + timedelta(days=1), 0
-        self.store.kv_set("form:cursor", json.dumps({"lo": lo.isoformat(timespec="seconds"), "off": off}))
+        st = self.store.kv_json("form:back", None) or {}
+        back = datetime.fromisoformat(st["back"]) if st.get("back") else recent
+        off = int(st.get("off", 0))
+        while pages < config.FORM_PAGES and back > now - timedelta(days=config.FORM_DAYS):
+            a, p, more = self._window(back - timedelta(days=1), back, off, now)
+            added, pages = added + a, pages + p
+            if more:
+                off += 100
+            else:
+                back, off = back - timedelta(days=1), 0
+        self.store.kv_set("form:back", json.dumps({"back": back.isoformat(timespec="seconds"), "off": off}))
         return added
 
     def _store_results(self, raws, slug, now):
@@ -194,13 +204,16 @@ class Form:
     # ------------------------------------------------------------------ Fußball (ClubElo)
     def fixtures(self, now):
         ts, fx = self._fixtures
-        if ts and (now - ts).total_seconds() < 6 * 3600:
+        # erfolgreich: 6 h behalten; Fehler (live 23.11.: Zeitüberschreitung): nach 1 h erneut versuchen
+        if ts and (now - ts).total_seconds() < (6 * 3600 if fx else 3600):
             return fx
         try:
-            fx = parse_clubelo(self.fetch_text(config.CLUBELO_URL))
+            fx = parse_clubelo(self.fetch_text(config.CLUBELO_URL, timeout=40))
             self.store.kv_set("form:clubelo", json.dumps({"stand": now.isoformat(timespec="seconds"), "spiele": len(fx)}))
-        except (HttpError, ValueError) as e:
+        except (HttpError, ValueError, TypeError) as e:
             log.info("ClubElo nicht abrufbar: %s", e)
+            self.store.kv_set("form:clubelo", json.dumps({"stand": now.isoformat(timespec="seconds"), "spiele": len(fx or []),
+                                                          "fehler": str(e)[:120]}, ensure_ascii=False))
             fx = fx or []
         self._fixtures = (now, fx)
         self._match = {}

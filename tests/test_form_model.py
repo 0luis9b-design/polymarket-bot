@@ -70,8 +70,14 @@ def test_results_are_collected_day_by_day(tmp_path, monkeypatch):
     got = {r["market_id"]: r for r in st.q("SELECT * FROM match_results")}
     assert (got["x1"]["sport"], got["x1"]["winner"], got["x2"]["sport"], got["x2"]["winner"]) == ("Tennis", 0, "Tischtennis", 1)
     assert all(p["closed"] == "true" and p["sports_market_types"] == "moneyline" for p in asked)
-    cur = st.kv_json("form:cursor")
-    assert datetime.fromisoformat(cur["lo"]) >= NOW - timedelta(days=1, minutes=1)            # Zeiger ist in der Gegenwart
+    back = datetime.fromisoformat(st.kv_json("form:back")["back"])
+    assert back <= NOW - timedelta(days=3) + timedelta(hours=12)                                # rückwärts bis FORM_DAYS
+    # die letzten 36 Stunden kommen zuerst, und zwar mit Spielen, deren offizielles Ende noch kommt (Tischtennis)
+    first = asked[0]
+    assert first["end_date_min"] <= (NOW - timedelta(hours=35)).strftime("%Y-%m-%dT%H:%M:%SZ") and \
+        first["end_date_max"] >= (NOW + timedelta(days=7)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    asked.clear()
+    assert f.collect(NOW) == 0 and len(asked) == 2                                              # danach nur noch die letzten 36 h
 
 
 def _bayern(bid, ask):
@@ -83,7 +89,7 @@ def _bayern(bid, ask):
 def test_engine_logs_form_forecasts_and_bets_only_with_clear_edge(tmp_path, monkeypatch):
     monkeypatch.setattr(config, "FORM_TIPS", True)
     st, eng, _ = _eng(tmp_path, {"sports": [_bayern(0.50, 0.52)]})
-    eng.form.fetch_text = lambda url: CLUBELO
+    eng.form.fetch_text = lambda url, **kw: CLUBELO
     assert eng.run_cycle()
     fc = st.q("SELECT model, champion, p, features FROM forecasts WHERE model='form.elo'")
     assert len(fc) == 1 and fc[0]["champion"] == 0 and abs(fc[0]["p"] - 0.60) < 1e-6 and "heim" in fc[0]["features"]
@@ -93,7 +99,7 @@ def test_engine_logs_form_forecasts_and_bets_only_with_clear_edge(tmp_path, monk
     # Markt schon bei 57 ¢: nur 3 Punkte Vorsprung -> keine Wette
     (tmp_path / "b").mkdir()
     st2, eng2, _ = _eng(tmp_path / "b", {"sports": [_bayern(0.56, 0.57)]})
-    eng2.form.fetch_text = lambda url: CLUBELO
+    eng2.form.fetch_text = lambda url, **kw: CLUBELO
     assert eng2.run_cycle() and not st2.open_positions("form_sport")
     assert len(st2.q("SELECT 1 FROM forecasts WHERE model='form.elo'")) == 1           # gemessen wird trotzdem
 
@@ -109,7 +115,7 @@ def test_injuries_are_shown_but_do_not_change_the_probability(tmp_path, monkeypa
         return {"errors": [], "response": [
             {"player": {"name": "M. Neuer", "type": "Missing Fixture", "reason": "Knee Injury"}, "team": {"name": "Bayern München"},
              "fixture": {"id": 1}, "league": {"name": "Bundesliga"}}]}
-    f = form_model.Form(st, fetch_text=lambda url: CLUBELO, fetch_json=fetch_json)
+    f = form_model.Form(st, fetch_text=lambda url, **kw: CLUBELO, fetch_json=fetch_json)
     assert f.injuries_refresh(NOW) == 2 and f.injuries_refresh(NOW) == 0                    # 2 Tage, dann 3 h Pause
     assert all("geheim" not in json.dumps(p) and h == {"x-apisports-key": "geheim-12345678"} for _, p, h in calls)
     m = {"id": "fcb", "category": "sports", "sub": "Fußball", "accepting_orders": True, "outcomes": ["Yes", "No"],

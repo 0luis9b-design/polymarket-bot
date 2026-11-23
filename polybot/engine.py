@@ -140,7 +140,7 @@ class Engine:
         live = fetch_events is polymarket.fetch_events
         # Form-Modell (2.11): ClubElo und API-Football nur im Betrieb abrufen, in Tests nie ins Netz
         self.form = form_model.Form(store, fetch_markets=self.fetch_markets,
-                                    fetch_text=form_model.get_text if live else (lambda url: b""),
+                                    fetch_text=form_model.get_text if live else (lambda url, **kw: b""),
                                     fetch_json=form_model.get_json if live else (lambda *a, **k: {}))
         self.form_map = {}
         self.closes_fn = closes_fn

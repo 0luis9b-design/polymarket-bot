@@ -138,10 +138,10 @@ ALL_STAKE = _f("ALL_STAKE", 5.0)                 # fester Einsatz je Wette
 # Basketball, Eishockey, E-Sport …) aus den Ergebnissen entschiedener Polymarket-Märkte. Erst gemessen, eigene Konten.
 FORM_TIPS = os.environ.get("FORM_TIPS", "1") == "1"
 FORM_MIN_EDGE = _f("FORM_MIN_EDGE", 0.05)        # Wette nur, wenn das Modell mind. 5 Pkt mehr sieht als der Kaufpreis
-FORM_MIN_GAMES = _i("FORM_MIN_GAMES", 5)         # beide Seiten brauchen so viele gewertete Spiele
+FORM_MIN_GAMES = _i("FORM_MIN_GAMES", 8)         # beide Seiten brauchen so viele gewertete Spiele (5 war live zu wackelig)
 FORM_STAKE = _f("FORM_STAKE", 5.0)
 FORM_DAYS = _i("FORM_DAYS", 90)                  # so weit zurück werden Ergebnisse gesammelt
-FORM_PAGES = _i("FORM_PAGES", 15)                # Abrufe je Stunde fürs Sammeln (à 100 Märkte)
+FORM_PAGES = _i("FORM_PAGES", 20)                # Abrufe je Stunde fürs Sammeln (à 100 Märkte)
 CLUBELO_URL = os.environ.get("CLUBELO_URL", "http://api.clubelo.com/Fixtures")
 API_FOOTBALL_KEY = os.environ.get("API_FOOTBALL_KEY", "").strip()   # freiwillig: Verletzte/Gesperrte (Gratis-Plan 100/Tag)
 ALL_MAX_PER_SUB = _i("ALL_MAX_PER_SUB", 25)      # je Konto und Sportart/Unterbereich höchstens so viele offene Wetten

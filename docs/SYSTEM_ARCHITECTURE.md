@@ -79,7 +79,7 @@
   gehen nicht durch Modell-Berechnung und Arbitrage, nur in den Katalog (wie Basisraten-Märkte) und an „Alles tippen“; je
   Spiel/Ereignis der Favorit laut Markt. Abrechnung von Spielen schon 2 h nach Spielbeginn (`settle`, `game_start`).
   „Form (Elo)“ (2.11, `form_model.Form`, `Engine.form_step` / `do_form`): Spur `form`; Elo je (Bereich, Sportart) aus
-  `match_results` (gesammelt aus geschlossenen Polymarket-Sieger-Märkten, Zeiger kv `form:cursor`), Fußball aus dem
+  `match_results` (gesammelt aus geschlossenen Polymarket-Sieger-Märkten, neueste zuerst, Zeiger kv `form:back`), Fußball aus dem
   ClubElo-Spielplan, Ausfälle aus API-Football (Tabelle `injuries`, nur mit Schlüssel). Prognosen gehen über
   `ProbabilityAgent.log_extra` als `form.elo` (champion = 0) in die Prognose-Historie; `form_model.evaluate` für den Bericht. Der einmalige Umzug der alten Konten steht in `Engine.migrate_strategies` (kv `split_v2`, Sicherung
   `backups/vor-kontoaufteilung.sqlite`). Kennzahlen aller Konten kommen aus wenigen gruppierten Abfragen (`accounts_overview`).

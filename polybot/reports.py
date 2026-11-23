@@ -383,7 +383,8 @@ def build(coord, now, since):
         inj = (f"{fs['verletzte']} Einträge" + (f", letzte Meldung von API-Football: {fs['verletzte_fehler']}" if fs["verletzte_fehler"] else "")) \
             if fs["verletzte_schluessel"] else "aus (kein Schlüssel API_FOOTBALL_KEY eingetragen)"
         add(f"- Form-Modell (seit 2.11, Elo): gesammelte Ergebnisse je Sportart – {sports}. ClubElo-Spielplan: "
-            f"{ce.get('spiele', 0)} Spiele (Stand {ce.get('stand', '–')}). Verletzte/Gesperrte: {inj}.")
+            f"{ce.get('spiele', 0)} Spiele (Stand {ce.get('stand', '–')}{', Fehler: ' + ce['fehler'] if ce.get('fehler') else ''}). "
+            f"Verletzte/Gesperrte: {inj}.")
         ev = form_model.evaluate(st)
         if ev:
             L.extend(_table(["Thema", "Sportart", "Prognosen", "Ereignisse", "Brier Form-Modell", "Brier Markt", "besser?"],
