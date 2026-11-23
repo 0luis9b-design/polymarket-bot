@@ -204,11 +204,12 @@ class Form:
     # ------------------------------------------------------------------ Fußball (ClubElo)
     def fixtures(self, now):
         ts, fx = self._fixtures
-        # erfolgreich: 6 h behalten; Fehler (live 23.11.: Zeitüberschreitung): nach 1 h erneut versuchen
-        if ts and (now - ts).total_seconds() < (6 * 3600 if fx else 3600):
+        # 6 h behalten – auch nach einem Fehler: Live 23.11. kam vom Server keine Verbindung zustande (ConnectTimeout),
+        # jeder Versuch hielt den Lauf auf. Deshalb nur ein Versuch mit 20 s, dann 6 h Ruhe.
+        if ts and (now - ts).total_seconds() < 6 * 3600:
             return fx
         try:
-            fx = parse_clubelo(self.fetch_text(config.CLUBELO_URL, timeout=40))
+            fx = parse_clubelo(self.fetch_text(config.CLUBELO_URL, timeout=20, retries=0))
             self.store.kv_set("form:clubelo", json.dumps({"stand": now.isoformat(timespec="seconds"), "spiele": len(fx)}))
         except (HttpError, ValueError, TypeError) as e:
             log.info("ClubElo nicht abrufbar: %s", e)

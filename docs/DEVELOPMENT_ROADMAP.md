@@ -218,7 +218,8 @@ Verletzungen)? Antwort: nein – Sport lief nur über Buchmacher-Quoten. Umgeset
 
 2.11.1 nach dem Live-Start: Das Sammeln begann 90 Tage zurück (Wertungen aus August, Wetten mit 14–18 Pkt Vorsprung auf
 wenige alte Spiele) – jetzt zuerst die letzten 36 h, dann rückwärts; Wertung erst ab 8 Spielen je Seite. ClubElo antwortete
-nicht (Zeitüberschreitung) – neuer Versuch nach 1 h mit 40 s Wartezeit, Fehler steht im Bericht.
+nicht (Zeitüberschreitung beim Verbindungsaufbau, auch mit 40 s) – 2.11.2: ein Versuch mit 20 s alle 6 h, Fehler steht im
+Bericht. Solange ClubElo nicht erreichbar ist, hat das Form-Modell für Fußball keine Prognose (Duelle laufen normal).
 
 Nicht gebaut (kostet Geld oder braucht ein Sprachmodell): mehr Buchmacher-Quoten (The Odds API ab 30 $/Monat),
 Nachrichten verstehen. Direkter Vergleich: steckt in der Elo-Wertung, sofern die Seiten schon gegeneinander gespielt haben;

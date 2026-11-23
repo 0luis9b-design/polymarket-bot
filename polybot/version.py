@@ -1,8 +1,9 @@
 """Versionsstand des Systems. CHANGES wird im Claude-Bericht unter „Neue Funktionen“ gezeigt."""
-VERSION = "2.11.1"
+VERSION = "2.11.2"
 
 # (Datum, Version, Text) – neueste zuerst
 CHANGES = [
+    ("2026-11-23", "2.11.2", "ClubElo ist vom Server aus gerade nicht erreichbar: nur noch ein kurzer Versuch alle 6 Stunden, damit der Lauf nicht wartet"),
     ("2026-11-23", "2.11.1", "Form-Modell: neueste Ergebnisse zuerst sammeln (vorher begann es im August), Wertung erst ab 8 Spielen je Seite; ClubElo bei Zeitüberschreitung nach 1 h erneut, mit längerer Wartezeit"),
     ("2026-11-23", "2.11.0", "Form-Modell (Elo): Stärke beider Seiten nach ihren Ergebnissen, gewichtet nach der Stärke der Gegner – Fußball von ClubElo (kostenlos), Tennis, Tischtennis, Basketball, Eishockey, MMA und E-Sport aus den Ergebnissen entschiedener Polymarket-Spiele. Wird gegen den Markt gemessen (Bericht) und wettet in eigenen Konten „Form (Elo)“, wenn es mind. 5 Punkte mehr sieht als der Preis"),
     ("2026-11-23", "2.11.0", "Verletzte und gesperrte Spieler von API-Football (Gratis-Plan, eigener Schlüssel nötig): stehen bei der Wette und werden gespeichert, ändern die Wahrscheinlichkeit aber erst, wenn gemessen ist, dass sie helfen"),
