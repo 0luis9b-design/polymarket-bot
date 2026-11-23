@@ -200,6 +200,7 @@ Tischtennis-Märkte ohne echtes Orderbuch (z. B. Kauf 30 / Verkauf 70 ¢ oder ga
 | Bald beginnende Spiele zuerst, höchstens 40 neue Wetten je Konto und Lauf | ✅ mit Test |
 | Abrechnung von Spielen schon 2 h nach Spielbeginn statt erst zum offiziellen Marktende (Tischtennis: Ende = Beginn + 7 Tage) – gilt für alle Konten | ✅ mit Test |
 | Einstellungen `ALL_TIPS` (an/aus) und `ALL_STAKE` (Einsatz) | ✅ |
+| 2.10.1: Live-Start 23.11.: `/markets` lieferte die Spiele ohne Tags → erste 40 Tipps unter „Sonstiges“. Jetzt `include_tag` und notfalls der Tag, über den geholt wurde; einmalige Umbuchung samt Einsatz (`Engine.refile_all`, kv `alles_refile_v1`) | ✅ mit Test |
 
 ## Machbarkeit (geprüft)
 | Ressource | Heute | Mit Ausbau (geschätzt) | Grenze |

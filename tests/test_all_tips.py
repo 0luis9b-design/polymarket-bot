@@ -67,10 +67,15 @@ def test_tips_the_favourite_of_every_game_once(tmp_path, monkeypatch):
     tt = [_game("tt1", ["sports", "table-tennis"], ["Tianyang Li", "Finn Luu"], 0.55, 0.58, end_days=7),
           _game("tt2", ["sports", "table-tennis"], ["Leer", "Buch"], 0.30, 0.70, end_days=7)]   # 40 ¢ Spanne -> nein
     es = [_game("e1", ["esports", "counter-strike"], ["FaZe", "Fnatic"], 0.66, 0.67)]
+    # live 23.11.: Märkte kamen ohne Tags – dann gilt der Tag, über den sie geholt wurden (nicht „Sonstiges“)
+    sports.append(_game("n1", [], ["Ole Miss Rebels", "Clemson Tigers"], 0.67, 0.68))
+    es.append(_game("n2", [], ["Esport Academy", "gothboiclique"], 0.57, 0.58))
     st, eng, calls = _eng(tmp_path, {"sports": sports + tt, "esports": es, "table-tennis": tt})
     assert eng.run_cycle()
     bets = _bets(st)
-    assert set(bets) == {"t1", "f1", "g3", "tt1", "e1"}, set(bets)
+    assert set(bets) == {"t1", "f1", "g3", "tt1", "e1", "n1", "n2"}, set(bets)
+    assert (bets["n1"]["account"], bets["n2"]["account"]) == ("alles_sport", "alles_esport")
+    assert all(c.get("include_tag") == "true" for c in calls if "tag_id" in c)
     assert (bets["t1"]["side_name"], bets["t1"]["account"]) == ("Lucas Hammond", "alles_sport")
     assert (bets["f1"]["side_name"], bets["g3"]["side_name"]) == ("Yes", "No")
     assert (bets["tt1"]["side_name"], bets["e1"]["account"]) == ("Tianyang Li", "alles_esport")
@@ -135,3 +140,19 @@ def test_soonest_games_first_and_capped_per_run(tmp_path, monkeypatch):
     st, eng, _ = _eng(tmp_path, {"sports": games})
     assert eng.run_cycle() and set(_bets(st)) == {"soon"}
     assert eng.run_cycle() and set(_bets(st)) == {"soon", "late"}
+
+
+def test_misfiled_first_bets_move_to_the_right_account_once(tmp_path):
+    st, eng, _ = _eng(tmp_path, {})
+    eng.cash("alles_sonstiges"), eng.cash("alles_sport")
+    st.insert_position({"account": "alles_sonstiges", "market_id": "n1", "category": "other", "question": "Ole Miss vs Clemson",
+                        "side": 0, "side_name": "Ole Miss Rebels", "price": 0.68, "shares": 7.35, "cost": 5, "fee": 0, "status": "open",
+                        "opened_at": NOW.isoformat(), "lane": "rule"})
+    st.add_cash(-5, config.START_BALANCE, "alles_sonstiges")
+    m = {"id": "n1", "lane": "alles", "category": "sports", "sub": "Basketball", "detail": "NCAA"}
+    eng.refile_all([m])
+    p = st.open_positions("alles_sport")[0]
+    assert (p["category"], p["sub"]) == ("sports", "Basketball") and not st.open_positions("alles_sonstiges")
+    assert eng.cash("alles_sonstiges") == config.START_BALANCE and eng.cash("alles_sport") == config.START_BALANCE - 5
+    eng.refile_all([m])                                   # nur einmal
+    assert eng.cash("alles_sport") == config.START_BALANCE - 5

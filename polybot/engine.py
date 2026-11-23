@@ -349,6 +349,7 @@ class Engine:
             tm["berechnen"] = time.time() - t
             t = time.time()
             by_market = {o["market"]["id"]: o for o in results}
+            self.refile_all(markets)
             self.check_risk(now)
             for a in config.ACCOUNTS:
                 if a["exit"]:
@@ -492,6 +493,7 @@ class Engine:
                 if not tid:
                     continue
                 params = {"tag_id": tid, "sports_market_types": "moneyline", "closed": "false", "active": "true", "limit": 100,
+                          "include_tag": "true",
                           "end_date_min": (now - timedelta(hours=1)).strftime("%Y-%m-%dT%H:%M:%SZ"),
                           "end_date_max": (now + timedelta(days=float(days or 3))).strftime("%Y-%m-%dT%H:%M:%SZ")}
                 for page in range(config.ALL_MAX_PAGES):
@@ -499,17 +501,20 @@ class Engine:
                     for raw in got:
                         if raw.get("id") not in ids:
                             ids.add(raw.get("id"))
-                            raws.append(raw)
+                            raws.append((slug, raw))
                     if len(got) < 100:
                         break
             self._all_cache = cache = (now, raws)
         out = []
-        for raw in cache[1]:
+        for slug, raw in cache[1]:
             ev = raw["events"][0] if isinstance(raw.get("events"), list) and raw.get("events") else None
             m = polymarket.normalize_market(raw, ev, "other")
             if not m or m["id"] in known or m["closed"]:
                 continue
             c = taxonomy.classify(m)   # Sport oder E-Sport nach den Tags
+            if c["category"] not in config.GAME_TOPICS:
+                # ohne passende Tags (live 23.11.: Sportspiele landeten unter „Sonstiges“) gilt der Tag, über den geholt wurde
+                c = taxonomy.classify(m, "esports" if slug == "esports" else "sports")
             m.update(c)
             m["fee_rate"] = polymarket.fee_rate_for(raw, c["category"])
             m["lane"] = "alles"
@@ -887,6 +892,28 @@ class Engine:
                 if best is None or key > best[0]:
                     best = (key, m, side, ask, q)
         return best[1:] if best else None
+
+    def refile_all(self, markets):
+        """Einmalig (2.10.1): Am 23.11. landeten die ersten Sport-Tipps ohne Tags in „Alles tippen · Sonstiges“.
+        Offene Wetten auf Spiele ins richtige Konto (Sport/E-Sport) umbuchen – samt Einsatz, damit die Bilanzen stimmen."""
+        if self.store.kv_get("alles_refile_v1"):
+            return
+        by_id = {m["id"]: m for m in markets if m.get("lane") == "alles"}
+        if not by_id:
+            return   # Spiele-Liste noch nicht geladen – nächster Lauf
+        moved = 0
+        for p in self.store.open_positions("alles_sonstiges"):
+            m = by_id.get(p["market_id"])
+            if not m or m["category"] not in config.GAME_TOPICS:
+                continue
+            target = f"alles_{config.TOPIC_CODE[m['category']]}"
+            self.store.update_position(p["id"], account=target, category=m["category"], sub=m.get("sub"), detail=m.get("detail"))
+            self.store.add_cash(p["cost"], config.START_BALANCE, "alles_sonstiges")
+            self.store.add_cash(-p["cost"], config.START_BALANCE, target)
+            moved += 1
+        self.store.kv_set("alles_refile_v1", str(moved))
+        if moved:
+            self.store.log(f"„Alles tippen“: {moved} Wetten aus „Sonstiges“ ins richtige Konto umgebucht", "info")
 
     def do_all(self, acc, markets, now):
         """Ohne Modell: bei jedem Spiel und Ereignis eine Wette auf den Favoriten laut Markt.
